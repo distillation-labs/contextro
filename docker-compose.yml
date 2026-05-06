@@ -1,6 +1,8 @@
 services:
   contextia:
+    container_name: contextia-mcp
     build: .
+    image: jassskalkat/contextia-mcp:latest
     ports:
       - "8000:8000"
     volumes:
@@ -10,8 +12,10 @@ services:
       - ${CTX_CODEBASE_HOST_PATH:?set CTX_CODEBASE_HOST_PATH to your repo path}:/repos/platform:ro
     environment:
       CTX_STORAGE_DIR: /data/.contextia
+      CTX_CODEBASE_HOST_PATH: ${CTX_CODEBASE_HOST_PATH:?set CTX_CODEBASE_HOST_PATH to your repo path}
+      CTX_CODEBASE_MOUNT_PATH: /repos/platform
       # Map the host path your client sends to the mounted path inside the container.
-      CTX_PATH_PREFIX_MAP: ${CTX_PATH_PREFIX_MAP:?set CTX_PATH_PREFIX_MAP to map host paths}
+      CTX_PATH_PREFIX_MAP: ${CTX_PATH_PREFIX_MAP:-}
       CTX_EMBEDDING_MODEL: potion-code-16m
       CTX_TRANSPORT: http
       CTX_HTTP_HOST: 0.0.0.0
