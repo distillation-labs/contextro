@@ -1,0 +1,2 @@
+commit	tokens	callers_found	impact_found	index_sec	incr_ms	status	description
+baseline	17244	0	0	12.6	4064	keep	baseline — 25 calls, avg 689 tok/call, TS callers broken, slow incremental
