@@ -46,12 +46,14 @@ def _runtime(
     codebase_path: Path | None = None,
     sandbox_threshold: int = 10_000,
     preview_results: int = 2,
+    query_aware_compression: bool = True,
 ) -> SearchRuntime:
     settings = Settings()
     settings.relevance_threshold = 0.0
     settings.search_sandbox_threshold_tokens = sandbox_threshold
     settings.search_preview_results = preview_results
     settings.search_preview_code_chars = 40
+    settings.search_query_aware_compression = query_aware_compression
 
     reranker = MagicMock()
     reranker.rerank.side_effect = lambda query, results, limit: results[:limit]
@@ -175,3 +177,21 @@ def test_execute_trims_tail_results_more_aggressively():
 
     codes = [result["code"] for result in response["results"]]
     assert len(codes[0]) > len(codes[1]) > len(codes[2])
+
+
+def test_execute_respects_configurable_code_budgets():
+    backend = _VectorBackend([_result(1), _result(2, score=0.8), _result(3, score=0.7)])
+    runtime = _runtime(backend, codebase_path=Path("/repo"), query_aware_compression=False)
+    runtime.settings.search_code_budget_top_chars = 40
+    runtime.settings.search_code_budget_second_chars = 30
+    runtime.settings.search_code_budget_tail_chars = 20
+    engine = SearchExecutionEngine(runtime)
+
+    response = engine.execute(
+        SearchExecutionOptions(query="nonexistent", mode="vector", rerank=False, limit=3)
+    )
+
+    codes = [result["code"] for result in response["results"]]
+    assert len(codes[0]) <= 41
+    assert len(codes[1]) <= 31
+    assert len(codes[2]) <= 21
