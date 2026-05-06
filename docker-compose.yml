@@ -1,0 +1,38 @@
+services:
+  contextia:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent index storage — survives container restarts
+      - contextia-data:/data
+      # Mount the codebase you want to index. Set CTX_CODEBASE_HOST_PATH first.
+      - ${CTX_CODEBASE_HOST_PATH:?set CTX_CODEBASE_HOST_PATH to your repo path}:/repos/platform:ro
+    environment:
+      CTX_STORAGE_DIR: /data/.contextia
+      # Map the host path your client sends to the mounted path inside the container.
+      CTX_PATH_PREFIX_MAP: ${CTX_PATH_PREFIX_MAP:?set CTX_PATH_PREFIX_MAP to map host paths}
+      CTX_EMBEDDING_MODEL: potion-code-16m
+      CTX_TRANSPORT: http
+      CTX_HTTP_HOST: 0.0.0.0
+      CTX_HTTP_PORT: "8000"
+      CTX_LOG_LEVEL: INFO
+      CTX_LOG_FORMAT: json
+      CTX_COMMIT_HISTORY_ENABLED: "true"
+      CTX_REALTIME_INDEXING_ENABLED: "false" # disable file watcher in Docker
+      CTX_FILE_WATCHER_ENABLED: "false"
+      CTX_AUTO_WARM_START: "true" # restore index from disk on restart (no re-index needed)
+      CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS: "1200"
+      CTX_SEARCH_PREVIEW_RESULTS: "4"
+      CTX_SEARCH_PREVIEW_CODE_CHARS: "220"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "/app/scripts/docker_healthcheck.py"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  contextia-data:
+    driver: local
