@@ -16,7 +16,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY . .
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY scripts ./scripts
 
 RUN pip install --upgrade pip && \
     pip install --index-url https://download.pytorch.org/whl/cpu torch && \
@@ -53,7 +55,9 @@ RUN apt-get update && \
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hf-cache /opt/hf-cache
-COPY . .
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY scripts ./scripts
 
 VOLUME /data
 EXPOSE 8000
