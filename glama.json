@@ -1,0 +1,50 @@
+{
+  "name": "contextia",
+  "description": "AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, real-time branch-aware indexing",
+  "homepage": "https://github.com/jassskalkat/Contextia",
+  "repository": "https://github.com/jassskalkat/Contextia",
+  "maintainers": [
+    "jassskalkat"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "CTX_LOG_LEVEL": {
+        "type": "string",
+        "description": "Logging level (DEBUG, INFO, WARNING, ERROR)",
+        "default": "INFO"
+      },
+      "CTX_SEARCH_MODE": {
+        "type": "string",
+        "description": "Search mode: hybrid, vector, or bm25",
+        "default": "hybrid"
+      },
+      "CTX_STORAGE_DIR": {
+        "type": "string",
+        "description": "Storage directory for indexes",
+        "default": ".contextia"
+      },
+      "CTX_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Embedding model (jina-code, bge-small-en)",
+        "default": "jina-code"
+      },
+      "CTX_COMMIT_HISTORY_ENABLED": {
+        "type": "string",
+        "description": "Enable git commit history indexing",
+        "default": "true"
+      },
+      "CTX_REALTIME_INDEXING_ENABLED": {
+        "type": "string",
+        "description": "Enable real-time branch-aware reindexing",
+        "default": "true"
+      }
+    }
+  },
+  "keywords": [
+    "code-search", "semantic-search", "hybrid-search",
+    "code-graph", "mcp", "lancedb", "tree-sitter",
+    "commit-history", "cross-repo", "real-time-indexing",
+    "contextia", "ai-coding"
+  ]
+}
