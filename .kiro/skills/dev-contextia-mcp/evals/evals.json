@@ -1,0 +1,305 @@
+{
+  "skill_name": "dev-contextia-mcp",
+  "version": "2.0.0",
+  "description": "Battle-tested evals for Contextia MCP skill. Covers: triggering accuracy, tool routing, anti-pattern avoidance, workflow correctness, token efficiency, new tools (code/knowledge/introspect), error handling, and end-to-end real-world scenarios.",
+  "categories": {
+    "triggering": "Skill loads on relevant queries, does NOT load on unrelated ones",
+    "routing": "Correct tool selected for each task type",
+    "anti_pattern": "Agent avoids known bad patterns",
+    "workflow": "Multi-step workflows execute in correct order",
+    "token_efficiency": "Agent uses compact tools instead of verbose alternatives",
+    "new_tools": "code, knowledge, introspect tools used correctly",
+    "error_handling": "Agent recovers gracefully from errors",
+    "e2e": "End-to-end real-world scenarios complete correctly"
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "trigger-index-project",
+      "category": "triggering",
+      "prompt": "Index this project at /Users/alice/platform so I can search it.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls index('/Users/alice/platform'), then polls status() until indexed: true.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "index() is called with the correct path",
+          "type": "tool_selection",
+          "passing_condition": "index tool is called with path='/Users/alice/platform' or equivalent"
+        },
+        {
+          "id": "a2",
+          "text": "Agent polls status() after index, does not immediately search",
+          "type": "workflow",
+          "passing_condition": "status() is called after index() before any search/find_symbol call"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "trigger-search-codebase",
+      "category": "triggering",
+      "prompt": "Search the codebase for how rate limiting is implemented.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls search('rate limiting implementation') as first action.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search() is called as the first code intelligence action",
+          "type": "tool_selection",
+          "passing_condition": "search tool is called, not grep or readFile"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "trigger-who-calls",
+      "category": "triggering",
+      "prompt": "Who calls the authenticate function?",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls find_callers('authenticate').",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "find_callers() is called",
+          "type": "tool_selection",
+          "passing_condition": "find_callers('authenticate') or find_callers with authenticate is called"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "trigger-what-breaks",
+      "category": "triggering",
+      "prompt": "What breaks if I change the TokenBudget class?",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls impact('TokenBudget').",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "impact() is called before suggesting any changes",
+          "type": "tool_selection",
+          "passing_condition": "impact('TokenBudget') is called"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "trigger-explain-symbol",
+      "category": "triggering",
+      "prompt": "Explain how the IndexingPipeline class works.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls explain('IndexingPipeline'), not readFile.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "explain() is called",
+          "type": "tool_selection",
+          "passing_condition": "explain('IndexingPipeline') is called"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT read the source file first",
+          "type": "anti_pattern",
+          "passing_condition": "No readFile on pipeline.py before explain is called"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "trigger-git-history",
+      "category": "triggering",
+      "prompt": "When was the warm-start feature added and who added it?",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls commit_search('warm start auto restore index').",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "commit_search() is called with a relevant query",
+          "type": "tool_selection",
+          "passing_condition": "commit_search is called with a query about warm start or auto-restore"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT run git log shell commands",
+          "type": "anti_pattern",
+          "passing_condition": "No git log shell command before commit_search"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "trigger-remember-context",
+      "category": "triggering",
+      "prompt": "Remember that we use JWT with 24h expiry and refresh tokens stored in Redis.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls remember() with the content.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "remember() is called with the JWT context",
+          "type": "tool_selection",
+          "passing_condition": "remember tool is called with content about JWT"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "trigger-session-recovery",
+      "category": "triggering",
+      "prompt": "My context was just compacted. What was I working on?",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls session_snapshot() first, then recall() if needed.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "session_snapshot() is called",
+          "type": "tool_selection",
+          "passing_condition": "session_snapshot is called as the first action"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "no-trigger-weather",
+      "category": "triggering",
+      "prompt": "What's the weather in San Francisco today?",
+      "should_trigger": false,
+      "expected_behavior": "Skill does NOT load. Agent answers directly without using Contextia tools.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "No Contextia tools are called",
+          "type": "anti_pattern",
+          "passing_condition": "No search, find_symbol, index, or other Contextia tool is called"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "no-trigger-write-poem",
+      "category": "triggering",
+      "prompt": "Write me a haiku about autumn leaves.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does NOT load. Agent writes the haiku directly.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "No Contextia tools are called",
+          "type": "anti_pattern",
+          "passing_condition": "No Contextia tool is invoked"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "no-trigger-edit-known-file",
+      "category": "triggering",
+      "prompt": "Add a comment to line 42 of src/config.py explaining the timeout value.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does NOT load for a single-file edit where the file and line are already known. Agent reads and edits the file directly.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "Agent edits the file directly without searching first",
+          "type": "routing",
+          "passing_condition": "Agent reads src/config.py and makes the edit without calling search or find_symbol first"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "routing-overview-not-ls",
+      "category": "routing",
+      "prompt": "Give me a high-level overview of this codebase — languages, file count, main modules.",
+      "should_trigger": true,
+      "expected_behavior": "Agent calls overview(), not ls or glob.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "overview() is called",
+          "type": "tool_selection",
+          "passing_condition": "overview() is called"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT use ls, glob, or listDirectory",
+          "type": "anti_pattern",
+          "passing_condition": "No shell ls or glob call before overview"
+        },
+        {
+          "id": "a3",
+          "text": "Response includes language breakdown and directory structure",
+          "type": "output_quality",
+          "passing_condition": "Response includes specific language percentages or file counts from overview output"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "routing-find-symbol-not-grep",
+      "category": "routing",
+      "prompt": "Where is the RateLimiter class defined?",
+      "should_trigger": true,
+      "expected_behavior": "Agent calls find_symbol('RateLimiter'), not grep.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "find_symbol() is called",
+          "type": "tool_selection",
+          "passing_condition": "find_symbol('RateLimiter') is called"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT grep for the class name",
+          "type": "anti_pattern",
+          "passing_condition": "No grep or shell search command before find_symbol"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "routing-architecture-for-layers",
+      "category": "routing",
+      "prompt": "What are the main architectural layers of this project?",
+      "should_trigger": true,
+      "expected_behavior": "Agent calls architecture(), not overview() or reading multiple files.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "architecture() is called",
+          "type": "tool_selection",
+          "passing_condition": "architecture() is called"
+        },
+        {
+          "id": "a2",
+          "text": "Response includes layers, entry points, or hub symbols",
+          "type": "output_quality",
+          "passing_condition": "Response mentions specific layers or entry points from architecture output"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "routing-analyze-for-smells",
+      "category": "routing",
+      "prompt": "Are there any code quality issues in the src/auth directory?",
+      "should_trigger": true,
+      "expected_behavior": "Agent calls analyze(path='src/auth'), not reading all files manually.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "analyze() is called with a scoped path",
+          "type": "tool_selection",
+          "passing_condition": "analyze(path='src/auth') or analyze with a path containing 'auth' is called"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT read all files in src/auth manually",
+          "type": "anti_pattern",
+          "passing_condition": "No readFile loop over auth directory files before analyze"
+        }
+      ]
+    }
+  ]
+}
