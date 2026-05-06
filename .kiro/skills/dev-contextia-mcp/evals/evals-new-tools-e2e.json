@@ -1,0 +1,368 @@
+{
+  "skill_name": "dev-contextia-mcp",
+  "version": "2.0.0",
+  "eval_set": "new-tools-e2e",
+  "evals": [
+    {
+      "id": 401,
+      "name": "new-tool-code-get-document-symbols",
+      "category": "new_tools",
+      "prompt": "List all the functions and classes defined in src/contextia_mcp/server.py.",
+      "expected_behavior": "Agent calls code(operation='get_document_symbols', file_path='src/contextia_mcp/server.py') — NOT readFile on the whole file.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "code() with get_document_symbols operation is called",
+          "type": "tool_selection",
+          "passing_condition": "code tool is called with operation='get_document_symbols' and file_path containing server.py"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT read the full file to list symbols",
+          "type": "anti_pattern",
+          "passing_condition": "No readFile on server.py before code(get_document_symbols) is called"
+        }
+      ]
+    },
+    {
+      "id": 402,
+      "name": "new-tool-code-pattern-search",
+      "category": "new_tools",
+      "prompt": "Find all Python functions that take 'self' as the first argument in the src directory.",
+      "expected_behavior": "Agent calls code(operation='pattern_search', pattern='def $FUNC(self, $$$ARGS):', language='python', path='src').",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "code() with pattern_search operation is called",
+          "type": "tool_selection",
+          "passing_condition": "code tool is called with operation='pattern_search' and language='python'"
+        },
+        {
+          "id": "a2",
+          "text": "Pattern includes 'self' parameter",
+          "type": "output_quality",
+          "passing_condition": "The pattern parameter includes 'self' or equivalent"
+        }
+      ]
+    },
+    {
+      "id": 403,
+      "name": "new-tool-code-pattern-rewrite-dry-run",
+      "category": "new_tools",
+      "prompt": "Replace all logger.info calls with logger.debug in src/contextia_mcp/server.py. Show me a preview first.",
+      "expected_behavior": "Agent calls code(operation='pattern_rewrite', pattern='logger.info($MSG)', replacement='logger.debug($MSG)', language='python', file_path='src/contextia_mcp/server.py', dry_run=True).",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "code() with pattern_rewrite and dry_run=True is called",
+          "type": "tool_selection",
+          "passing_condition": "code tool is called with operation='pattern_rewrite' and dry_run=True"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT apply changes without showing preview first",
+          "type": "anti_pattern",
+          "passing_condition": "dry_run=True is used before dry_run=False"
+        }
+      ]
+    },
+    {
+      "id": 404,
+      "name": "new-tool-knowledge-add-search",
+      "category": "new_tools",
+      "prompt": "Index the API documentation at /docs/api/ so I can search it later.",
+      "expected_behavior": "Agent calls knowledge(command='add', name='API docs', value='/docs/api/'). Then confirms with knowledge(command='status').",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "knowledge() with add command is called",
+          "type": "tool_selection",
+          "passing_condition": "knowledge tool is called with command='add' and value containing '/docs/api/'"
+        }
+      ]
+    },
+    {
+      "id": 405,
+      "name": "new-tool-knowledge-search",
+      "category": "new_tools",
+      "prompt": "Search my indexed documentation for how to handle rate limiting headers.",
+      "expected_behavior": "Agent calls knowledge(command='search', query='rate limiting headers').",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "knowledge() with search command is called",
+          "type": "tool_selection",
+          "passing_condition": "knowledge tool is called with command='search' and query about rate limiting"
+        }
+      ]
+    },
+    {
+      "id": 406,
+      "name": "new-tool-introspect",
+      "category": "new_tools",
+      "prompt": "What tools does Contextia provide and when should I use each one?",
+      "expected_behavior": "Agent calls introspect(query='what tools are available') to get the tool reference.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "introspect() is called",
+          "type": "tool_selection",
+          "passing_condition": "introspect tool is called"
+        }
+      ]
+    },
+    {
+      "id": 407,
+      "name": "new-tool-code-lookup-symbols",
+      "category": "new_tools",
+      "prompt": "Show me the source code for IndexingPipeline, EmbeddingService, and RustworkxCodeGraph.",
+      "expected_behavior": "Agent calls code(operation='lookup_symbols', symbols='IndexingPipeline,EmbeddingService,RustworkxCodeGraph', include_source=True) — one call instead of three find_symbol calls.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "code() with lookup_symbols is called",
+          "type": "tool_selection",
+          "passing_condition": "code tool is called with operation='lookup_symbols' and symbols containing all three names"
+        },
+        {
+          "id": "a2",
+          "text": "include_source=True is set",
+          "type": "tool_selection",
+          "passing_condition": "include_source=True is passed to the lookup_symbols call"
+        }
+      ]
+    },
+    {
+      "id": 501,
+      "name": "e2e-unfamiliar-codebase",
+      "category": "e2e",
+      "prompt": "I just joined this project. Give me a complete orientation: what it does, how it's structured, the main entry points, and the most important classes.",
+      "expected_behavior": "Agent: overview() → architecture() → explain on top hub symbols. Does NOT read multiple files manually.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "overview() is called for initial orientation",
+          "type": "tool_selection",
+          "passing_condition": "overview() is called"
+        },
+        {
+          "id": "a2",
+          "text": "architecture() is called for structural understanding",
+          "type": "tool_selection",
+          "passing_condition": "architecture() is called"
+        },
+        {
+          "id": "a3",
+          "text": "explain() is called on at least one key symbol",
+          "type": "tool_selection",
+          "passing_condition": "explain is called on at least one symbol from the architecture/overview output"
+        },
+        {
+          "id": "a4",
+          "text": "Agent does NOT read multiple source files manually",
+          "type": "anti_pattern",
+          "passing_condition": "Fewer than 3 readFile calls total during the orientation"
+        }
+      ]
+    },
+    {
+      "id": 502,
+      "name": "e2e-add-feature-safely",
+      "category": "e2e",
+      "prompt": "I need to add a new 'export' parameter to the search() function. Walk me through what I need to check before making this change.",
+      "expected_behavior": "Agent: find_symbol('search') → impact('search') → find_callers('search') → explain('search'). Provides a complete picture before suggesting the change.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "impact() is called on the search function",
+          "type": "tool_selection",
+          "passing_condition": "impact('search') or impact with search symbol is called"
+        },
+        {
+          "id": "a2",
+          "text": "find_callers() is called to see all call sites",
+          "type": "tool_selection",
+          "passing_condition": "find_callers('search') is called"
+        },
+        {
+          "id": "a3",
+          "text": "Response explains what would be affected by the change",
+          "type": "output_quality",
+          "passing_condition": "Response lists specific callers or files that would need updating"
+        }
+      ]
+    },
+    {
+      "id": 503,
+      "name": "e2e-debug-production-issue",
+      "category": "e2e",
+      "prompt": "Production is throwing 'Table already exists' errors in the memory store. Find the root cause and check if it was recently introduced.",
+      "expected_behavior": "Agent: search('Table already exists') → find_symbol or explain on MemoryStore → commit_search('memory store table exists error'). Complete investigation without reading full files.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search() is called with the error message",
+          "type": "tool_selection",
+          "passing_condition": "search('Table already exists') or similar is called"
+        },
+        {
+          "id": "a2",
+          "text": "explain() or find_symbol() is called on MemoryStore",
+          "type": "tool_selection",
+          "passing_condition": "explain or find_symbol is called on MemoryStore or memory_store"
+        },
+        {
+          "id": "a3",
+          "text": "commit_search() is called to check recent changes",
+          "type": "tool_selection",
+          "passing_condition": "commit_search is called with a query about memory store or table creation"
+        }
+      ]
+    },
+    {
+      "id": 504,
+      "name": "e2e-store-and-recall-decision",
+      "category": "e2e",
+      "prompt": "We've decided to use potion-code-16m as our embedding model permanently. Store this decision so future sessions know about it, then verify it was stored.",
+      "expected_behavior": "Agent: remember(content='...', memory_type='decision') → recall('embedding model') to verify.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "remember() is called with memory_type='decision'",
+          "type": "tool_selection",
+          "passing_condition": "remember is called with memory_type='decision' and content about potion-code-16m"
+        },
+        {
+          "id": "a2",
+          "text": "recall() is called to verify the stored decision",
+          "type": "tool_selection",
+          "passing_condition": "recall is called with a query about embedding model"
+        }
+      ]
+    },
+    {
+      "id": 505,
+      "name": "e2e-commit-history-investigation",
+      "category": "e2e",
+      "prompt": "The search function started timing out last week. What changed in the search pipeline recently?",
+      "expected_behavior": "Agent: commit_search('search timeout pipeline changes') → commit_history(limit=10) to browse recent commits. Does NOT run git log manually.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "commit_search() is called with a relevant query",
+          "type": "tool_selection",
+          "passing_condition": "commit_search is called with query about search timeout or pipeline changes"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT run git log shell commands",
+          "type": "anti_pattern",
+          "passing_condition": "No git log shell command before commit_search"
+        },
+        {
+          "id": "a3",
+          "text": "Response includes specific commit hashes, authors, or dates",
+          "type": "output_quality",
+          "passing_condition": "Response includes commit metadata from commit_search or commit_history output"
+        }
+      ]
+    },
+    {
+      "id": 506,
+      "name": "e2e-search-confidence-handling",
+      "category": "e2e",
+      "prompt": "Find the payment processing logic.",
+      "expected_behavior": "Agent calls search('payment processing'). If confidence=low, agent tries a more specific query or find_symbol. Does NOT blindly accept low-confidence results.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search() is called",
+          "type": "tool_selection",
+          "passing_condition": "search('payment processing') or similar is called"
+        },
+        {
+          "id": "a2",
+          "text": "If confidence=low, agent refines the query or uses find_symbol",
+          "type": "workflow",
+          "passing_condition": "If search returns confidence=low, agent either refines query or calls find_symbol for a specific name"
+        }
+      ]
+    },
+    {
+      "id": 507,
+      "name": "e2e-ast-rewrite-workflow",
+      "category": "e2e",
+      "prompt": "Replace all print() calls with logger.info() calls in src/contextia_mcp/indexing/pipeline.py. Show me what would change first.",
+      "expected_behavior": "Agent: code(pattern_search, 'print($$$ARGS)', 'python') to find matches → code(pattern_rewrite, dry_run=True) to preview → code(pattern_rewrite, dry_run=False) to apply.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "code() with pattern_search is called first to find matches",
+          "type": "tool_selection",
+          "passing_condition": "code(operation='pattern_search') is called before pattern_rewrite"
+        },
+        {
+          "id": "a2",
+          "text": "dry_run=True is used before applying changes",
+          "type": "workflow",
+          "passing_condition": "code(operation='pattern_rewrite', dry_run=True) is called before dry_run=False"
+        },
+        {
+          "id": "a3",
+          "text": "Agent shows the diff preview to the user before applying",
+          "type": "output_quality",
+          "passing_condition": "Response includes the diff_preview from the dry_run result"
+        }
+      ]
+    }
+  ],
+  "performance_benchmarks": {
+    "description": "Baseline comparison: with vs without Contextia skill",
+    "without_skill": {
+      "orientation_task": {
+        "tool_calls": 15,
+        "readFile_calls": 8,
+        "tokens_consumed": 18060,
+        "back_and_forth_messages": 6
+      },
+      "refactor_safety_check": {
+        "tool_calls": 12,
+        "grep_commands": 5,
+        "tokens_consumed": 12000,
+        "missed_callers": "often"
+      },
+      "bug_investigation": {
+        "tool_calls": 10,
+        "readFile_calls": 6,
+        "tokens_consumed": 9000
+      }
+    },
+    "with_skill": {
+      "orientation_task": {
+        "tool_calls": 3,
+        "readFile_calls": 0,
+        "tokens_consumed": 200,
+        "back_and_forth_messages": 0
+      },
+      "refactor_safety_check": {
+        "tool_calls": 3,
+        "grep_commands": 0,
+        "tokens_consumed": 600,
+        "missed_callers": "never"
+      },
+      "bug_investigation": {
+        "tool_calls": 4,
+        "readFile_calls": 0,
+        "tokens_consumed": 1200
+      }
+    },
+    "success_criteria": {
+      "trigger_rate_on_relevant_queries": ">=90%",
+      "no_trigger_on_unrelated_queries": "100%",
+      "impact_before_refactor": "100%",
+      "search_before_readfile": ">=95%",
+      "index_called_at_most_once": "100%",
+      "status_polled_after_index": ">=90%"
+    }
+  }
+}
