@@ -45,7 +45,9 @@ Option B — Docker (preferred for team/remote use):
     -v contextia-data:/data \
     -v "$(pwd):/repos/codebase:ro" \
     -e CTX_STORAGE_DIR=/data/.contextia \
-    -e CTX_PATH_PREFIX_MAP="$(pwd)=/repos/codebase" \
+    -e CTX_CODEBASE_HOST_PATH="$(pwd)" \
+    -e CTX_CODEBASE_MOUNT_PATH=/repos/codebase \
+    -e CTX_PATH_PREFIX_MAP="${CTX_PATH_PREFIX_MAP:-}" \
     -e CTX_TRANSPORT=http \
     -e CTX_HTTP_HOST=0.0.0.0 \
     -e CTX_HTTP_PORT=8000 \
