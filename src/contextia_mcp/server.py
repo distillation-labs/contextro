@@ -129,6 +129,64 @@ def create_server():
 
     # --- Input validation helpers ---
 
+    def _strip_trailing_sep(path: str) -> str:
+        """Normalize trailing separators while preserving the filesystem root."""
+        if path == os.sep:
+            return path
+        return path.rstrip(os.sep)
+
+    def _candidate_path_forms(path: str) -> list[str]:
+        """Return normalized path variants for matching host and container paths."""
+        raw = Path(path.strip()).expanduser()
+        candidates: list[Path] = [raw]
+        try:
+            candidates.append(raw.resolve(strict=False))
+        except (OSError, ValueError):
+            pass
+
+        forms: list[str] = []
+        for candidate in candidates:
+            normalized = _strip_trailing_sep(str(candidate))
+            if normalized and normalized not in forms:
+                forms.append(normalized)
+        return forms
+
+    def _configured_path_mappings() -> list[tuple[str, str]]:
+        """Collect explicit and inferred host-to-container path mappings."""
+        raw_entries = [
+            entry.strip()
+            for entry in os.environ.get("CTX_PATH_PREFIX_MAP", "").split(";")
+            if entry.strip()
+        ]
+
+        host_path = os.environ.get("CTX_CODEBASE_HOST_PATH", "").strip()
+        if host_path:
+            mount_path = os.environ.get("CTX_CODEBASE_MOUNT_PATH", "/repos/platform").strip()
+            raw_entries.append(f"{host_path}={mount_path}")
+
+        mappings: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+
+        for entry in raw_entries:
+            if "=" not in entry:
+                continue
+            source, target = entry.split("=", 1)
+            source_forms = _candidate_path_forms(source)
+            try:
+                normalized_target = _strip_trailing_sep(
+                    str(Path(target.strip()).expanduser().resolve(strict=False))
+                )
+            except (OSError, ValueError):
+                continue
+
+            for normalized_source in source_forms:
+                mapping = (normalized_source, normalized_target)
+                if normalized_source and normalized_target and mapping not in seen:
+                    mappings.append(mapping)
+                    seen.add(mapping)
+
+        return mappings
+
     def _validate_path(path: str) -> tuple[Optional[Path], Optional[dict]]:
         """Validate and resolve a codebase path.
 
@@ -146,35 +204,31 @@ def create_server():
             remapped = _remap_path_prefix(path)
             if remapped is not None:
                 return remapped, None
-            return None, {"error": f"Not a directory: {path}"}
+            if _configured_path_mappings():
+                hint = (
+                    " If Contextia is running in Docker, call index() with the host path and set "
+                    "CTX_PATH_PREFIX_MAP=/host/path=/container/path or pass CTX_CODEBASE_HOST_PATH "
+                    "and CTX_CODEBASE_MOUNT_PATH into the container."
+                )
+            else:
+                hint = ""
+            return None, {"error": f"Not a directory: {path}.{hint}"}
 
         return resolved, None
 
     def _remap_path_prefix(path: str) -> Optional[Path]:
         """Map a host path to a mounted path when running behind a container."""
-        raw_map = os.environ.get("CTX_PATH_PREFIX_MAP", "").strip()
-        if not raw_map:
+        mappings = _configured_path_mappings()
+        if not mappings:
             return None
 
-        normalized = str(Path(path).resolve(strict=False))
-        mappings: list[tuple[str, str]] = []
-
-        for entry in raw_map.split(";"):
-            item = entry.strip()
-            if not item or "=" not in item:
-                continue
-            source, target = item.split("=", 1)
-            source = str(Path(source.strip()).resolve(strict=False)).rstrip(os.sep)
-            target = str(Path(target.strip()).expanduser().resolve(strict=False))
-            if source and target:
-                mappings.append((source, target))
-
-        for source, target in sorted(mappings, key=lambda pair: len(pair[0]), reverse=True):
-            if normalized == source or normalized.startswith(source + os.sep):
-                suffix = normalized[len(source):].lstrip(os.sep)
-                candidate = Path(target) / suffix if suffix else Path(target)
-                if candidate.is_dir():
-                    return candidate.resolve(strict=False)
+        for normalized in _candidate_path_forms(path):
+            for source, target in sorted(mappings, key=lambda pair: len(pair[0]), reverse=True):
+                if normalized == source or normalized.startswith(source + os.sep):
+                    suffix = normalized[len(source):].lstrip(os.sep)
+                    candidate = Path(target) / suffix if suffix else Path(target)
+                    if candidate.is_dir():
+                        return candidate.resolve(strict=False)
 
         return None
 
@@ -2613,6 +2667,8 @@ WHEN NOT TO USE:
             "CTX_SEARCH_MODE": "hybrid (default), vector, or bm25.",
             "CTX_COMMIT_HISTORY_ENABLED": "Index git commits. Default: true.",
             "CTX_REALTIME_INDEXING_ENABLED": "Auto-reindex on branch switch. Default: true.",
+            "CTX_CODEBASE_HOST_PATH": "Optional Docker helper. Host path the client will send to index().",
+            "CTX_CODEBASE_MOUNT_PATH": "Optional Docker helper. In-container mount path for CTX_CODEBASE_HOST_PATH. Default: /repos/platform",
             "CTX_PATH_PREFIX_MAP": "Map host paths to container paths. Format: /host/path=/container/path",
         }
 
