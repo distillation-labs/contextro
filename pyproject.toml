@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "contextia"
+version = "2.0.0"
+description = "Contextia — AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, real-time indexing"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10,<3.14"
+authors = [
+    { name = "Jass Kalkat" },
+]
+keywords = [
+    "mcp", "mcp-server", "model-context-protocol",
+    "code-search", "semantic-search", "hybrid-search",
+    "code-graph", "code-analysis", "code-intelligence",
+    "vector-search", "bm25", "ai-coding",
+    "tree-sitter", "lancedb", "local-first",
+    "contextia", "commit-history", "cross-repo",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+    "fastmcp>=2.0.0",
+    "lancedb>=0.4.0",
+    "sentence-transformers>=3.0.0",
+    "optimum>=1.19.0",
+    "onnxruntime>=1.17.0",
+    "tree-sitter==0.21.3",
+    "tree-sitter-languages>=1.10.0",
+    "ast-grep-py>=0.28.0",
+    "rustworkx>=0.15.0",
+    "pathspec>=0.11.0",
+    "watchdog>=3.0.0",
+    "pyarrow>=14.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jassskalkat/Contextia-MCP"
+Repository = "https://github.com/jassskalkat/Contextia-MCP"
+Documentation = "https://github.com/jassskalkat/Contextia-MCP/blob/main/docs/USAGE_GUIDE.md"
+Issues = "https://github.com/jassskalkat/Contextia-MCP/issues"
+Changelog = "https://github.com/jassskalkat/Contextia-MCP/releases"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "hypothesis>=6.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.0.0",
+]
+gpu = [
+    "sentence-transformers[onnx-gpu]>=3.0.0",
+    "optimum[onnxruntime-gpu]>=1.19.0",
+]
+reranker = [
+    "flashrank>=0.2.0",
+]
+model2vec = [
+    "model2vec>=0.3.0",
+]
+
+[project.scripts]
+contextia = "contextia_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/contextia_mcp"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/bench_final.py" = ["E501"]
+"scripts/benchmark_embeddings.py" = ["E501"]
+"scripts/benchmark_embeddings_full.py" = ["E501"]
+"src/contextia_mcp/formatting/response_builder.py" = ["E501"]
+"src/contextia_mcp/indexing/pipeline.py" = ["E501"]
+"src/contextia_mcp/server.py" = ["E501"]
+"tests/test_e2e.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
