@@ -1,0 +1,14 @@
+{
+  "timestamp": 1778085185.990807,
+  "tokens_per_search": 437,
+  "tokens_per_explain": 229,
+  "tokens_per_find_symbol": 66,
+  "tokens_per_find_callers": 16,
+  "tokens_per_status": 144,
+  "total_output_tokens": 3736,
+  "search_results_count": 25,
+  "cache_hit_rate": 0.46153846153846156,
+  "workflow_tool_calls": 16,
+  "total_output_tokens_toon": 3204,
+  "toon_reduction_pct": 14.2
+}
