@@ -1,0 +1,20 @@
+commit	metric	delta	status	description
+baseline	22727	+0	keep	baseline — 16 tool calls, avg 1420 tokens/call
+0d1e8a7	28225	+5498	discard	exp1: response compaction strip None/empty — REGRESSED
+bf7d6ce	20906	-1821	keep	exp2: progressive snippet truncation + remove hint + strip docstring (-8.0%)
+ffec46c	20890	-16	keep	exp3: query cache — 28.6% hit rate, saves compute
+ed20f8a	19673	-1217	keep	exp4: compact node serialization — flatten location, omit defaults (-5.8%)
+37d0c86	17940	-1733	keep	exp5: strip id, _fusion_sources, signature from search results (-8.8%)
+795a8f4	18668	-56	keep	exp6: compact status hints — status 172→116 tokens (-32.6%)
+90d92c5	17344	+0	keep	exp7: TOON encoder (optional). With TOON: -10.6% additional
+ec93e46	16646	-698	keep	exp8: relevance threshold filter — drop below 30% of top score (-4.0%)
+862eec6	17581	+0	keep	exp9: session tracker + session_snapshot tool (new capability)
+db397ea	16493	-1088	keep	exp10: tighter progressive truncation 800/300 chars (-6.2%)
+ff1c530	7986	-8507	keep	exp11: deduplicate overlapping line ranges from same file (-50.4%)
+c9b4145	8680	+0	keep	exp12: adaptive result count — fewer results when confidence high
+3f5c158	9394	+0	keep	exp13: output sandbox + retrieve tool (new capability)
+cfb36a4	8734	+0	keep	exp14: compact relationship serialization — shorter keys
+6f95639	7814	-920	keep	exp15: remove absolute_path from output — redundant with filepath
+
+FINAL: 22727 → 7814 tokens = -65.6% reduction (median of 3 runs)
+FINAL WITH TOON: 22727 → 6954 tokens = -69.4% reduction
