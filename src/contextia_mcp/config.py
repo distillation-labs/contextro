@@ -69,6 +69,10 @@ class Settings:
     search_preview_code_chars: int = 220
     search_query_aware_compression: bool = True
     search_query_window_radius: int = 2
+    search_code_budget_top_chars: int = 320
+    search_code_budget_second_chars: int = 220
+    search_code_budget_tail_chars: int = 80
+    search_code_focus_min_chars: int = 60
 
     # Memory limits
     max_memory_mb: int = 350
@@ -139,6 +143,13 @@ class Settings:
             "CTX_SEARCH_PREVIEW_CODE_CHARS": ("search_preview_code_chars", int),
             "CTX_SEARCH_QUERY_AWARE_COMPRESSION": ("search_query_aware_compression", _bool),
             "CTX_SEARCH_QUERY_WINDOW_RADIUS": ("search_query_window_radius", int),
+            "CTX_SEARCH_CODE_BUDGET_TOP_CHARS": ("search_code_budget_top_chars", int),
+            "CTX_SEARCH_CODE_BUDGET_SECOND_CHARS": (
+                "search_code_budget_second_chars",
+                int,
+            ),
+            "CTX_SEARCH_CODE_BUDGET_TAIL_CHARS": ("search_code_budget_tail_chars", int),
+            "CTX_SEARCH_CODE_FOCUS_MIN_CHARS": ("search_code_focus_min_chars", int),
             "CTX_MAX_MEMORY_MB": ("max_memory_mb", int),
             "CTX_OUTPUT_FORMAT": ("output_format", str),
             "CTX_LOG_LEVEL": ("log_level", str),
