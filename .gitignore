@@ -1,0 +1,57 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.hypothesis/
+
+# LanceDB data
+.contextia/
+*.lance/
+
+# Models
+models/
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Claude local config (user-specific)
+.claude/agents/
+.claude/hooks.json
+.claude/settings.json
+.claude/settings.local.json
+
+# Documentation build artifacts
+docs-preautoresearch-master/
+scratch/
+rust/contextia_fast/target/
+rust/ctx_fast/target/
