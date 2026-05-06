@@ -242,6 +242,8 @@ async def run_benchmark() -> dict:
         "search_results_count": 0,
         "cache_hit_rate": 0.0,
         "workflow_tool_calls": 0,
+        "sandbox_rate": 0.0,
+        "preview_coverage": 0.0,
     }
 
     with benchmark_session(storage_dir, dims=384) as (mcp, mock_svc, _server_module):
@@ -274,6 +276,8 @@ async def run_benchmark() -> dict:
         ]
 
         search_token_total = 0
+        sandboxed_searches = 0
+        preview_ratio_sum = 0.0
         for q in search_queries:
             result = await call_tool(mcp, "search", {"query": q, "limit": 10})
             tokens = estimate_tokens(result)
@@ -281,8 +285,16 @@ async def run_benchmark() -> dict:
             metrics["total_output_tokens"] += tokens
             metrics["workflow_tool_calls"] += 1
             metrics["search_results_count"] += result.get("total", 0)
+            if result.get("sandboxed"):
+                sandboxed_searches += 1
+            full_total = result.get("full_total") or result.get("total") or 0
+            shown_total = result.get("total", 0)
+            if full_total > 0:
+                preview_ratio_sum += shown_total / full_total
 
         metrics["tokens_per_search"] = search_token_total // len(search_queries)
+        metrics["sandbox_rate"] = round(sandboxed_searches / len(search_queries), 4)
+        metrics["preview_coverage"] = round(preview_ratio_sum / len(search_queries), 4)
 
         # 4. Find symbol
         symbol_queries = ["AuthManager", "DatabasePool", "retry"]
