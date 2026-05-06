@@ -1,0 +1,7 @@
+#!/bin/bash
+# Shim for Glama's mcp-proxy to find the executable
+if [ -f "/app/.venv/bin/contextia-mcp-ci" ]; then
+    exec /app/.venv/bin/contextia-mcp-ci "$@"
+else
+    exec python -m contextia_mcp.server "$@"
+fi
