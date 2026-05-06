@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use Contextia, please cite it as below."
+title: "Contextia: AI-Native Code Intelligence MCP Server"
+type: software
+version: 2.0.0
+date-released: 2026-05-04
+license: MIT
+url: "https://github.com/jassskalkat/Contextia"
+repository-code: "https://github.com/jassskalkat/Contextia"
+authors:
+  - family-names: Kalkat
+    given-names: Jass
+keywords:
+  - model-context-protocol
+  - mcp-server
+  - code-search
+  - semantic-search
+  - hybrid-search
+  - code-graph
+  - vector-search
+  - bm25
+  - code-intelligence
+  - ai-coding-agent
+  - tree-sitter
+  - ast-grep
+  - rustworkx
+  - lancedb
+  - onnx-runtime
+  - commit-history
+  - cross-repo
+  - real-time-indexing
+abstract: >-
+  Contextia is a unified, local-first MCP server that gives AI agents deep
+  code intelligence: hybrid search (vector + BM25 + graph), structural code
+  graph analysis, persistent semantic memory, git commit history search,
+  real-time branch-aware indexing, and cross-repository context — all in a
+  single process with <350MB RAM, no API keys, and no cloud dependencies.
