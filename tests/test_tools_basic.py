@@ -98,6 +98,66 @@ class TestIndex:
         assert "error" not in result
         assert status["codebase_path"] == str(mounted_repo.resolve())
 
+    def test_index_auto_remaps_from_codebase_env(
+        self, mini_codebase, tmp_path, tmp_path_factory, monkeypatch
+    ):
+        async def run():
+            mounted_repo = tmp_path_factory.mktemp("mounted-auto") / "platform"
+            shutil.copytree(mini_codebase, mounted_repo)
+
+            storage = tmp_path / ".contextia"
+            monkeypatch.setenv("CTX_STORAGE_DIR", str(storage))
+            monkeypatch.setenv("CTX_CODEBASE_HOST_PATH", "/client/platform")
+            monkeypatch.setenv("CTX_CODEBASE_MOUNT_PATH", str(mounted_repo))
+            monkeypatch.delenv("CTX_PATH_PREFIX_MAP", raising=False)
+
+            from contextia_mcp.config import reset_settings
+            reset_settings()
+
+            server_module._pipeline = None
+            with patch(
+                "contextia_mcp.indexing.pipeline.get_embedding_service",
+                return_value=_mock_embedding_service(),
+            ):
+                mcp = server_module.create_server()
+                result = await _call_tool(mcp, "index", {"path": "/client/platform"})
+
+                if result.get("status") == "indexing":
+                    status = {}
+                    for _ in range(120):
+                        await asyncio.sleep(0.5)
+                        status = await _call_tool(mcp, "status")
+                        if status.get("indexed") is True:
+                            break
+                        if status.get("index_error"):
+                            raise RuntimeError(status["index_error"])
+                    with server_module._index_job_lock:
+                        result = server_module._index_job.get("result", result)
+                else:
+                    status = await _call_tool(mcp, "status")
+
+            return result, status, mounted_repo
+
+        from unittest.mock import patch
+
+        result, status, mounted_repo = asyncio.run(run())
+        assert "error" not in result
+        assert status["codebase_path"] == str(mounted_repo.resolve())
+
+    def test_index_invalid_path_surfaces_docker_hint(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
+        monkeypatch.setenv("CTX_CODEBASE_HOST_PATH", "/client/platform")
+        monkeypatch.setenv("CTX_CODEBASE_MOUNT_PATH", "/repos/platform")
+        monkeypatch.delenv("CTX_PATH_PREFIX_MAP", raising=False)
+
+        from contextia_mcp.config import reset_settings
+
+        reset_settings()
+        mcp = server_module.create_server()
+        result = asyncio.run(_call_tool(mcp, "index", {"path": "/wrong/path"}))
+        assert "error" in result
+        assert "CTX_CODEBASE_HOST_PATH" in result["error"]
+
     def test_index_sets_state(self, mini_codebase, tmp_path):
         async def run():
             await _setup_indexed(mini_codebase, tmp_path / ".contextia")
