@@ -310,6 +310,7 @@ If you want to run Contextia on a server and share it across a team:
 # docker-compose.yml
 services:
   contextia:
+    container_name: contextia-mcp
     image: jassskalkat/contextia-mcp:latest
     ports:
       - "8000:8000"
@@ -318,7 +319,9 @@ services:
       - ${CTX_CODEBASE_HOST_PATH}:/repos/platform:ro
     environment:
       CTX_STORAGE_DIR: /data/.contextia
-      CTX_PATH_PREFIX_MAP: ${CTX_PATH_PREFIX_MAP}
+      CTX_CODEBASE_HOST_PATH: ${CTX_CODEBASE_HOST_PATH}
+      CTX_CODEBASE_MOUNT_PATH: /repos/platform
+      CTX_PATH_PREFIX_MAP: ${CTX_PATH_PREFIX_MAP:-}
       CTX_TRANSPORT: http
       CTX_HTTP_HOST: 0.0.0.0
       CTX_HTTP_PORT: "8000"
@@ -336,11 +339,20 @@ volumes:
 ```bash
 # Set your repo path and start
 export CTX_CODEBASE_HOST_PATH=/Users/you/myproject
-export CTX_PATH_PREFIX_MAP="/Users/you/myproject=/repos/platform"
 docker compose up -d
 ```
 
-The shipped image is now multi-stage: build-only compilers stay out of the runtime layer, the virtualenv is copied forward, and the default Model2Vec embedding is pre-cached for predictable cold starts.
+Contextia now auto-remaps that host path to `/repos/platform` inside the container. Set
+`CTX_PATH_PREFIX_MAP` only if your MCP client sends a different host-path alias than
+`CTX_CODEBASE_HOST_PATH`.
+
+Pull the published image directly with:
+
+```bash
+docker pull jassskalkat/contextia-mcp:latest
+```
+
+The shipped image is multi-stage: build-only compilers stay out of the runtime layer, the virtualenv is copied forward, and the default Model2Vec embedding is pre-cached for predictable cold starts.
 
 ---
 
