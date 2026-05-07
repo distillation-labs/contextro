@@ -5,6 +5,7 @@ into a single ranked list using Reciprocal Rank Fusion (RRF).
 """
 
 import logging
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -98,18 +99,61 @@ class ReciprocalRankFusion:
         self.weights = weights or {"vector": 0.5, "bm25": 0.3, "graph": 0.2}
         self.k = k
 
+    @staticmethod
+    def _score_entropy(results: List[Dict[str, Any]]) -> float:
+        """Shannon entropy of a retriever's score distribution (lower = more confident)."""
+        scores = [r.get("score", 0.0) for r in results if r.get("score", 0.0) > 0]
+        if not scores:
+            return 1.0
+        total = sum(scores)
+        if total <= 0:
+            return 1.0
+        probs = [s / total for s in scores]
+        return -sum(p * math.log(p + 1e-10) for p in probs)
+
+    def _adaptive_weights(
+        self, ranked_lists: Dict[str, List[Dict[str, Any]]]
+    ) -> Dict[str, float]:
+        """Compute per-query weights: inverse entropy, normalized, bounded by base weights.
+
+        Falls back to base weights when entropies are too similar (< 0.1 spread).
+        """
+        entropies = {
+            engine: self._score_entropy(results)
+            for engine, results in ranked_lists.items()
+            if engine in self.weights
+        }
+        if not entropies:
+            return self.weights
+
+        # Only adapt when there's meaningful spread between retrievers
+        entropy_values = list(entropies.values())
+        if max(entropy_values) - min(entropy_values) < 0.1:
+            return self.weights
+
+        # Inverse entropy: lower entropy → higher confidence → higher weight
+        inv = {e: 1.0 / (v + 1e-6) for e, v in entropies.items()}
+        total_inv = sum(inv.values())
+        # Blend 50/50 with base weights to avoid over-correction
+        adapted: Dict[str, float] = {}
+        for engine, base_w in self.weights.items():
+            entropy_w = inv.get(engine, 0.0) / total_inv if total_inv > 0 else base_w
+            adapted[engine] = 0.5 * base_w + 0.5 * entropy_w
+        # Normalize
+        total = sum(adapted.values()) or 1.0
+        return {e: w / total for e, w in adapted.items()}
+
     def fuse(
         self, ranked_lists: Dict[str, List[Dict[str, Any]]]
     ) -> List[Dict[str, Any]]:
         """Fuse multiple ranked lists into one using RRF.
 
-        Args:
-            ranked_lists: Dict mapping engine name to its ranked results.
-                Each result must have an 'id' field for deduplication.
-
-        Returns:
-            Fused and sorted list of results with rrf_score field.
+        Weights are adapted per-query using inverse entropy of each retriever's
+        score distribution: a retriever with concentrated scores (low entropy)
+        is more confident and gets a higher weight.
         """
+        # Compute entropy-adaptive weights
+        effective_weights = self._adaptive_weights(ranked_lists)
         # Accumulate RRF scores per chunk ID
         scores: Dict[str, float] = {}
         # Track best metadata per chunk (from highest-weight engine)
@@ -119,8 +163,8 @@ class ReciprocalRankFusion:
         # Process engines in weight order (highest first) so metadata
         # from highest-weight engine takes priority
         sorted_engines = sorted(
-            self.weights.keys(),
-            key=lambda e: self.weights.get(e, 0),
+            effective_weights.keys(),
+            key=lambda e: effective_weights.get(e, 0),
             reverse=True,
         )
 
@@ -129,7 +173,7 @@ class ReciprocalRankFusion:
                 continue
 
             results = ranked_lists[engine_name]
-            weight = self.weights.get(engine_name, 0.0)
+            weight = effective_weights.get(engine_name, 0.0)
             if weight <= 0:
                 continue
 
