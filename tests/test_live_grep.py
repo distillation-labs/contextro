@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 
 import pytest
 
@@ -55,3 +56,16 @@ def test_live_grep_empty_query(temp_workspace):
     engine = LiveGrepEngine(str(temp_workspace))
     assert engine.search("") == []
     assert engine.search("   ") == []
+
+
+def test_live_grep_timeout_returns_empty_results(temp_workspace, monkeypatch):
+    engine = LiveGrepEngine(str(temp_workspace), timeout_seconds=0.01)
+    engine.rg_path = None
+    engine.grep_path = "/usr/bin/grep"
+
+    def _timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout", 0.01))
+
+    monkeypatch.setattr(subprocess, "run", _timeout)
+
+    assert engine.search("hello") == []
