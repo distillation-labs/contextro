@@ -104,6 +104,22 @@ ruff check --fix .
 
 Repo-wide `ruff check .` is expected to pass. The only file-level allowances are explicit `E501` exceptions in `pyproject.toml` for legacy tool-doc-heavy modules where wrapping the embedded help text would hurt readability more than it would help.
 
+## Live Dev Loop
+
+Use `docker-compose.dev.yml` for MCP development. It runs `scripts/dev_http_server.py`, which watches `src/` and `scripts/` and restarts the HTTP server automatically when code changes land.
+
+```bash
+export CTX_CODEBASE_HOST_PATH=/absolute/path/to/repo-under-test
+docker compose -f docker-compose.dev.yml up --build
+```
+
+Notes:
+
+- source edits do not require an image rebuild
+- dependency or base-image changes still require `--build`
+- `CTX_AUTO_WARM_START=true` keeps the indexed state across restarts
+- schema changes can still require the MCP client to reconnect
+
 ## Benchmarks
 
 ```bash
@@ -113,13 +129,41 @@ python scripts/benchmark_token_efficiency.py
 # Retrieval-quality scorecard (Recall@K / MRR by search mode)
 python scripts/benchmark_retrieval_quality.py --path src --query-limit 20
 
+# Compare chunking profiles (minimal vs contextual vs smart)
+python scripts/benchmark_chunk_profiles.py --path src --query-limit 20
+
 # Real-world benchmark against browser-use
 BROWSER_USE_PATH=/path/to/browser-use python scripts/benchmark_browser_use.py
 ```
 
-The benchmark harness now lives in `scripts/benchmark_utils.py` so the benchmark scripts share the same patched session setup and Python 3.12 execution path.
+The benchmark harness now lives in `scripts/benchmark_utils.py` so the benchmark scripts share the same patched session setup. Run them from the activated project venv with `python`, or use an explicit Python `3.10`-`3.12` interpreter such as `python3.11` or `python3.12`.
+
+Current recommendation: keep the default `smart` chunk profile unless you have a concrete index-size constraint. In the current `src` / `20`-query benchmark, `smart` matched the best hybrid quality (`MRR 0.625`, `Recall@5 0.9`) while using fewer average response tokens than `contextual` (`491` vs `510`). `minimal` reduced token cost further but dropped hybrid `Recall@5` to `0.55`.
 
 For search/snippet-compression changes, run the token benchmark and retrieval scorecard with the **same query limit before and after the change**. Keep the optimization only if token output drops without a meaningful Recall@K / MRR regression.
+
+Search response shaping is split between `execution/compaction.py` (snippet compression) and
+`execution/response_policy.py` (inline budgeting, preview shaping, sandbox handoff). Keep new
+token-efficiency behavior in these modules instead of growing `server.py` or `execution/search.py`.
+
+## Alpha Deploys
+
+Pushes to the `alpha` branch run `.github/workflows/alpha.yml`:
+
+1. `ruff check .`
+2. `pytest -v -m "not slow"`
+3. build and push `ghcr.io/<owner>/contextia-mcp:alpha`
+4. build and push `ghcr.io/<owner>/contextia-mcp:alpha-<short-sha>`
+5. optionally deploy the new alpha image to a remote host over SSH
+
+Remote alpha deploy assets live in `deploy/alpha/`.
+
+Remote deploy secrets:
+
+- required: `ALPHA_SSH_HOST`, `ALPHA_SSH_USER`, `ALPHA_SSH_PRIVATE_KEY`
+- optional: `ALPHA_SSH_PORT`, `ALPHA_REMOTE_DIR`, `ALPHA_HTTP_PORT`
+
+Stable releases stay in `.github/workflows/publish.yml` and only publish PyPI / `latest` when the GitHub Release is not marked as a prerelease.
 
 ## Adding a New MCP Tool
 
@@ -232,10 +276,18 @@ Everything else (vector engine, BM25, fusion, reranker, memory store, pipeline, 
 
 ## Release Process
 
+Stable release:
+
 1. Update version in `pyproject.toml`
 2. Run full test suite: `pytest -v`
 3. Run linter: `ruff check .`
 4. Run Snyk scan
 5. Build: `python -m build`
 6. Test install: `pip install dist/contextia_mcp-*.whl` in a clean venv
-7. Verify: `contextia` starts and `status` works
+7. Create a non-prerelease GitHub Release to publish PyPI + `ghcr.io/...:latest`
+
+Alpha release:
+
+1. Merge or push the candidate to `alpha`
+2. Let `.github/workflows/alpha.yml` publish `:alpha` and `:alpha-<short-sha>`
+3. If remote alpha secrets are configured, let the workflow update the hosted alpha endpoint
