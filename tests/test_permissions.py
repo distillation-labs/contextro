@@ -30,27 +30,29 @@ def test_tool_categories_defined():
     expected_tools = {
         "status", "search", "find_symbol", "find_callers", "find_callees",
         "explain", "overview", "architecture", "recall", "health",
-        "index", "analyze", "impact",
+        "index", "analyze", "impact", "code", "knowledge",
         "remember", "forget",
         "commit_history", "commit_search",
         "repo_add", "repo_remove", "repo_status",
-        "session_snapshot", "retrieve",
+        "session_snapshot", "retrieve", "introspect",
     }
     assert set(TOOL_PERMISSIONS.keys()) == expected_tools
 
 
 def test_read_tools_classified():
     """Read-only tools are classified as READ."""
-    read_tools = ["status", "search", "find_symbol", "find_callers",
-                  "find_callees", "explain", "overview", "architecture",
-                  "recall", "health"]
+    read_tools = [
+        "status", "search", "find_symbol", "find_callers",
+        "find_callees", "explain", "overview", "architecture",
+        "recall", "health", "session_snapshot", "retrieve", "introspect",
+    ]
     for tool in read_tools:
         assert TOOL_PERMISSIONS[tool] == ToolCategory.READ, f"{tool} should be READ"
 
 
 def test_mutate_tools_classified():
     """Mutating tools are classified as MUTATE."""
-    for tool in ["index", "analyze", "impact"]:
+    for tool in ["index", "analyze", "impact", "code", "knowledge"]:
         assert TOOL_PERMISSIONS[tool] == ToolCategory.MUTATE, f"{tool} should be MUTATE"
 
 
