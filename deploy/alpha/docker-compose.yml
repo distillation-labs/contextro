@@ -1,0 +1,36 @@
+services:
+  contextia:
+    container_name: contextia-mcp-alpha
+    image: ${CONTEXTIA_IMAGE:-ghcr.io/jassskalkat/contextia-mcp:alpha}
+    ports:
+      - "${ALPHA_HTTP_PORT:-8000}:8000"
+    volumes:
+      - contextia-alpha-data:/data
+    environment:
+      CTX_STORAGE_DIR: /data/.contextia
+      CTX_EMBEDDING_MODEL: potion-code-16m
+      CTX_TRANSPORT: http
+      CTX_HTTP_HOST: 0.0.0.0
+      CTX_HTTP_PORT: "8000"
+      CTX_LOG_LEVEL: ${CTX_LOG_LEVEL:-INFO}
+      CTX_LOG_FORMAT: ${CTX_LOG_FORMAT:-json}
+      CTX_COMMIT_HISTORY_ENABLED: "false"
+      CTX_REALTIME_INDEXING_ENABLED: "false"
+      CTX_FILE_WATCHER_ENABLED: "false"
+      CTX_AUTO_WARM_START: "true"
+      CTX_SEARCH_CACHE_TTL_SECONDS: "300"
+      CTX_SEARCH_SANDBOX_TTL_SECONDS: "600"
+      CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS: "1200"
+      CTX_SEARCH_PREVIEW_RESULTS: "4"
+      CTX_SEARCH_PREVIEW_CODE_CHARS: "220"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "/app/scripts/docker_healthcheck.py"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  contextia-alpha-data:
+    driver: local
