@@ -34,9 +34,8 @@ Option A — pip (preferred for local use):
   Verify: contextia --help
 
 Option B — Docker (preferred for team/remote use):
-  Pull the right image for this machine:
-  - Apple Silicon (M1/M2/M3): docker pull jassskalkat/contextia-mcp:latest-arm64
-  - Linux/Intel Mac/Windows:  docker pull jassskalkat/contextia-mcp:latest
+  Pull the published image:
+  - docker pull ghcr.io/jassskalkat/contextia-mcp:latest
 
   Then run it:
   docker run -d \
@@ -53,7 +52,7 @@ Option B — Docker (preferred for team/remote use):
     -e CTX_HTTP_PORT=8000 \
     -e CTX_AUTO_WARM_START=true \
     -e CTX_COMMIT_HISTORY_ENABLED=true \
-    jassskalkat/contextia-mcp:latest
+    ghcr.io/jassskalkat/contextia-mcp:latest
 
   Wait 5 seconds, then verify: curl http://localhost:8000/health
 
@@ -193,8 +192,8 @@ The skill is installed and will automatically guide the agent to use the right t
 |---|---|
 | Local dev, single machine | pip install |
 | Team sharing one index | Docker |
-| Apple Silicon Mac | `latest-arm64` Docker tag |
-| Intel Mac / Linux / Windows | `latest` Docker tag |
+| Published stable image | `ghcr.io/jassskalkat/contextia-mcp:latest` |
+| Hosted alpha image | `ghcr.io/jassskalkat/contextia-mcp:alpha` |
 
 ## Troubleshooting
 
