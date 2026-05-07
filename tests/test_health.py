@@ -1,6 +1,7 @@
 """Tests for health endpoint and new exceptions (Phase 5f)."""
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,7 @@ from contextia_mcp.core.exceptions import (
     ContextiaException,
     RateLimitError,
 )
-from contextia_mcp.state import reset_state
+from contextia_mcp.state import get_state, reset_state
 from tests.conftest import _call_tool
 
 
@@ -21,9 +22,11 @@ def clean_state(tmp_path, monkeypatch):
     monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
     reset_settings()
     reset_state()
+    server_module._index_job = {}
     yield
     reset_settings()
     reset_state()
+    server_module._index_job = {}
 
 
 def test_health_returns_status():
@@ -62,6 +65,59 @@ def test_health_works_before_indexing():
     result = asyncio.run(_call_tool(mcp, "health"))
     assert result["indexed"] is False
     assert result["status"] == "healthy"
+
+
+def test_status_hides_indexing_flag_once_state_is_indexed():
+    mcp = server_module.create_server()
+    state = get_state()
+    state.codebase_path = Path("/repo")
+
+    with server_module._index_job_lock:
+        server_module._index_job = {"status": "indexing"}
+
+    result = asyncio.run(_call_tool(mcp, "status"))
+
+    assert result["indexed"] is True
+    assert "indexing" not in result
+
+
+def test_status_preserves_completed_job_hint_before_state_load():
+    mcp = server_module.create_server()
+
+    with server_module._index_job_lock:
+        server_module._index_job = {"status": "done", "result": {}}
+
+    result = asyncio.run(_call_tool(mcp, "status"))
+
+    assert result["indexed"] is False
+    assert result["hint"] == "Index job completed but state not yet loaded. Call status() again."
+
+
+def test_status_skips_expensive_stats_while_background_index_finalizes():
+    mcp = server_module.create_server()
+    state = get_state()
+    state.codebase_path = Path("/repo")
+
+    class _ExplodingVector:
+        def count(self):
+            raise AssertionError("vector count should not run during background indexing")
+
+    class _ExplodingGraph:
+        def get_statistics(self):
+            raise AssertionError("graph stats should not run during background indexing")
+
+    state.vector_engine = _ExplodingVector()
+    state.graph_engine = _ExplodingGraph()
+
+    with server_module._index_job_lock:
+        server_module._index_job = {"status": "indexing"}
+
+    result = asyncio.run(_call_tool(mcp, "status"))
+
+    assert result["indexed"] is True
+    assert "vector_chunks" not in result
+    assert "graph" not in result
+    assert "indexing" not in result
 
 
 # --- New exception types ---
