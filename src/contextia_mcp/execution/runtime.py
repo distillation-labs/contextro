@@ -44,13 +44,20 @@ def build_search_runtime(state: Any, settings: Settings) -> SearchRuntime:
     """Build the shared runtime used by search-related tool flows."""
 
     if not hasattr(state, "_query_cache") or state._query_cache is None:
-        state._query_cache = QueryCache(max_size=128, similarity_threshold=0.92)
+        state._query_cache = QueryCache(
+            max_size=settings.search_cache_max_size,
+            similarity_threshold=settings.search_cache_similarity_threshold,
+            ttl=settings.search_cache_ttl_seconds,
+        )
 
     if not hasattr(state, "_session_tracker") or state._session_tracker is None:
         state._session_tracker = SessionTracker()
 
     if not hasattr(state, "_output_sandbox") or state._output_sandbox is None:
-        state._output_sandbox = OutputSandbox()
+        state._output_sandbox = OutputSandbox(
+            max_entries=settings.search_sandbox_max_entries,
+            ttl=settings.search_sandbox_ttl_seconds,
+        )
 
     return SearchRuntime(
         state=state,
