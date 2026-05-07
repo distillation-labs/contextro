@@ -1,8 +1,7 @@
 services:
   contextia:
     container_name: contextia-mcp
-    build: .
-    image: jassskalkat/contextia-mcp:latest
+    image: ${CONTEXTIA_IMAGE:-ghcr.io/jassskalkat/contextia-mcp:latest}
     ports:
       - "8000:8000"
     volumes:
@@ -26,6 +25,8 @@ services:
       CTX_REALTIME_INDEXING_ENABLED: "false" # disable file watcher in Docker
       CTX_FILE_WATCHER_ENABLED: "false"
       CTX_AUTO_WARM_START: "true" # restore index from disk on restart (no re-index needed)
+      CTX_SEARCH_CACHE_TTL_SECONDS: "300"
+      CTX_SEARCH_SANDBOX_TTL_SECONDS: "600"
       CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS: "1200"
       CTX_SEARCH_PREVIEW_RESULTS: "4"
       CTX_SEARCH_PREVIEW_CODE_CHARS: "220"
