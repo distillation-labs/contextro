@@ -12,7 +12,7 @@ import pytest
 from contextia_mcp.config import Settings
 from contextia_mcp.engines.output_sandbox import OutputSandbox
 from contextia_mcp.engines.query_cache import QueryCache
-from contextia_mcp.execution.runtime import SearchRuntime
+from contextia_mcp.execution.runtime import SearchRuntime, build_search_runtime
 from contextia_mcp.execution.search import SearchExecutionEngine, SearchExecutionOptions
 
 
@@ -133,6 +133,36 @@ def test_execute_sandboxes_large_responses_and_stores_full_results():
     assert len(payload["results"]) == 2
 
 
+def test_execute_preview_preserves_bookended_high_signal_results():
+    backend = _VectorBackend(
+        [
+            _result(1),
+            _result(2, score=0.85),
+            _result(3, score=0.8),
+            _result(4, score=0.75),
+        ]
+    )
+    engine = SearchExecutionEngine(
+        _runtime(
+            backend,
+            codebase_path=Path("/repo"),
+            sandbox_threshold=1,
+            preview_results=2,
+        )
+    )
+
+    response = engine.execute(
+        SearchExecutionOptions(query="symbol", mode="vector", rerank=False, limit=5)
+    )
+
+    assert response["sandboxed"] is True
+    assert response["full_total"] == 4
+    assert [result["name"] for result in response["results"]] == [
+        "symbol_1",
+        "symbol_2",
+    ]
+
+
 def test_execute_keeps_query_focal_lines_in_compressed_code():
     body = "\n".join(
         [
@@ -195,3 +225,83 @@ def test_execute_respects_configurable_code_budgets():
     assert len(codes[0]) <= 41
     assert len(codes[1]) <= 31
     assert len(codes[2]) <= 21
+
+
+def test_execute_skips_auto_live_grep_for_natural_language_queries(monkeypatch):
+    backend = _VectorBackend([_result(1)])
+    engine = SearchExecutionEngine(_runtime(backend, codebase_path=Path("/repo")))
+    calls: list[tuple[str, int]] = []
+
+    class _LiveGrepStub:
+        def __init__(self, workspace_path: str):
+            self.workspace_path = workspace_path
+
+        def search(self, query: str, limit: int = 20):
+            calls.append((query, limit))
+            return []
+
+    monkeypatch.setattr("contextia_mcp.execution.search.LiveGrepEngine", _LiveGrepStub)
+
+    engine.execute(
+        SearchExecutionOptions(query="prepare issue worktree", mode="hybrid", rerank=False, limit=3)
+    )
+
+    assert calls == []
+
+
+def test_execute_auto_live_grep_for_single_token_queries(monkeypatch):
+    backend = _VectorBackend([_result(1)])
+    engine = SearchExecutionEngine(_runtime(backend, codebase_path=Path("/repo")))
+    calls: list[tuple[str, int]] = []
+
+    class _LiveGrepStub:
+        def __init__(self, workspace_path: str):
+            self.workspace_path = workspace_path
+
+        def search(self, query: str, limit: int = 20):
+            calls.append((query, limit))
+            return []
+
+    monkeypatch.setattr("contextia_mcp.execution.search.LiveGrepEngine", _LiveGrepStub)
+
+    engine.execute(
+        SearchExecutionOptions(query="TokenBudget", mode="hybrid", rerank=False, limit=3)
+    )
+
+    assert calls == [("TokenBudget", 3)]
+
+
+def test_build_search_runtime_uses_cache_and_sandbox_settings():
+    settings = Settings()
+    settings.search_cache_max_size = 7
+    settings.search_cache_similarity_threshold = 0.81
+    settings.search_cache_ttl_seconds = 12.5
+    settings.search_sandbox_max_entries = 3
+    settings.search_sandbox_ttl_seconds = 9.0
+
+    state = SimpleNamespace(codebase_path=Path("/repo"), codebase_paths=[Path("/repo")])
+    runtime = build_search_runtime(state, settings)
+
+    assert runtime.query_cache.max_size == 7
+    assert runtime.query_cache.similarity_threshold == 0.81
+    assert runtime.query_cache.ttl == 12.5
+    assert runtime.output_sandbox.max_entries == 3
+    assert runtime.output_sandbox.ttl == 9.0
+
+
+def test_query_cache_prunes_expired_entries_before_lookup():
+    cache = QueryCache(ttl=1.0)
+    cache.put("auth flow", {"total": 1})
+    cache._cache[("", "auth flow")]["timestamp"] -= 5.0
+
+    assert cache.get("auth flow") is None
+    assert cache.size == 0
+
+
+def test_output_sandbox_prunes_expired_entries_before_retrieve():
+    sandbox = OutputSandbox(ttl=1.0)
+    ref_id = sandbox.store("hello world")
+    sandbox._store[ref_id]["timestamp"] -= 5.0
+
+    assert sandbox.retrieve(ref_id) is None
+    assert sandbox.size == 0
