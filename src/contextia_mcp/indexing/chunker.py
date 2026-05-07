@@ -10,6 +10,10 @@ from typing import Any, Dict, List
 
 from contextia_mcp.config import get_settings
 from contextia_mcp.core.models import Symbol
+from contextia_mcp.indexing.chunk_context import (
+    ChunkContextSettings,
+    build_symbol_context_header,
+)
 
 
 @dataclass(slots=True)
@@ -77,29 +81,12 @@ def create_chunk_text(symbol: Symbol) -> str:
         Calls: ...
     """
     settings = get_settings()
+    context_settings = ChunkContextSettings.from_settings(settings)
     parts = []
 
-    # Contextual header: class/module context prepended to every chunk
-    # Research: Anthropic "Contextual Retrieval" Sep 2024 — 35-49% fewer retrieval failures
-    # when chunks include their surrounding context (which class, which module, what role)
-    context_parts = []
-    if symbol.parent:
-        context_parts.append(symbol.parent)
-    # Add module path from filepath (e.g. "contextia_mcp.indexing.pipeline")
-    fp = symbol.filepath
-    if fp:
-        # Convert filepath to module-like path for context
-        module_hint = fp.replace("/", ".").replace("\\", ".").rstrip(".py")
-        # Take last 3 path components for brevity
-        parts_fp = module_hint.split(".")
-        if len(parts_fp) > 3:
-            module_hint = ".".join(parts_fp[-3:])
-        context_parts.append(module_hint)
-
-    if context_parts:
-        parts.append(f"# {'.'.join(context_parts)}.{symbol.name} in {fp}")
-    else:
-        parts.append(f"# {fp}:{symbol.line_start}")
+    # Contextual header: prepend compact chunk-specific context before the symbol
+    # body so both embeddings and BM25 see stable module/file/symbol hints.
+    parts.extend(build_symbol_context_header(symbol, context_settings))
 
     parts.append(f"{symbol.type.value}: {symbol.qualified_name}")
     parts.append("")
