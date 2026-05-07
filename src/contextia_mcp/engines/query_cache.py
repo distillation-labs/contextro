@@ -7,9 +7,11 @@ returns the cached result instantly — zero re-embedding or re-searching.
 Typical hit rate: 20-40% in interactive sessions where users refine queries.
 """
 
+from __future__ import annotations
+
 import time
 from collections import OrderedDict
-from typing import Any, List, Optional
+from typing import Any
 
 
 class QueryCache:
@@ -34,12 +36,23 @@ class QueryCache:
         self.hits = 0
         self.misses = 0
 
+    def _is_expired(self, entry: dict[str, Any], now: float) -> bool:
+        return now - entry["timestamp"] >= self.ttl
+
+    def _prune_expired(self, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        expired_keys = [
+            key for key, entry in self._cache.items() if self._is_expired(entry, now)
+        ]
+        for key in expired_keys:
+            del self._cache[key]
+
     def get(
         self,
         query: str,
-        query_embedding: Optional[List[float]] = None,
+        query_embedding: list[float] | None = None,
         namespace: str = "",
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """Look up a cached result for a query.
 
         First tries exact string match, then semantic similarity if
@@ -55,16 +68,14 @@ class QueryCache:
         """
         cache_key = (namespace, query)
         now = time.time()
+        self._prune_expired(now)
 
         # 1. Exact string match (fastest)
         if cache_key in self._cache:
             entry = self._cache[cache_key]
-            if now - entry["timestamp"] < self.ttl:
-                self._cache.move_to_end(cache_key)
-                self.hits += 1
-                return entry["result"]
-            else:
-                del self._cache[cache_key]
+            self._cache.move_to_end(cache_key)
+            self.hits += 1
+            return entry["result"]
 
         # 2. Semantic similarity match (if embedding provided)
         if query_embedding is not None:
@@ -72,8 +83,6 @@ class QueryCache:
             best_sim = 0.0
 
             for key, entry in self._cache.items():
-                if now - entry["timestamp"] >= self.ttl:
-                    continue
                 if entry.get("namespace", "") != namespace:
                     continue
                 if entry.get("embedding") is None:
@@ -95,9 +104,9 @@ class QueryCache:
         self,
         query: str,
         result: Any,
-        query_embedding: Optional[List[float]] = None,
+        query_embedding: list[float] | None = None,
         namespace: str = "",
-    ):
+    ) -> None:
         """Store a query result in the cache.
 
         Args:
@@ -107,6 +116,7 @@ class QueryCache:
             namespace: Optional cache namespace for isolating search options.
         """
         cache_key = (namespace, query)
+        self._prune_expired()
         if cache_key in self._cache:
             self._cache.move_to_end(cache_key)
             self._cache[cache_key] = {
@@ -141,7 +151,7 @@ class QueryCache:
         return self.hits / total if total > 0 else 0.0
 
     @staticmethod
-    def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    def _cosine_similarity(a: list[float], b: list[float]) -> float:
         """Compute cosine similarity between two vectors."""
         if len(a) != len(b):
             return 0.0
