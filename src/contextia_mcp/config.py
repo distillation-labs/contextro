@@ -2,7 +2,7 @@
 
 import hashlib
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -39,7 +39,7 @@ class Settings:
     """Contextia configuration. All settings can be overridden via CTX_ env vars."""
 
     # Storage — default to ~/.contextia so it works regardless of working directory
-    storage_dir: str = str(Path.home() / ".contextia")
+    storage_dir: str = field(default_factory=_default_storage_dir)
 
     # Embedding model
     embedding_model: str = "potion-code-16m"
@@ -50,8 +50,12 @@ class Settings:
     max_file_size_mb: int = 10
     max_workers: Optional[int] = None
     chunk_max_chars: int = 4000
+    chunk_context_mode: str = "rich"  # "minimal" or "rich"
+    chunk_context_path_depth: int = 4
     index_file_batch_size: int = 2000  # files per streaming batch (larger = fewer LanceDB writes)
     skip_astgrep: bool = True  # Skip ast-grep for faster indexing (tree-sitter handles most cases)
+    smart_chunk_relationships_enabled: bool = True
+    smart_chunk_file_context_enabled: bool = True
 
     # Graph
     graph_max_depth: int = 10
@@ -64,7 +68,12 @@ class Settings:
     fusion_weight_graph: float = 0.2
     # Drop results below this fraction of the top score.
     relevance_threshold: float = 0.40
+    search_cache_max_size: int = 128
+    search_cache_similarity_threshold: float = 0.92
+    search_cache_ttl_seconds: float = 300.0
     search_sandbox_threshold_tokens: int = 1200
+    search_sandbox_max_entries: int = 100
+    search_sandbox_ttl_seconds: float = 600.0
     search_preview_results: int = 4
     search_preview_code_chars: int = 220
     search_query_aware_compression: bool = True
@@ -105,7 +114,7 @@ class Settings:
     commit_history_enabled: bool = True
     commit_history_limit: int = 500  # max commits to index
     commit_history_since: str = ""  # e.g. "6 months ago", empty = no limit
-    commit_include_diffs: bool = True  # include diff summaries in commit chunks
+    commit_include_diffs: bool = False  # faster/lower-memory default; opt in for diff-aware commit chunks
 
     # Branch-Aware Real-Time Indexing
     realtime_indexing_enabled: bool = True
@@ -129,8 +138,18 @@ class Settings:
             "CTX_MAX_FILE_SIZE_MB": ("max_file_size_mb", int),
             "CTX_MAX_WORKERS": ("max_workers", lambda v: int(v) if v else None),
             "CTX_CHUNK_MAX_CHARS": ("chunk_max_chars", int),
+            "CTX_CHUNK_CONTEXT_MODE": ("chunk_context_mode", str),
+            "CTX_CHUNK_CONTEXT_PATH_DEPTH": ("chunk_context_path_depth", int),
             "CTX_INDEX_FILE_BATCH_SIZE": ("index_file_batch_size", int),
             "CTX_SKIP_ASTGREP": ("skip_astgrep", _bool),
+            "CTX_SMART_CHUNK_RELATIONSHIPS_ENABLED": (
+                "smart_chunk_relationships_enabled",
+                _bool,
+            ),
+            "CTX_SMART_CHUNK_FILE_CONTEXT_ENABLED": (
+                "smart_chunk_file_context_enabled",
+                _bool,
+            ),
             "CTX_GRAPH_MAX_DEPTH": ("graph_max_depth", int),
             "CTX_SEARCH_MODE": ("search_mode", str),
             "CTX_RERANKER_MODEL": ("reranker_model", str),
@@ -138,7 +157,15 @@ class Settings:
             "CTX_FUSION_WEIGHT_BM25": ("fusion_weight_bm25", float),
             "CTX_FUSION_WEIGHT_GRAPH": ("fusion_weight_graph", float),
             "CTX_RELEVANCE_THRESHOLD": ("relevance_threshold", float),
+            "CTX_SEARCH_CACHE_MAX_SIZE": ("search_cache_max_size", int),
+            "CTX_SEARCH_CACHE_SIMILARITY_THRESHOLD": (
+                "search_cache_similarity_threshold",
+                float,
+            ),
+            "CTX_SEARCH_CACHE_TTL_SECONDS": ("search_cache_ttl_seconds", float),
             "CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS": ("search_sandbox_threshold_tokens", int),
+            "CTX_SEARCH_SANDBOX_MAX_ENTRIES": ("search_sandbox_max_entries", int),
+            "CTX_SEARCH_SANDBOX_TTL_SECONDS": ("search_sandbox_ttl_seconds", float),
             "CTX_SEARCH_PREVIEW_RESULTS": ("search_preview_results", int),
             "CTX_SEARCH_PREVIEW_CODE_CHARS": ("search_preview_code_chars", int),
             "CTX_SEARCH_QUERY_AWARE_COMPRESSION": ("search_query_aware_compression", _bool),
