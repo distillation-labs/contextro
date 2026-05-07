@@ -12,15 +12,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+DEFAULT_TIMEOUT_SECONDS = 5.0
 
 
 class LiveGrepEngine:
     """Live search using ripgrep (rg) with a fallback to standard grep."""
 
-    def __init__(self, workspace_path: Optional[str] = None):
+    def __init__(
+        self,
+        workspace_path: Optional[str] = None,
+        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    ):
         self.workspace_path = Path(workspace_path) if workspace_path else Path.cwd()
         self.rg_path = shutil.which("rg")
         self.grep_path = shutil.which("grep")
+        self.timeout_seconds = timeout_seconds
 
     def search(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Search for query in workspace. Favors ripgrep, falls back to grep."""
@@ -58,7 +64,13 @@ class LiveGrepEngine:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=self.timeout_seconds,
+            )
             results = []
             for line in result.stdout.splitlines():
                 if not line:
@@ -87,6 +99,13 @@ class LiveGrepEngine:
                 except (json.JSONDecodeError, KeyError):
                     continue
             return results[:limit]
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Ripgrep timed out after %.1fs for query %r",
+                self.timeout_seconds,
+                query,
+            )
+            return []
         except Exception as e:
             logger.error("Ripgrep execution error: %s", e)
             raise
@@ -105,7 +124,13 @@ class LiveGrepEngine:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=self.timeout_seconds,
+            )
             results = []
             for line in result.stdout.splitlines():
                 if not line:
@@ -132,6 +157,13 @@ class LiveGrepEngine:
                     except ValueError:
                         continue
             return results[:limit]
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "grep timed out after %.1fs for query %r",
+                self.timeout_seconds,
+                query,
+            )
+            return []
         except Exception as e:
             logger.error("Grep execution error: %s", e)
             raise
