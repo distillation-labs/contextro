@@ -7,10 +7,12 @@ Inspired by Context Mode's sandboxing pattern which achieves 98% token reduction
 on large outputs by indexing them locally and returning only summaries.
 """
 
+from __future__ import annotations
+
 import hashlib
 import time
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class OutputSandbox:
@@ -30,11 +32,20 @@ class OutputSandbox:
         """
         self.max_entries = max_entries
         self.ttl = ttl
-        self._store: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._store: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self.total_stored_chars = 0
         self.total_retrieved_chars = 0
 
-    def store(self, content: str, metadata: Optional[Dict] = None) -> str:
+    def _is_expired(self, entry: dict[str, Any], now: float) -> bool:
+        return now - entry["timestamp"] >= self.ttl
+
+    def _prune_expired(self, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        expired = [ref_id for ref_id, entry in self._store.items() if self._is_expired(entry, now)]
+        for ref_id in expired:
+            del self._store[ref_id]
+
+    def store(self, content: str, metadata: dict[str, Any] | None = None) -> str:
         """Store content and return a reference ID.
 
         Args:
@@ -45,6 +56,7 @@ class OutputSandbox:
             A short reference ID for retrieval.
         """
         ref_id = self._generate_id(content)
+        self._prune_expired()
 
         if ref_id in self._store:
             self._store.move_to_end(ref_id)
@@ -62,7 +74,7 @@ class OutputSandbox:
         self.total_stored_chars += len(content)
         return ref_id
 
-    def retrieve(self, ref_id: str, query: Optional[str] = None) -> Optional[str]:
+    def retrieve(self, ref_id: str, query: str | None = None) -> str | None:
         """Retrieve stored content by reference ID.
 
         Args:
@@ -72,13 +84,9 @@ class OutputSandbox:
         Returns:
             The stored content, or None if not found/expired.
         """
+        self._prune_expired()
         entry = self._store.get(ref_id)
         if entry is None:
-            return None
-
-        # Check TTL
-        if time.time() - entry["timestamp"] > self.ttl:
-            del self._store[ref_id]
             return None
 
         self._store.move_to_end(ref_id)
@@ -95,7 +103,7 @@ class OutputSandbox:
 
         return content
 
-    def store_results(self, results: List[Dict[str, Any]]) -> str:
+    def store_results(self, results: list[dict[str, Any]]) -> str:
         """Store a batch of search results and return a sandbox reference.
 
         Args:
