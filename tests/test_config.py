@@ -17,6 +17,9 @@ def test_default_settings():
     assert s.embedding_model == "potion-code-16m"
     assert s.embedding_device == "auto"
     assert s.embedding_batch_size == 512
+    assert s.commit_include_diffs is False
+    assert s.chunk_context_mode == "rich"
+    assert s.smart_chunk_relationships_enabled is True
     assert s.max_memory_mb == 350
     assert s.log_level == "INFO"
 
@@ -33,10 +36,12 @@ def test_storage_paths():
 def test_env_override(monkeypatch):
     monkeypatch.setenv("CTX_EMBEDDING_MODEL", "bge-small-en")
     monkeypatch.setenv("CTX_EMBEDDING_BATCH_SIZE", "64")
+    monkeypatch.setenv("CTX_CHUNK_CONTEXT_MODE", "minimal")
     monkeypatch.setenv("CTX_LOG_LEVEL", "DEBUG")
     s = Settings()
     assert s.embedding_model == "bge-small-en"
     assert s.embedding_batch_size == 64
+    assert s.chunk_context_mode == "minimal"
     assert s.log_level == "DEBUG"
 
 
