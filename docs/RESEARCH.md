@@ -1,273 +1,238 @@
-# Contextia Research Notes
+# Workflow Research
 
-Consolidated research findings from project planning. Use as reference during implementation.
+Updated: 2026-05-06
 
----
+This note refreshes Contextia's workflow research using primary sources plus the
+current repository state. It is intentionally opinionated: every recommendation
+maps to a real surface in the codebase and is ranked by expected ROI for
+Contextia's single-process, low-memory MCP design.
 
-## 1. LanceDB
+## Method
 
-### What it is
-Serverless, embedded vector database with native full-text search. Rust core, Python SDK. Disk-backed via mmap — vectors stay on disk, only accessed pages loaded into RAM.
+- Facts come from the cited sources or the current repo.
+- Inferences connect those facts to Contextia's architecture.
+- Hypotheses are proposed experiments, not established conclusions.
+- For living product docs without immutable publication dates, the tables below
+  use the access year `2026`.
 
-### API Reference (replacing ChromaDB)
+## Executive Summary
 
-| Operation | ChromaDB (old) | LanceDB (new) |
-|-----------|----------------|---------------|
-| Connect | `chromadb.PersistentClient(path)` | `lancedb.connect(path)` |
-| Create table | `client.get_or_create_collection(name)` | `db.create_table(name, schema)` / `db.open_table(name)` |
-| Add rows | `collection.add(ids, embeddings, docs, metas)` | `table.add([{id, vector, text, ...}])` |
-| Search | `collection.query(query_embeddings, n)` | `table.search(vector).limit(n).to_list()` |
-| Filter | `where={"lang": "python"}` | `.where("language = 'python'")` (SQL-like) |
-| Delete | `collection.delete(where={...})` | `table.delete("filepath = '...'")` |
-| Upsert | `collection.upsert(...)` | `table.merge_insert("id").when_matched_update_all().when_not_matched_insert_all().execute(data)` |
-| Count | `collection.count()` | `table.count_rows()` |
-| FTS | N/A | `table.search("query text", query_type="fts").limit(n).to_list()` |
+- Contextia already has the right core architecture for local developer
+  workflows: one MCP server, disk-backed persistence, provider-agnostic search
+  execution, bounded caches, and progressive disclosure via `retrieve()`.
+- The next best improvements are workflow features, not another retrieval
+  rewrite.
+- Highest ROI:
+  1. Add scoped rules and governance on top of existing `knowledge()`,
+     permissions, and audit surfaces.
+  2. Turn `SessionTracker` plus semantic memory into a stronger resume and boot
+     flow.
+  3. Make multi-repo and branch or task isolation easier to use without
+     abandoning the unified local server.
+- Keep the current token-efficiency strategy. The repo already shows strong
+  baselines: `smart` chunking remains the best balanced default, `search`
+  averages `336` output tokens in the current workflow benchmark, cache hit rate
+  is `0.4615`, and TOON encoding reduces total output tokens by `17.2%`.
 
-### Full-Text Search (FTS)
-- Two implementations: **Tantivy-based** (older) and **native Rust** (newer, recommended)
-- Tantivy limitations: Python async only, filesystem-only, no incremental indexing
-- Native FTS: Tested on 41M Wikipedia docs, production-ready
-- Create FTS index: `table.create_fts_index("text", replace=True)`
+## Current Baseline
 
-### Known Gotchas
-- IVF index creation can hang on 100K+ vectors — use flat search for small codebases
-- TypeScript SDK has schema-related bugs (Python SDK is more stable)
-- Async API docs are incomplete
-- Call `gc.collect()` after closing connections to prevent memory leaks
-- Version history can cause storage bloat — compact periodically
+| Area | Current repo state | Evidence |
+| --- | --- | --- |
+| Unified architecture | Single MCP server with vector, BM25, graph, memory, git, and knowledge surfaces | `docs/ARCHITECTURE.md`, `src/contextia_mcp/server.py` |
+| Search execution | Provider-agnostic shared runtime and search engine | `src/contextia_mcp/execution/runtime.py`, `src/contextia_mcp/execution/search.py` |
+| Token shaping | Query-aware compaction, bookended previews, sandboxed full payloads | `src/contextia_mcp/execution/compaction.py`, `src/contextia_mcp/execution/response_policy.py`, `src/contextia_mcp/engines/output_sandbox.py` |
+| Session continuity | Lightweight event tracker plus `session_snapshot()` | `src/contextia_mcp/memory/session_tracker.py`, `src/contextia_mcp/server.py` |
+| Durable recall | LanceDB-backed semantic memory and `knowledge()` tool | `src/contextia_mcp/memory/memory_store.py`, `src/contextia_mcp/server.py` |
+| Repo and branch context | Cross-repo registration, branch metadata, real-time branch watcher | `src/contextia_mcp/git/cross_repo.py`, `src/contextia_mcp/git/branch_watcher.py` |
+| Governance primitives | Static tool permissions and structured audit logging already exist | `src/contextia_mcp/security/permissions.py`, `src/contextia_mcp/middleware/audit.py` |
+| Retrieval benchmarks | `smart` chunking is the benchmark-backed default | `README.md`, `docs/DEVELOPER_GUIDE.md`, `scripts/benchmark_chunk_profiles.py` |
 
-### Memory Profile
-- Disk-backed with mmap: ~20-50MB RAM for typical codebases
-- Peak memory scales with rows being processed, NOT total dataset size
-- Production example: 700M vectors on 128GB RAM system
+Current live defaults worth preserving unless benchmarks say otherwise:
 
-### Sources
-- [Scaling LanceDB: 700M vectors in production](https://sprytnyk.dev/posts/running-lancedb-in-production/)
-- [LanceDB WikiSearch: Native FTS on 41M docs](https://lancedb.com/blog/feature-full-text-search/)
-- [LanceDB Python docs](https://lancedb.github.io/lancedb/)
+- `CTX_CHUNK_CONTEXT_MODE=rich`
+- `CTX_SMART_CHUNK_RELATIONSHIPS_ENABLED=true`
+- `CTX_SMART_CHUNK_FILE_CONTEXT_ENABLED=true`
+- `search_cache_max_size=128`, `search_cache_similarity_threshold=0.92`,
+  `search_cache_ttl_seconds=300`
+- `search_sandbox_threshold_tokens=1200`, `search_preview_results=4`,
+  `search_preview_code_chars=220`
 
----
+Current benchmark anchors:
 
-## 2. Embedding Models
+- Chunking: `smart` is the best current default on the in-repo `src` /
+  `20`-query benchmark at `MRR 0.625`, `Recall@5 0.9`, and `491` average tokens.
+- Token efficiency: `336` tokens per `search`, `229` per `explain`,
+  `0.4615` cache hit rate, `0.0` sandbox rate, and `17.2%` TOON output
+  reduction in `scripts/token_benchmark_results.json`.
+- Embeddings: among the retained benchmark set in
+  `scripts/benchmark_results_full.json`, `bge-small-en` currently has the best
+  measured `MRR@10` (`0.8115`) and `Recall@5` (`0.94`). That is useful evidence,
+  but workflow ROI currently matters more than default-model churn.
 
-### Model Comparison
+## Source Matrix
 
-| Model | Params | Size | Dims | Quality | Code-specific? |
-|-------|--------|------|------|---------|---------------|
-| `jinaai/jina-embeddings-v2-base-code` **(our default)** | - | ~500MB | 768 | Best for code | Yes |
-| `BAAI/bge-small-en-v1.5` | 33.4M | ~50MB (FP16: ~25MB) | 384 | Good | No (general text) |
-| `all-MiniLM-L6-v2` (not supported) | 22M | ~80MB | 384 | Good | No |
-| `CodeSage-Small` (not supported) | 130M | ~200MB | 1024 | Very good | Yes (9 languages) |
+| Source | Confirmed fact | Why it matters here | Confidence |
+| --- | --- | --- | --- |
+| [Anthropic, Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval) | Contextual chunk augmentation plus hybrid retrieval reduces top-k failures. | Reinforces `smart` chunking, contextual headers, and hybrid search rather than a pure-vector workflow. | High |
+| [Liu et al., Lost in the Middle](https://arxiv.org/abs/2307.03172) | Long-context performance degrades when key evidence sits in the middle. | Supports query-aware compaction, short previews, and bookended result ordering in `execution/`. | High |
+| [NVIDIA, RAG 101](https://developer.nvidia.com/blog/rag-101-retrieval-augmented-generation-questions-answered/) | Retrieval quality and latency depend on the whole pipeline, not one stage. | Validates benchmark-driven tuning across chunking, retrieval, reranking, and output shaping. | High |
+| [NVIDIA, chunking strategy evaluation](https://developer.nvidia.com/blog/finding-the-best-chunking-strategy-for-accurate-ai-responses/) | Chunking strategy should be tested against the real corpus and query shape. | Justifies keeping `scripts/benchmark_chunk_profiles.py` as the decision gate for chunk defaults. | High |
+| [OpenAI, Prompt Caching](https://openai.com/index/api-prompt-caching/) | Stable prefixes reduce repeated token cost and latency. | Supports resume packets, compact previews, and `retrieve()` over replaying long context. | High |
+| [Windsurf, Memories & Rules](https://docs.windsurf.com/windsurf/cascade/memories) | Rules can be always-on, model-decision, glob, or manual; `AGENTS.md` becomes directory-scoped instructions. | Strong pattern for durable, scoped workflow guidance with lower context cost than long global prompts. | High |
+| [Windsurf, Cascade Hooks](https://docs.windsurf.com/windsurf/cascade/hooks) | Pre and post hooks receive JSON on stdin, and pre-hooks can block actions with exit code `2`. | Maps directly onto governance, audit, and preflight policy opportunities around tool execution. | High |
+| [Windsurf, Worktrees](https://docs.windsurf.com/windsurf/cascade/worktrees) | Parallel tasks run in separate worktrees, and `post_setup_worktree` bootstraps local state. | Useful pattern for optional task isolation, but should be adapted carefully to Contextia's path-mapping constraints. | Medium |
+| [Devin, Declarative configuration](https://docs.devin.ai/onboard-devin/environment/blueprints) | Blueprints build snapshots; `knowledge` stores short lint, test, and build commands for session boot. | Strong model for repo-scoped workflow knowledge and fast session startup. | High |
+| [Devin, Knowledge Onboarding](https://docs.devin.ai/onboard-devin/knowledge-onboarding) | Knowledge works best with specific triggers and specialized files such as `AGENTS.md`, `.windsurf`, and rule files. | Suggests Contextia should prefer typed, scoped workflow knowledge over large generic notes. | High |
+| [Google, Gemini CLI README](https://raw.githubusercontent.com/google-gemini/gemini-cli/main/README.md) | Gemini CLI emphasizes checkpointing, token caching, custom context files, MCP support, and a terminal-first agent UX. | Reinforces stronger resume artifacts and repo-scoped context files without changing Contextia's local-first design. | Medium |
 
-### Why jina-code as default
-- Code-specific model with 768-dim embeddings for high-quality code search
-- ONNX-compatible for efficient inference
-- Best search quality among supported models for code-specific queries
-- Users can switch via `CTX_EMBEDDING_MODEL=bge-small-en` (smaller, 384d)
-- Only registered model names are accepted; custom names raise `ConfigurationError`
+## Adopt, Adapt, Avoid
 
-### ONNX Runtime Strategy
-- Replaces PyTorch (~300-500MB RAM → ~50MB)
-- 2.5x faster CPU inference, 7x more requests/sec
-- Export: `model.save_pretrained("onnx_model", export=True)`
-- INT8 quantization possible: 75% memory reduction, <1% accuracy loss
-- BGE-M3 example: 2,272MB → 571MB with ONNX INT8
+| Decision | Pattern | Why | Implementation targets |
+| --- | --- | --- | --- |
+| Adopt | Scoped durable instructions | Repo and path-scoped rules outperform large always-on prompts for workflow guidance. | `src/contextia_mcp/server.py`, `src/contextia_mcp/security/permissions.py`, `src/contextia_mcp/middleware/audit.py` |
+| Adopt | Hook-based governance and observability | Contextia already has permission categories and audit logging; hook-like preflight checks are a natural extension. | `src/contextia_mcp/security/permissions.py`, `src/contextia_mcp/middleware/audit.py`, `src/contextia_mcp/server.py` |
+| Adopt | Resume and checkpoint packets | Existing `SessionTracker`, semantic memory, and sandbox references already cover most primitives. | `src/contextia_mcp/memory/session_tracker.py`, `src/contextia_mcp/memory/memory_store.py`, `src/contextia_mcp/execution/runtime.py`, `src/contextia_mcp/server.py` |
+| Adapt | Worktree or task isolation | Useful for parallel work, but should stay optional and local-first instead of becoming a required execution model. | `src/contextia_mcp/git/cross_repo.py`, `src/contextia_mcp/git/branch_watcher.py`, `src/contextia_mcp/server.py` |
+| Adapt | Knowledge as command references | Keep workflow knowledge short, executable, and repo-scoped instead of turning it into a second documentation system. | `src/contextia_mcp/server.py`, `src/contextia_mcp/memory/memory_store.py`, `src/contextia_mcp/git/cross_repo.py` |
+| Adapt | Large-context product claims | Use long context opportunistically, but keep retrieval selective and evidence near the top of the prompt. | `src/contextia_mcp/execution/compaction.py`, `src/contextia_mcp/execution/response_policy.py` |
+| Avoid | Cloud-only or remote-index-first workflow features | They conflict with Contextia's privacy, portability, and low-memory positioning. | N/A |
+| Avoid | Unbounded always-on rules or memories | They increase token cost, staleness, and debugging difficulty. | N/A |
+| Avoid | Provider-specific execution coupling | The current provider-agnostic runtime is a strength and keeps benchmarking honest. | `src/contextia_mcp/execution/runtime.py`, `src/contextia_mcp/execution/search.py` |
 
-### Memory Optimization
-- FP16: 50% memory reduction with negligible quality loss
-- `torch.inference_mode()`: eliminates autograd buffers
-- Batch size 32: prevents accumulating all chunks in memory
-- Lazy loading: model only in RAM during `index` calls
-- Unloading: `del model; gc.collect()` after indexing
+## Ranked ROI Recommendations
 
-### Sources
-- [BAAI/bge-small-en-v1.5 - HuggingFace](https://huggingface.co/BAAI/bge-small-en-v1.5)
-- [6 Best Code Embedding Models Compared - Modal](https://modal.com/blog/6-best-code-embedding-models-compared)
-- [Scaling PyTorch with ONNX Runtime](https://opensource.microsoft.com/blog/2022/04/19/scaling-up-pytorch-inference-serving-billions-of-daily-nlp-inferences-with-onnx-runtime/)
+### 1. Build scoped rules and workflow governance first
 
----
+- Fact: Windsurf supports scoped rules, `AGENTS.md`, and blocking pre-hooks;
+  Devin automatically reuses specialized instruction files.
+- Inference: Contextia can add a thin rules layer on top of `knowledge()`,
+  `permissions.py`, and `audit.py` without touching retrieval engines.
+- Hypothesis: Repo or path-scoped rules plus fired-rule telemetry will cut
+  repeated prompting and improve trust more than additional reranking work.
+- Targets: `src/contextia_mcp/server.py`,
+  `src/contextia_mcp/security/permissions.py`,
+  `src/contextia_mcp/middleware/audit.py`.
+- Suggested shape: store rules as lightweight knowledge entries or discovered
+  repo files, attach scope metadata, log which rules were active for a tool
+  call, and expose them in `session_snapshot()` or `introspect()`.
 
-## 3. rustworkx (Code Graph)
+### 2. Turn session continuity into a first-class resume artifact
 
-### What it is
-Rust-backed Python graph library. Drop-in replacement for NetworkX, 10-100x faster. Used for storing code relationships (calls, imports, inheritance).
+- Fact: Gemini CLI emphasizes checkpointing and token caching; OpenAI prompt
+  caching rewards stable prefixes; Contextia already has `SessionTracker`,
+  `OutputSandbox`, `retrieve()`, and semantic memory.
+- Inference: The cheapest workflow gain is to return a deterministic resume
+  packet instead of replaying large conversational context.
+- Hypothesis: Adding recent search intents, active repo or branch, key actions,
+  sandbox refs, and top relevant memories to `session_snapshot()` will improve
+  long-running task continuity while lowering token cost.
+- Targets: `src/contextia_mcp/memory/session_tracker.py`,
+  `src/contextia_mcp/memory/memory_store.py`,
+  `src/contextia_mcp/execution/runtime.py`, `src/contextia_mcp/server.py`.
 
-### Why NOT a knowledge graph (Neo4j)
-- Code graphs store simple relationships: A calls B, X inherits Y, M imports N
-- Neo4j adds a database server dependency — overkill for in-memory code analysis
-- rustworkx handles PageRank at 4.9M nodes/sec, betweenness centrality at 104K nodes/sec
-- Contextia already has a production-ready implementation we're porting
+### 3. Treat workflow knowledge as executable metadata, not free-form notes
 
-### Memory Profile
-- Max capacity: 2^32 - 1 nodes and edges (4.3B each)
-- 3-10x less memory than NetworkX for same graph
-- Estimated 50K nodes: ~50MB with lightweight payloads
-- Pre-allocate with `node_count_hint` / `edge_count_hint` to avoid reallocation
+- Fact: Devin blueprints keep `knowledge` entries short and executable, and
+  knowledge retrieval works better with specific triggers.
+- Inference: Contextia's `knowledge()` tool should evolve toward typed,
+  repo-scoped workflow entries such as `lint`, `test`, `build`, `deploy`, and
+  `style`.
+- Hypothesis: Short executable workflow snippets will outperform long prose
+  notes in search precision and agent behavior consistency.
+- Targets: `src/contextia_mcp/server.py`,
+  `src/contextia_mcp/memory/memory_store.py`,
+  `src/contextia_mcp/git/cross_repo.py`.
 
-### What we're porting (from Contextia)
-- `RustworkxCodeGraph` class with thread-safe RLock
-- `PyDiGraph` for directed relationships
-- Node types: MODULE, CLASS, FUNCTION, VARIABLE, PARAMETER, etc. (15 types)
-- Relationship types: CONTAINS, INHERITS, CALLS, IMPORTS, etc. (10 types)
-- Algorithms: PageRank, betweenness centrality, SCC, cycle detection
-- Performance indexes by type and language
+### 4. Make parallel branch work easier without changing the core architecture
 
-### Sources
-- [rustworkx benchmarks](https://www.rustworkx.org/benchmarks.html)
-- [rustworkx paper](https://arxiv.org/pdf/2110.15221)
+- Fact: Windsurf uses per-task worktrees plus a `post_setup_worktree` bootstrap
+  hook; Contextia already tracks repo branch or head metadata and watches branch
+  switches.
+- Inference: Contextia should adapt the isolation idea through optional repo or
+  task helpers instead of making worktrees a hard dependency of search.
+- Hypothesis: Explicit task-isolation metadata and bootstrap hooks will improve
+  multi-repo workflows without breaking host or container path mapping.
+- Targets: `src/contextia_mcp/git/cross_repo.py`,
+  `src/contextia_mcp/git/branch_watcher.py`, `src/contextia_mcp/server.py`.
+- Guardrail: prefer explicit opt-in behavior; avoid automatic worktree creation
+  in the core path until Docker and path-mapping edge cases are benchmarked.
 
----
+### 5. Keep token-efficiency work benchmark-driven
 
-## 4. Memory Optimization for MCP Servers
+- Fact: Anthropic contextual retrieval, NVIDIA's pipeline guidance, Liu et al.,
+  and OpenAI caching all point to selective retrieval rather than brute-force
+  context.
+- Inference: Contextia's current `execution/compaction.py` plus
+  `response_policy.py` direction is correct.
+- Hypothesis: The next tuning win is likely threshold calibration and better
+  resume packets, not larger default payloads. The current `sandbox_rate=0.0`
+  suggests typical workloads do not yet cross the sandbox threshold often.
+- Targets: `src/contextia_mcp/execution/compaction.py`,
+  `src/contextia_mcp/execution/response_policy.py`,
+  `src/contextia_mcp/engines/output_sandbox.py`,
+  `scripts/benchmark_token_efficiency.py`.
 
-### Previous Problem
-Contextia + Contextia running as two separate MCPs consumed 1-2GB+ RAM:
-- PyTorch runtime: ~300-500MB
-- CodeRankEmbed model (removed): ~500MB loaded
-- ChromaDB in-memory index: variable
-- Two Python processes overhead: ~200-400MB
+## Risks and Tradeoffs
 
-### Target: <350MB single process
+- Scoped rules can conflict or go stale. They need priority, dedupe, and
+  visibility.
+- Hook or preflight systems can slow responses or deadlock workflows if they
+  block too aggressively.
+- Worktree or task isolation complicates path mapping, Docker mounts, and
+  untracked files.
+- More durable memory increases the chance of recalling outdated instructions
+  unless TTL, provenance, and pruning are surfaced clearly.
 
-| Component | Strategy | Budget |
-|-----------|----------|--------|
-| Embedding model | jina-code via ONNX (default), GPU/MPS auto | ~67MB |
-| LanceDB | mmap (disk-backed) | ~20-50MB |
-| rustworkx graph | Lightweight payloads | ~50MB |
-| Python + FastMCP | Runtime overhead | ~100MB |
-| **Total** | | **~250-350MB** |
+## Experiments
 
-### Strategies
-1. ONNX Runtime replaces PyTorch (-300-500MB)
-2. jina-code default with ONNX inference; bge-small-en as alternative
-3. LanceDB mmap — vectors on disk, not in RAM
-4. Lazy model loading — only during `index`, not at startup
-5. Model unloading — `del model; gc.collect()` after indexing
-6. Lightweight graph payloads — `{id, name, type, file, line}` only
-7. Batch processing — embed in batches of 32
-8. Connection cleanup — close LanceDB after operations
-9. Periodic GC — `gc.collect()` every 100 tool calls
-10. Memory monitoring — `status` tool reports RSS via `tracemalloc`
+1. Rules experiment: add five repo or path-scoped rules, then track token
+   overhead, fired-rule count, and user prompt repetition.
+2. Resume experiment: compare baseline `session_snapshot()` against an enriched
+   packet on multi-hour tasks; measure follow-up prompt length and recovery
+   accuracy.
+3. Workflow-knowledge experiment: seed typed `lint`, `test`, and `build`
+   entries via `knowledge()`, then measure tool-selection speed and consistency.
+4. Task-isolation experiment: register two repos plus a branch-switch workflow,
+   then measure reindex freshness, path-mapping friction, and branch-watcher
+   correctness.
+5. Token experiment: vary sandbox threshold and preview sizes, rerun
+   `scripts/benchmark_token_efficiency.py`, and verify retrieval quality does
+   not regress.
 
-### MCP Best Practices
-- Close file streams explicitly
-- Use context managers for resource cleanup
-- Monitor for unbounded cache growth
-- Track retained objects preventing GC
-- Use `tracemalloc.take_snapshot()` for profiling
+## Final Recommendation
 
-### Sources
-- [MCP Server Performance Benchmark](https://www.tmdevlab.com/mcp-server-performance-benchmark.html)
-- [MCP Server Memory Management](https://fast.io/resources/mcp-server-memory-management/)
-- [PyTorch Performance Tuning Guide](https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html)
+- Build the next layer around workflow control, not search novelty.
+- The best sequence is:
+  1. Scoped rules plus governance telemetry.
+  2. Stronger resume packets plus relevant memory recall.
+  3. Typed repo-scoped workflow knowledge.
+- Revisit deeper worktree automation or model-default changes only after those
+  three ship and are benchmarked.
 
----
+## Primary Sources
 
-## 5. Dual Parser Strategy
-
-### Why two parsers?
-Each parser excels at a different task:
-
-| Parser | Backend | Purpose | Feeds |
-|--------|---------|---------|-------|
-| **tree-sitter** | C library, grammar packs | Extract code **symbols** with snippets, docstrings, signatures | Vector engine (embeddings) |
-| **ast-grep** | Rust library | Build **structural relationships** (calls, imports, inheritance) | Graph engine (rustworkx) |
-
-### tree-sitter (from Contextia)
-- 9 languages, 28 extensions
-- Extracts: name, type, signature, docstring, line ranges, code_snippet
-- ThreadLocalParserFactory for parallel parsing
-- Max snippet: 4000 chars (~1000-1300 tokens)
-
-### ast-grep (from Contextia)
-- 25+ languages via `ast_grep_py.SgRoot`
-- Extracts: function/class definitions, call sites, imports, inheritance
-- Builds UniversalNode + UniversalRelationship objects
-- Cyclomatic complexity calculation built in
-
-### During indexing, both run:
-1. tree-sitter → Symbol objects → chunker → embeddings → LanceDB vector table
-2. ast-grep → UniversalNode objects → graph_engine → rustworkx PyDiGraph
-
----
-
-## 6. Contextia Analysis (Source Repo)
-
-### Repository
-- GitHub: https://github.com//Contextia
-- Version: 1.2.3 (Jan 2025)
-- Python 3.12+, MIT license
-- Already cloned at `Contextia/` in project
-
-### 9 MCP Tools
-1. `get_usage_guide` — usage guidance
-2. `analyze_codebase` — full project analysis (10-60s, must run first)
-3. `find_definition` — symbol definition lookup (<3s)
-4. `find_references` — cross-file reference tracking (1-3s)
-5. `find_callers` — call graph analysis (1-2s)
-6. `find_callees` — function call detection (1-2s)
-7. `complexity_analysis` — cyclomatic complexity + code smells (5-15s)
-8. `dependency_analysis` — circular dependency detection (3-10s)
-9. `project_statistics` — health metrics (1-3s)
-
-### Key Modules to Port
-| Module | Lines | What it does |
-|--------|-------|-------------|
-| `universal_graph.py` | 318 | Data models: UniversalNode, UniversalRelationship, NodeType (15), RelationshipType (10) |
-| `rustworkx_graph.py` | 1500+ | Thread-safe graph: PyDiGraph, PageRank, centrality, SCC, cycle detection |
-| `universal_parser.py` | 1000+ | ast-grep parser: 25+ languages, LanguageRegistry, LanguageConfig |
-| `universal_ast.py` | 608 | Code analyzer: smells, complexity, dead code, quality metrics |
-| `file_watcher.py` | 264 | Debounced watchdog watcher with async support |
-| `server.py` | 1000+ | MCP server with UniversalAnalysisEngine |
-
----
-
-## 7. Contextia Analysis (Source Repo)
-
-### Repository
-- GitHub: https://github.com/jassskalkat/Contextia
-- Version: 0.2.0 (beta)
-- Python 3.10+, MIT license
-- Already cloned at `Contextia_mcp/` in project
-
-### 8 MCP Tools
-1. `learn` — index codebase (auto/full/load_only modes)
-2. `get_sources` — semantic search with relevance scoring
-3. `get_stats` — indexing statistics
-4. `list_supported_languages` — language support info
-5. `remember` — store semantic memory with TTL
-6. `recall` — retrieve memories via semantic search
-7. `forget` — delete memories
-8. `memory_stats` — memory statistics
-
-### Key Modules to Port
-| Module | Lines | What it does |
-|--------|-------|-------------|
-| `core/models.py` | 503 | Symbol (frozen), ParsedFile, CodebaseIndex, Memory, MemoryType |
-| `parsers/treesitter_parser.py` | 500+ | tree-sitter multi-language parser, 9 languages, 28 extensions |
-| `parsers/language_configs.py` | 200+ | Extension→language mapping, AST node types |
-| `indexing/embedding_service.py` | 488 | SentenceTransformers singleton, batch processing, GPU detection, LRU cache |
-| `indexing/source_retriever.py` | 980+ | ChromaDB vector store, chunking, incremental reindex, file discovery |
-| `indexing/memory_retriever.py` | 500 | Semantic memory CRUD, TTL, tag filtering |
-| `indexing/parallel_indexer.py` | 200+ | ThreadPoolExecutor, progress tracking |
-| `mcp/state.py` | 95 | Session state singleton, IndexingStatus |
-| `mcp/server.py` | 774 | FastMCP server, 8 tools, background indexing |
-
----
-
-## 8. Market Context
-
-### Competitive Landscape (from MARKET_RESEARCH_codegrpk.md)
-- 5,000+ MCP servers in ecosystem
-- No competitor matches all features: hybrid search + code graph + memory + local-only
-- Biggest threat: Continue.dev (open-source, MCP-compatible, larger community)
-- Distribution: published on PyPI (`pip install contextia`), submitted to awesome-mcp-servers
-
-### Unique Selling Points
-1. Fully local/private — zero cloud dependency
-2. MCP-native — purpose-built for MCP protocol
-3. Hybrid search — BM25 + vector + graph (unique combination)
-4. Memory layer — persistent semantic memory across sessions
-5. No API keys required
-6. Explain tool — #1 developer request
-7. Change impact analysis — addresses top refactoring pain point
+1. Anthropic, "Contextual Retrieval" (2024):
+   `https://www.anthropic.com/engineering/contextual-retrieval`
+2. Liu et al., "Lost in the Middle" (2023):
+   `https://arxiv.org/abs/2307.03172`
+3. NVIDIA, "RAG 101: Retrieval-Augmented Generation Questions Answered" (2023):
+   `https://developer.nvidia.com/blog/rag-101-retrieval-augmented-generation-questions-answered/`
+4. NVIDIA, "Finding the Best Chunking Strategy for Accurate AI Responses"
+   (2025):
+   `https://developer.nvidia.com/blog/finding-the-best-chunking-strategy-for-accurate-ai-responses/`
+5. OpenAI, "Prompt Caching in the API" (2024):
+   `https://openai.com/index/api-prompt-caching/`
+6. Windsurf, "Memories & Rules" (accessed 2026-05-06):
+   `https://docs.windsurf.com/windsurf/cascade/memories`
+7. Windsurf, "Cascade Hooks" (accessed 2026-05-06):
+   `https://docs.windsurf.com/windsurf/cascade/hooks`
+8. Windsurf, "Worktrees" (accessed 2026-05-06):
+   `https://docs.windsurf.com/windsurf/cascade/worktrees`
+9. Windsurf, "AGENTS.md" (accessed 2026-05-06):
+   `https://docs.windsurf.com/windsurf/cascade/agents-md`
+10. Devin, "Declarative configuration" (accessed 2026-05-06):
+    `https://docs.devin.ai/onboard-devin/environment/blueprints`
+11. Devin, "Knowledge Onboarding" (accessed 2026-05-06):
+    `https://docs.devin.ai/onboard-devin/knowledge-onboarding`
+12. Google, `gemini-cli` README (accessed 2026-05-06):
+    `https://raw.githubusercontent.com/google-gemini/gemini-cli/main/README.md`
