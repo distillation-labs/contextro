@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Live-reloading Docker dev loop** — `docker-compose.dev.yml` plus `scripts/dev_http_server.py` now run Contextia from source over HTTP, restart automatically when `src/` or `scripts/` change, and preserve warm-started indexes between restarts.
+- **Alpha deployment channel** — `.github/workflows/alpha.yml` now validates, builds, and publishes `ghcr.io/<owner>/contextia-mcp:alpha` and `:alpha-<short-sha>` on `alpha` branch pushes, with optional remote SSH deploy support via `deploy/alpha/`.
+
+### Changed
+- **Stable Docker distribution** — compose/docs now default to GHCR image references (`ghcr.io/<owner>/contextia-mcp`) and stable release publishing skips prereleases so `latest` stays reserved for stable GitHub Releases.
+
 ## [2.0.0] - 2026-05-06
 
 ### Added
