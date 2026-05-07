@@ -85,6 +85,7 @@ def benchmark_session(
     *,
     embedding_model: str = "bge-small-en",
     dims: int = 384,
+    env_overrides: dict[str, str] | None = None,
 ):
     """Create a patched MCP session suitable for lightweight benchmarks."""
 
@@ -95,13 +96,16 @@ def benchmark_session(
 
     storage_dir.mkdir(parents=True, exist_ok=True)
     mock_svc = create_mock_embedding_service(dims)
+    env = {
+        "CTX_STORAGE_DIR": str(storage_dir),
+        "CTX_EMBEDDING_MODEL": embedding_model,
+    }
+    if env_overrides:
+        env.update(env_overrides)
 
     with patch.object(pipeline_module, "get_embedding_service", return_value=mock_svc), patch.dict(
         os.environ,
-        {
-            "CTX_STORAGE_DIR": str(storage_dir),
-            "CTX_EMBEDDING_MODEL": embedding_model,
-        },
+        env,
         clear=False,
     ):
         reset_settings()
