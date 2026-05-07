@@ -83,7 +83,12 @@ def reciprocal_rank(results: list[dict], expected: dict[str, str]) -> float:
     return 0.0
 
 
-async def run_benchmark(codebase_path: Path, query_limit: int, timeout_seconds: int) -> dict:
+async def run_benchmark(
+    codebase_path: Path,
+    query_limit: int,
+    timeout_seconds: int,
+    env_overrides: dict[str, str] | None = None,
+) -> dict:
     """Run retrieval-quality benchmarks across search modes."""
     tmp_dir = Path(tempfile.mkdtemp(prefix="ctx_retrieval_"))
     storage_dir = tmp_dir / ".contextia"
@@ -99,7 +104,11 @@ async def run_benchmark(codebase_path: Path, query_limit: int, timeout_seconds: 
         "modes": {},
     }
 
-    with benchmark_session(storage_dir, dims=384) as (mcp, mock_svc, server_module):
+    with benchmark_session(
+        storage_dir,
+        dims=384,
+        env_overrides=env_overrides,
+    ) as (mcp, mock_svc, server_module):
         index_result = await index_codebase(
             mcp,
             server_module,
