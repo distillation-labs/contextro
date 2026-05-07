@@ -1,6 +1,8 @@
 """Tests for Symbol-to-CodeChunk conversion."""
 
+import pytest
 
+from contextia_mcp.config import reset_settings
 from contextia_mcp.core.models import Symbol, SymbolType
 from contextia_mcp.indexing.chunker import (
     CodeChunk,
@@ -9,6 +11,13 @@ from contextia_mcp.indexing.chunker import (
     create_chunk_text,
     create_chunks,
 )
+
+
+@pytest.fixture(autouse=True)
+def clean_settings():
+    reset_settings()
+    yield
+    reset_settings()
 
 
 def _make_symbol(**overrides) -> Symbol:
@@ -58,11 +67,25 @@ class TestCreateChunkText:
     def test_basic(self):
         sym = _make_symbol()
         text = create_chunk_text(sym)
-        assert "/src/example.py" in text  # filepath appears in contextual header
+        assert "src/example.py" in text
         assert "function: my_func" in text
         assert "def my_func(x: int) -> str:" in text
         assert "A test function." in text
         assert "return str(x)" in text
+
+    def test_context_header_uses_stable_module_name(self):
+        sym = _make_symbol(filepath="/Users/alice/workspace/src/happy.py")
+        text = create_chunk_text(sym)
+        assert "# module: src.happy" in text
+        assert "# module: alice.workspace.src.happy" not in text
+
+    def test_minimal_context_mode(self, monkeypatch):
+        monkeypatch.setenv("CTX_CHUNK_CONTEXT_MODE", "minimal")
+        reset_settings()
+        sym = _make_symbol(filepath="/Users/alice/workspace/src/example.py")
+        text = create_chunk_text(sym)
+        assert "# function: my_func in workspace/src/example.py" in text
+        assert "# module:" not in text
 
     def test_no_docstring(self):
         sym = _make_symbol(docstring="")
