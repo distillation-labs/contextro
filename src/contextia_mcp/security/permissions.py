@@ -32,10 +32,13 @@ TOOL_PERMISSIONS: dict[str, ToolCategory] = {
     "health": ToolCategory.READ,
     "session_snapshot": ToolCategory.READ,
     "retrieve": ToolCategory.READ,
+    "introspect": ToolCategory.READ,
     # Mutating tools (triggers computation, disk writes)
     "index": ToolCategory.MUTATE,
     "analyze": ToolCategory.MUTATE,
     "impact": ToolCategory.MUTATE,
+    "code": ToolCategory.MUTATE,
+    "knowledge": ToolCategory.MUTATE,
     # Write tools (modifies memory store)
     "remember": ToolCategory.WRITE,
     "forget": ToolCategory.WRITE,
