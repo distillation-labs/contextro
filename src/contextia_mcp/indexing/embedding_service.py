@@ -189,32 +189,17 @@ class EmbeddingService:
 
             # Model2Vec: ultra-fast static embeddings (100-500x faster than transformers)
             if backend == "model2vec":
-                try:
-                    from model2vec import StaticModel
-                    # Load from local cache without network calls (force_download=False)
-                    # Falls back to download only if not cached
-                    try:
-                        self._model = StaticModel.from_pretrained(
-                            self.config["hf_name"], force_download=False
-                        )
-                    except Exception:
-                        # Not cached or cache corrupted — download once
-                        self._model = StaticModel.from_pretrained(
-                            self.config["hf_name"], force_download=True
-                        )
-                    self._model_loaded = True
-                    self._is_model2vec = True
-                    logger.info(
-                        "Loaded %s with Model2Vec (static embeddings, ~80k emb/sec)",
-                        self.config["hf_name"],
-                    )
-                    return
-                except ImportError:
-                    logger.warning(
-                        "model2vec not installed, falling back to sentence-transformers. "
-                        "Install: pip install model2vec"
-                    )
-                    # Fall through to sentence-transformers
+                from model2vec import StaticModel
+                self._model = StaticModel.from_pretrained(
+                    self.config["hf_name"], force_download=False
+                )
+                self._model_loaded = True
+                self._is_model2vec = True
+                logger.info(
+                    "Loaded %s with Model2Vec (static embeddings, ~80k emb/sec)",
+                    self.config["hf_name"],
+                )
+                return
 
             self._is_model2vec = False
 
