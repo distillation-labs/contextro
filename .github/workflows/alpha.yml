@@ -1,0 +1,136 @@
+name: Alpha Docker Publish
+
+on:
+  push:
+    branches: [alpha]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the freshly built alpha image after publishing it
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: contextia-alpha
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/contextia-mcp
+
+jobs:
+  validate:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -e ".[dev,reranker,model2vec]"
+      - name: Ruff
+        run: ruff check .
+      - name: Pytest
+        run: pytest -v -m "not slow"
+
+  docker:
+    name: Build and publish alpha image
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.tags.outputs.image_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve image tags
+        id: tags
+        run: |
+          short_sha="${GITHUB_SHA::12}"
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE_NAME}:alpha"
+            echo "${IMAGE_NAME}:alpha-${short_sha}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_NAME}:alpha-${short_sha}" >> "$GITHUB_OUTPUT"
+      - name: Build and push alpha image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy alpha host
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check remote deploy configuration
+        id: deploy_check
+        run: |
+          port="${{ secrets.ALPHA_SSH_PORT }}"
+          remote_dir="${{ secrets.ALPHA_REMOTE_DIR }}"
+          http_port="${{ secrets.ALPHA_HTTP_PORT }}"
+          if [[ -z "${{ secrets.ALPHA_SSH_HOST }}" || -z "${{ secrets.ALPHA_SSH_USER }}" || -z "${{ secrets.ALPHA_SSH_PRIVATE_KEY }}" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Remote deploy secrets not configured; skipping deploy."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "port=${port:-22}" >> "$GITHUB_OUTPUT"
+          echo "remote_dir=${remote_dir:-/opt/contextia-alpha}" >> "$GITHUB_OUTPUT"
+          echo "http_port=${http_port:-8000}" >> "$GITHUB_OUTPUT"
+      - name: Configure SSH
+        if: steps.deploy_check.outputs.enabled == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.ALPHA_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_HOST }}" >> ~/.ssh/known_hosts
+      - name: Upload alpha deployment assets
+        if: steps.deploy_check.outputs.enabled == 'true'
+        run: |
+          ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" \
+            "mkdir -p '${{ steps.deploy_check.outputs.remote_dir }}'"
+          scp -P "${{ steps.deploy_check.outputs.port }}" \
+            deploy/alpha/docker-compose.yml \
+            deploy/alpha/pull-and-restart.sh \
+            "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}:${{ steps.deploy_check.outputs.remote_dir }}/"
+      - name: Write alpha environment file
+        if: steps.deploy_check.outputs.enabled == 'true'
+        run: |
+          ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" <<EOF
+          cat > "${{ steps.deploy_check.outputs.remote_dir }}/.env" <<ENVVARS
+          CONTEXTIA_IMAGE=${{ needs.docker.outputs.image_ref }}
+          ALPHA_HTTP_PORT=${{ steps.deploy_check.outputs.http_port }}
+          ENVVARS
+          chmod +x "${{ steps.deploy_check.outputs.remote_dir }}/pull-and-restart.sh"
+          EOF
+      - name: Pull and restart alpha host
+        if: steps.deploy_check.outputs.enabled == 'true' && (github.event_name == 'push' || github.event.inputs.deploy != 'false')
+        run: |
+          ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" <<EOF
+          cd "${{ steps.deploy_check.outputs.remote_dir }}"
+          export GHCR_USERNAME="${{ github.actor }}"
+          export GHCR_TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          ./pull-and-restart.sh
+          EOF
