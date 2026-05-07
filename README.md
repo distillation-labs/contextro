@@ -302,7 +302,33 @@ When a tool result is very large, Contextia stores it in a sandbox and returns a
 
 ---
 
-## Docker (for teams or remote use)
+## Development HTTP Loop
+
+Use `docker-compose.dev.yml` for the fast edit/test loop. It bind-mounts `src/` and `scripts/`, runs a small supervisor that watches for source changes, and restarts the HTTP MCP process automatically without rebuilding the image.
+
+```bash
+# Point Contextia at the repo you want it to index
+export CTX_CODEBASE_HOST_PATH=/Users/you/myproject
+
+# Start the live-reloading dev server
+docker compose -f docker-compose.dev.yml up --build
+```
+
+What this gives you:
+
+- code changes under `src/` and `scripts/` restart the MCP server automatically
+- the MCP URL stays stable at `http://localhost:8000/mcp`
+- `CTX_AUTO_WARM_START=true` restores the previous index after each restart
+- you only need a rebuild when dependencies or the Docker image itself change
+
+Important:
+
+- behavior changes can usually be tested immediately after the server restarts
+- tool schema changes may still require the MCP client to reconnect and refresh tool definitions
+
+---
+
+## Docker (stable image)
 
 If you want to run Contextia on a server and share it across a team:
 
@@ -311,7 +337,7 @@ If you want to run Contextia on a server and share it across a team:
 services:
   contextia:
     container_name: contextia-mcp
-    image: jassskalkat/contextia-mcp:latest
+    image: ghcr.io/jassskalkat/contextia-mcp:latest
     ports:
       - "8000:8000"
     volumes:
@@ -328,6 +354,8 @@ services:
       CTX_AUTO_WARM_START: "true"
       CTX_COMMIT_HISTORY_ENABLED: "true"
       CTX_FILE_WATCHER_ENABLED: "false"
+      CTX_SEARCH_CACHE_TTL_SECONDS: "300"
+      CTX_SEARCH_SANDBOX_TTL_SECONDS: "600"
       CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS: "1200"
       CTX_SEARCH_PREVIEW_RESULTS: "4"
       CTX_SEARCH_PREVIEW_CODE_CHARS: "220"
@@ -349,10 +377,37 @@ Contextia now auto-remaps that host path to `/repos/platform` inside the contain
 Pull the published image directly with:
 
 ```bash
-docker pull jassskalkat/contextia-mcp:latest
+docker pull ghcr.io/jassskalkat/contextia-mcp:latest
 ```
 
 The shipped image is multi-stage: build-only compilers stay out of the runtime layer, the virtualenv is copied forward, and the default Model2Vec embedding is pre-cached for predictable cold starts.
+
+---
+
+## Alpha Channel
+
+The repo now supports a separate alpha deployment loop for live MCP validation without touching `latest`:
+
+1. Push changes to the `alpha` branch.
+2. GitHub Actions runs lint + tests.
+3. It publishes:
+   - `ghcr.io/<owner>/contextia-mcp:alpha`
+   - `ghcr.io/<owner>/contextia-mcp:alpha-<short-sha>`
+4. If SSH deployment secrets are configured, the workflow also updates a remote alpha host in place.
+
+Required secrets for automatic remote alpha deploy:
+
+- `ALPHA_SSH_HOST`
+- `ALPHA_SSH_USER`
+- `ALPHA_SSH_PRIVATE_KEY`
+
+Optional secrets:
+
+- `ALPHA_SSH_PORT` (default `22`)
+- `ALPHA_REMOTE_DIR` (default `/opt/contextia-alpha`)
+- `ALPHA_HTTP_PORT` (default `8000`)
+
+The alpha deploy uses `deploy/alpha/docker-compose.yml` and defaults to a persistent `/data` volume only. If you want the alpha host to index a fixed external codebase, add a bind mount there or call `index(path="/app/src")` to smoke-test against the code shipped inside the image.
 
 ---
 
@@ -365,9 +420,18 @@ All settings are environment variables with the `CTX_` prefix:
 | `CTX_STORAGE_DIR` | `~/.contextia` | Where the index is stored |
 | `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model (see below) |
 | `CTX_AUTO_WARM_START` | `false` | Restore index on restart without re-indexing |
+| `CTX_CHUNK_CONTEXT_MODE` | `rich` | Chunk header style: `minimal` or `rich`. The default `smart` profile uses `rich`. |
+| `CTX_CHUNK_CONTEXT_PATH_DEPTH` | `4` | How many path segments to keep in chunk context |
+| `CTX_SMART_CHUNK_RELATIONSHIPS_ENABLED` | `true` | Index caller→callee relationship chunks. Enabled in the default `smart` profile. |
+| `CTX_SMART_CHUNK_FILE_CONTEXT_ENABLED` | `true` | Index file-overview chunks. Enabled in the default `smart` profile. |
 | `CTX_RELEVANCE_THRESHOLD` | `0.40` | How strict search filtering is (0–1) |
 | `CTX_SEARCH_MODE` | `hybrid` | `hybrid`, `vector`, or `bm25` |
+| `CTX_SEARCH_CACHE_MAX_SIZE` | `128` | Max cached search responses kept per session |
+| `CTX_SEARCH_CACHE_SIMILARITY_THRESHOLD` | `0.92` | Semantic cache reuse threshold |
+| `CTX_SEARCH_CACHE_TTL_SECONDS` | `300` | Expire stale cached search responses after this many seconds |
 | `CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS` | `1200` | Sandbox oversized search responses above this token estimate |
+| `CTX_SEARCH_SANDBOX_MAX_ENTRIES` | `100` | Max sandboxed payloads retained in memory |
+| `CTX_SEARCH_SANDBOX_TTL_SECONDS` | `600` | Expire stale sandbox payloads after this many seconds |
 | `CTX_SEARCH_PREVIEW_RESULTS` | `4` | How many preview results stay inline when search sandboxes output |
 | `CTX_SEARCH_PREVIEW_CODE_CHARS` | `220` | Code preview length for sandboxed search hits |
 | `CTX_MAX_MEMORY_MB` | `350` | RAM budget |
@@ -376,6 +440,24 @@ All settings are environment variables with the `CTX_` prefix:
 | `CTX_REALTIME_INDEXING_ENABLED` | `true` | Auto-reindex on branch switch |
 | `CTX_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `CTX_TRANSPORT` | `stdio` | `stdio` (local) or `http` (Docker/remote) |
+
+### Chunk profiles
+
+The current default chunking setup is the benchmark-backed `smart` profile:
+
+- `CTX_CHUNK_CONTEXT_MODE=rich`
+- `CTX_SMART_CHUNK_RELATIONSHIPS_ENABLED=true`
+- `CTX_SMART_CHUNK_FILE_CONTEXT_ENABLED=true`
+
+In the current in-repo benchmark on `src` with `20` generated queries, `smart` kept the best overall retrieval balance:
+
+| Profile | Hybrid MRR | Hybrid Recall@5 | Hybrid Avg Tokens | Vector MRR | Index Chunks |
+|---|---:|---:|---:|---:|---:|
+| `smart` (default) | `0.625` | `0.9` | `491` | `0.625` | `1223` |
+| `contextual` | `0.625` | `0.9` | `510` | `0.533` | `672` |
+| `minimal` | `0.55` | `0.55` | `450` | `0.55` | `672` |
+
+Use `minimal` only when smaller index footprint matters more than retrieval quality. Use `contextual` if you want rich symbol headers without the extra relationship and file-overview chunks. Keep `smart` as the default when search quality is the primary goal.
 
 ### Embedding models
 
@@ -405,6 +487,9 @@ When you call `search("how does auth work")`, Contextia:
 8. Compresses snippets, applies any inline context budget, and sandboxes oversized payloads
 9. Returns a `confidence` field (`high`/`medium`/`low`), token count, and `sandbox_ref` when needed
 
+The response-assembly policy now lives in `execution/response_policy.py`, which keeps token budgeting,
+preview shaping, and sandbox handoff separate from retrieval/ranking logic.
+
 Every step is backed by published research. See [CONTRIBUTING.md](CONTRIBUTING.md) for citations.
 
 ---
@@ -420,13 +505,19 @@ pip install -e ".[dev,reranker,model2vec]"
 
 pytest -v
 ruff check .
+docker compose -f docker-compose.dev.yml up --build
 python scripts/benchmark_token_efficiency.py
 python scripts/benchmark_retrieval_quality.py --path src --query-limit 20
+python scripts/benchmark_chunk_profiles.py --path src --query-limit 20
 BROWSER_USE_PATH=/path/to/browser-use python scripts/benchmark_browser_use.py
 contextia          # run the server
 ```
 
 When changing search/snippet compression, capture the token-efficiency benchmark and the retrieval-quality scorecard before and after with the same query limit so token savings never come at the cost of Recall@K / MRR quality regressions.
+
+Run the benchmark scripts from the activated project venv with `python`, or use an explicit Python `3.10`-`3.12` interpreter such as `python3.11` or `python3.12`.
+
+Use `docker-compose.dev.yml` for the inner MCP loop and `alpha` branch pushes for the hosted alpha loop. Do not use stable image publishes as the day-to-day development loop.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details, how to add tools, and PR guidelines.
 
