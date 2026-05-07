@@ -97,6 +97,13 @@ class TestRelationshipChunks:
         assert "get_user" in auth_chunk.text
         assert "create_session" in auth_chunk.text
 
+    def test_relationship_chunks_normalize_file_paths(self, sample_symbols):
+        chunks = create_relationship_chunks(sample_symbols)
+        auth_chunk = next((c for c in chunks if "authenticate" in c.symbol_name), None)
+        assert auth_chunk is not None
+        assert "file: app/auth.py" in auth_chunk.text
+        assert "/app/auth.py" not in auth_chunk.text
+
     def test_chunk_has_correct_metadata(self, sample_symbols):
         chunks = create_relationship_chunks(sample_symbols)
         for chunk in chunks:
@@ -139,6 +146,12 @@ class TestFileContextChunks:
         assert "authenticate" in auth_chunk.text
         assert "verify_password" in auth_chunk.text
         assert "get_user" in auth_chunk.text
+
+    def test_file_context_chunks_normalize_file_paths(self, sample_symbols):
+        chunks = create_file_context_chunks(sample_symbols)
+        auth_chunk = next((c for c in chunks if "auth.py" in c.filepath), None)
+        assert auth_chunk is not None
+        assert "# File overview: app/auth.py" in auth_chunk.text
 
     def test_chunk_contains_imports(self, sample_symbols):
         chunks = create_file_context_chunks(sample_symbols)
