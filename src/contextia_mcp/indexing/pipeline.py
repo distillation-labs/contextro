@@ -19,18 +19,15 @@ from contextia_mcp.engines.graph_engine import RustworkxCodeGraph
 from contextia_mcp.engines.vector_engine import LanceDBVectorEngine
 from contextia_mcp.indexing.chunker import create_chunks
 from contextia_mcp.indexing.embedding_service import get_embedding_service
+from contextia_mcp.indexing.file_discovery import SKIP_DIRS, discover_files
 from contextia_mcp.indexing.parallel_indexer import parallel_parse_files
 from contextia_mcp.indexing.smart_chunker import create_smart_chunks
 from contextia_mcp.parsing.astgrep_parser import AstGrepParser
-from contextia_mcp.parsing.language_registry import get_supported_extensions
 
 logger = logging.getLogger(__name__)
 
-SKIP_DIRS: Set[str] = {
-    ".git", "node_modules", "__pycache__", ".contextia", "venv", ".venv",
-    ".tox", ".mypy_cache", ".pytest_cache", "dist", "build", ".eggs",
-    ".ruff_cache", ".hg", ".svn", "storage",
-}
+__all__ = ["SKIP_DIRS", "discover_files", "IndexResult", "IndexingPipeline"]
+
 METADATA_VERSION = 2
 FINGERPRINTS_KEY = "fingerprints"
 LEGACY_FILE_STATE_KEY = "mtimes"
@@ -54,89 +51,6 @@ class IndexResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
-
-
-def discover_files(root: Path, settings: Settings) -> List[Path]:
-    """Discover source files under root, respecting .gitignore and size limits.
-
-    Uses Rust-accelerated parallel walker when ctx_fast is available,
-    falling back to Python os.walk + pathspec otherwise.
-
-    Filters:
-    - Skips SKIP_DIRS (hidden dirs, node_modules, etc.)
-    - Skips files not in EXTENSION_MAP
-    - Skips files exceeding max_file_size_mb
-    - Respects .gitignore
-    """
-    from contextia_mcp.accelerator import RUST_AVAILABLE, discover_files_fast
-
-    supported_extensions = get_supported_extensions()
-    max_size = settings.max_file_size_mb * 1024 * 1024
-    root = root.resolve()
-
-    if RUST_AVAILABLE:
-        # Use Rust parallel walker (5-20x faster on large codebases)
-        # Note: The `ignore` crate requires a git repo for .gitignore to work.
-        # For non-git directories with .gitignore files, fall back to Python.
-        gitignore_exists = (root / ".gitignore").exists()
-        is_git = (root / ".git").is_dir()
-
-        if not gitignore_exists or is_git:
-            file_strs = discover_files_fast(
-                str(root),
-                extensions=supported_extensions,
-                max_file_size_bytes=max_size,
-                skip_dirs=SKIP_DIRS,
-            )
-            return [Path(f) for f in file_strs]
-
-    # Python fallback
-    # Load .gitignore patterns if available
-    gitignore_spec = None
-    gitignore_path = root / ".gitignore"
-    if gitignore_path.exists():
-        try:
-            import pathspec
-            patterns = gitignore_path.read_text().splitlines()
-            gitignore_spec = pathspec.PathSpec.from_lines("gitignore", patterns)
-        except ImportError:
-            logger.debug("pathspec not installed, skipping .gitignore support")
-        except Exception as e:
-            logger.warning("Failed to parse .gitignore: %s", e)
-
-    files: List[Path] = []
-
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Prune skip dirs in-place
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in SKIP_DIRS and not d.startswith(".")
-        ]
-
-        for filename in filenames:
-            filepath = Path(dirpath) / filename
-            ext = filepath.suffix.lower()
-
-            # Check extension
-            if ext not in supported_extensions:
-                continue
-
-            # Check .gitignore
-            if gitignore_spec:
-                rel = filepath.relative_to(root)
-                if gitignore_spec.match_file(str(rel)):
-                    continue
-
-            # Check file size
-            try:
-                if filepath.stat().st_size > max_size:
-                    continue
-            except OSError:
-                continue
-
-            files.append(filepath)
-
-    return sorted(files)
 
 
 def _transfer_graph(universal_graph: UniversalGraph, code_graph: RustworkxCodeGraph) -> None:
@@ -187,12 +101,59 @@ class IndexingPipeline:
         return self._vector_engine
 
     @property
+    def settings(self) -> Settings:
+        return self._settings
+
+    @property
     def bm25_engine(self) -> LanceDBBM25Engine:
         return self._bm25_engine
 
     @property
     def graph_engine(self) -> RustworkxCodeGraph:
         return self._graph_engine
+
+    def _parse_astgrep_batch(self, batch_files: List[Path]) -> None:
+        """Parse a file batch with ast-grep and merge it into the shared graph."""
+        if self._settings.skip_astgrep:
+            return
+
+        parseable_files = [f for f in batch_files if self._astgrep.can_parse(str(f))]
+        if not parseable_files:
+            return
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        universal_graph = UniversalGraph()
+        max_workers = min(self._settings.max_workers or os.cpu_count() or 8, len(parseable_files))
+
+        def _parse_one(filepath: Path) -> UniversalGraph:
+            local_graph = UniversalGraph()
+            try:
+                self._astgrep.parse_file(str(filepath), local_graph)
+            except Exception as exc:
+                logger.warning("ast-grep failed for %s: %s", filepath, exc)
+            return local_graph
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_parse_one, filepath) for filepath in parseable_files]
+            for future in as_completed(futures):
+                local_graph = future.result()
+                for node in local_graph.nodes.values():
+                    universal_graph.nodes[node.id] = node
+                for rel in local_graph.relationships.values():
+                    universal_graph.relationships[rel.id] = rel
+
+        _transfer_graph(universal_graph, self._graph_engine)
+
+    def _persist_graph(self) -> None:
+        """Persist the current graph for warm-start recovery."""
+        from contextia_mcp.persistence.store import GraphPersistence
+
+        persistence = GraphPersistence(str(self._settings.graph_path))
+        try:
+            persistence.save(self._graph_engine)
+        except Exception as exc:
+            logger.warning("Failed to persist graph: %s", exc)
 
     def _ensure_symbols_in_graph(self, symbols: List) -> None:
         """Ensure all tree-sitter symbols have corresponding graph nodes.
@@ -373,7 +334,11 @@ class IndexingPipeline:
             all_chunk_dicts.extend(c.to_dict() for c in batch_chunks)
 
         # Smart context chunks (relationship + file overview)
-        smart_chunks = create_smart_chunks(symbols)
+        smart_chunks = create_smart_chunks(
+            symbols,
+            include_relationships=self._settings.smart_chunk_relationships_enabled,
+            include_file_context=self._settings.smart_chunk_file_context_enabled,
+        )
         if smart_chunks:
             for i in range(0, len(smart_chunks), batch_size):
                 batch = smart_chunks[i : i + batch_size]
@@ -388,8 +353,6 @@ class IndexingPipeline:
         # Write all chunks to LanceDB in one batch (much faster than many small writes)
         if all_chunk_dicts:
             self._vector_engine.add(all_chunk_dicts)
-
-        return total_chunks
 
         return total_chunks
 
@@ -435,37 +398,7 @@ class IndexingPipeline:
                 total_parse_errors += parse_errors
                 total_symbols += len(symbols)
 
-                # Parse graph structure with ast-grep (parallel per-file)
-                # Skip if configured for faster indexing — tree-sitter handles most cases
-                if not self._settings.skip_astgrep:
-                    parseable_files = [
-                        f for f in batch_files if self._astgrep.can_parse(str(f))
-                    ]
-                    if parseable_files:
-                        from concurrent.futures import ThreadPoolExecutor, as_completed
-                        universal_graph = UniversalGraph()
-                        max_workers = min(self._settings.max_workers or os.cpu_count() or 8, len(parseable_files))
-
-                        def _parse_one(fp):
-                            local_graph = UniversalGraph()
-                            try:
-                                self._astgrep.parse_file(str(fp), local_graph)
-                            except Exception as e:
-                                logger.warning("ast-grep failed for %s: %s", fp, e)
-                            return local_graph
-
-                        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                            futures = [executor.submit(_parse_one, fp) for fp in parseable_files]
-                            for future in as_completed(futures):
-                                local_graph = future.result()
-                                # Merge into main graph
-                                for node in local_graph.nodes.values():
-                                    universal_graph.nodes[node.id] = node
-                                for rel in local_graph.relationships.values():
-                                    universal_graph.relationships[rel.id] = rel
-
-                        _transfer_graph(universal_graph, self._graph_engine)
-                        del universal_graph
+                self._parse_astgrep_batch(batch_files)
 
                 # Ensure all tree-sitter symbols are in the graph (handles
                 # decorated/typed functions that ast-grep misses)
@@ -501,13 +434,7 @@ class IndexingPipeline:
             # Save metadata
             self._save_metadata(codebase_path, files)
 
-            # Persist graph to SQLite for warm-start on next launch
-            from contextia_mcp.persistence.store import GraphPersistence
-            persistence = GraphPersistence(str(self._settings.graph_path))
-            try:
-                persistence.save(self._graph_engine)
-            except Exception as e:
-                logger.warning("Failed to persist graph: %s", e)
+            self._persist_graph()
         finally:
             # Always unload model to free RAM
             self._embedding_service.unload()
@@ -670,31 +597,7 @@ class IndexingPipeline:
                 parse_errors += batch_errors
                 total_symbols += len(symbols)
 
-                # ast-grep for this batch (parallel)
-                parseable_files = [f for f in batch_files if self._astgrep.can_parse(str(f))]
-                if parseable_files:
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
-                    universal_graph = UniversalGraph()
-                    max_workers = min(self._settings.max_workers or os.cpu_count() or 8, len(parseable_files))
-
-                    def _parse_one_incr(fp):
-                        local_graph = UniversalGraph()
-                        try:
-                            self._astgrep.parse_file(str(fp), local_graph)
-                        except Exception as e:
-                            logger.warning("ast-grep failed for %s: %s", fp, e)
-                        return local_graph
-
-                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                        futures = [executor.submit(_parse_one_incr, fp) for fp in parseable_files]
-                        for future in as_completed(futures):
-                            local_graph = future.result()
-                            for node in local_graph.nodes.values():
-                                universal_graph.nodes[node.id] = node
-                            for rel in local_graph.relationships.values():
-                                universal_graph.relationships[rel.id] = rel
-                    _transfer_graph(universal_graph, self._graph_engine)
-                    del universal_graph
+                self._parse_astgrep_batch(batch_files)
 
                 # Ensure tree-sitter symbols are in the graph
                 self._ensure_symbols_in_graph(symbols)
@@ -718,13 +621,7 @@ class IndexingPipeline:
             # Save updated metadata
             self._save_metadata(codebase_path, files)
 
-            # Persist updated graph
-            from contextia_mcp.persistence.store import GraphPersistence
-            persistence = GraphPersistence(str(self._settings.graph_path))
-            try:
-                persistence.save(self._graph_engine)
-            except Exception as e:
-                logger.warning("Failed to persist graph after incremental index: %s", e)
+            self._persist_graph()
         finally:
             self._embedding_service.unload()
 
@@ -785,6 +682,7 @@ class IndexingPipeline:
         total_parse_errors = 0
         all_indexed_files: List[Path] = []
         seen_files: Set[str] = set()
+        all_symbols_for_graph: List = []
 
         file_batch_size = self._settings.index_file_batch_size
         embed_batch_size = self._settings.embedding_batch_size
@@ -821,16 +719,9 @@ class IndexingPipeline:
                     total_parse_errors += parse_errors
                     total_symbols += len(symbols)
 
-                    # Parse graph structure with ast-grep (additive)
-                    universal_graph = UniversalGraph()
-                    for filepath in batch_files:
-                        if self._astgrep.can_parse(str(filepath)):
-                            try:
-                                self._astgrep.parse_file(str(filepath), universal_graph)
-                            except Exception as e:
-                                logger.warning("ast-grep failed for %s: %s", filepath, e)
-                    _transfer_graph(universal_graph, self._graph_engine)
-                    del universal_graph
+                    self._parse_astgrep_batch(batch_files)
+                    self._ensure_symbols_in_graph(symbols)
+                    all_symbols_for_graph.extend((symbol.name, symbol.calls) for symbol in symbols if symbol.calls)
 
                     # Chunk, embed, store
                     total_chunks += self._embed_and_store_symbols(symbols, embed_batch_size)
@@ -841,6 +732,8 @@ class IndexingPipeline:
                     root.name, len(files),
                 )
 
+            self._build_call_edges_post_pass(all_symbols_for_graph)
+
             # Build FTS index once after all folders
             if total_chunks > 0:
                 self._bm25_engine.clear()
@@ -848,6 +741,7 @@ class IndexingPipeline:
 
             # Save metadata for all roots
             self._save_multi_metadata(resolved_paths, all_indexed_files)
+            self._persist_graph()
         finally:
             # Always unload model to free RAM
             self._embedding_service.unload()
