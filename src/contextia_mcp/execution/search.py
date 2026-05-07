@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import logging
+import re as _re
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,9 +14,34 @@ from contextia_mcp.execution.compaction import (
     CodeCompressionBudgets,
     SearchResultCompactor,
 )
+from contextia_mcp.execution.response_policy import SearchResponsePolicy, SearchResponseSettings
 from contextia_mcp.execution.runtime import SearchRuntime
 
 logger = logging.getLogger(__name__)
+
+_SYMBOL_RE = _re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_CAMEL_RE = _re.compile(r'[a-z][A-Z]|[A-Z]{2,}[a-z]')
+
+
+def classify_query(query: str) -> str:
+    """Classify query intent to route to the most relevant retrievers.
+
+    Returns:
+        'symbol'   — single identifier (PascalCase/snake_case/camelCase) → BM25 + graph only
+        'natural'  — multi-word natural language → vector + graph only
+        'hybrid'   — ambiguous or mixed → all retrievers (default)
+    """
+    q = query.strip()
+    if not q:
+        return "hybrid"
+    # Single token that looks like a code identifier
+    if _SYMBOL_RE.match(q) or (len(q.split()) == 1 and (_CAMEL_RE.search(q) or '_' in q)):
+        return "symbol"
+    # Multi-word natural language (5+ words, no identifier-like tokens)
+    words = q.split()
+    if len(words) >= 5 and not any(_CAMEL_RE.search(w) or '_' in w for w in words):
+        return "natural"
+    return "hybrid"
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +68,10 @@ class SearchExecutionEngine:
         self._compactor = SearchResultCompactor(
             codebase_paths=runtime.codebase_paths,
             budgets=CodeCompressionBudgets.from_settings(runtime.settings),
+        )
+        self._response_policy = SearchResponsePolicy(
+            output_sandbox=runtime.output_sandbox,
+            settings=SearchResponseSettings.from_settings(runtime.settings),
         )
 
     def execute(self, options: SearchExecutionOptions) -> dict[str, Any]:
@@ -85,14 +114,11 @@ class SearchExecutionEngine:
         results = self._apply_bookend_ordering(results)
 
         confidence = self._calculate_confidence(results)
-        full_results = [dict(result) for result in results]
-        response = self._build_response(options.query, results, confidence)
-        response, budget_applied = self._apply_context_budget(response, options.context_budget)
-        response = self._maybe_sandbox_response(
+        response = self._response_policy.build(
             query=options.query,
-            response=response,
-            full_results=full_results,
-            budget_applied=budget_applied,
+            results=results,
+            confidence=confidence,
+            context_budget=options.context_budget,
         )
 
         self.runtime.query_cache.put(
@@ -113,6 +139,8 @@ class SearchExecutionEngine:
 
     def _query_embedding(self, options: SearchExecutionOptions) -> list[float] | None:
         if options.mode not in ("hybrid", "vector") or not self.runtime.vector_engine:
+            return None
+        if options.mode == "hybrid" and classify_query(options.query) == "symbol":
             return None
 
         try:
@@ -141,7 +169,13 @@ class SearchExecutionEngine:
         engines_used: list[str] = []
         overfetch = limit * 2
 
-        if options.mode in ("hybrid", "vector") and self.runtime.vector_engine:
+        # Route query to skip unnecessary retrievers
+        route = classify_query(options.query) if options.mode == "hybrid" else "hybrid"
+        use_vector = options.mode in ("hybrid", "vector") and route != "symbol"
+        use_bm25 = options.mode in ("hybrid", "bm25") and route != "natural"
+        use_graph = options.mode == "hybrid"
+
+        if use_vector and self.runtime.vector_engine:
             try:
                 vector_kwargs = dict(filters)
                 if query_embedding is not None:
@@ -156,7 +190,7 @@ class SearchExecutionEngine:
             except Exception as exc:
                 logger.warning("Vector search failed: %s", exc)
 
-        if options.mode in ("hybrid", "bm25") and self.runtime.bm25_engine:
+        if use_bm25 and self.runtime.bm25_engine:
             try:
                 bm25_results = self.runtime.bm25_engine.search(
                     options.query,
@@ -169,7 +203,7 @@ class SearchExecutionEngine:
             except Exception as exc:
                 logger.warning("BM25 search failed: %s", exc)
 
-        if options.mode == "hybrid" and self.runtime.graph_engine:
+        if use_graph and self.runtime.graph_engine:
             try:
                 graph_results = graph_relevance_search(
                     self.runtime.graph_engine,
@@ -345,7 +379,10 @@ class SearchExecutionEngine:
             return results
 
         should_run = options.live_grep or (
-            options.mode == "hybrid" and len(results) < limit and not options.language
+            options.mode == "hybrid"
+            and len(results) < limit
+            and not options.language
+            and self._should_auto_live_grep(options.query)
         )
         if not should_run:
             return results
@@ -371,6 +408,17 @@ class SearchExecutionEngine:
             engines_used.append("live_grep")
 
         return results
+
+    @staticmethod
+    def _should_auto_live_grep(query: str) -> bool:
+        stripped = query.strip()
+        if not stripped:
+            return False
+
+        # Multi-word natural-language queries are better served by the indexed
+        # engines. Falling back to repo-wide grep for those queries can turn a
+        # partial search result into a minutes-long scan.
+        return len(stripped.split()) == 1
 
     def _compact_results(
         self, results: list[dict[str, Any]], query: str
@@ -401,109 +449,3 @@ class SearchExecutionEngine:
         if top >= 0.5 or len(results) >= 3:
             return "medium"
         return "low"
-
-    @staticmethod
-    def _build_response(
-        query: str,
-        results: list[dict[str, Any]],
-        confidence: str,
-    ) -> dict[str, Any]:
-        response = {
-            "query": query,
-            "total": len(results),
-            "confidence": confidence,
-            "results": results,
-        }
-        response["tokens"] = len(json.dumps(response, default=str)) // 4
-        return response
-
-    @staticmethod
-    def _apply_context_budget(
-        response: dict[str, Any], context_budget: int
-    ) -> tuple[dict[str, Any], bool]:
-        if context_budget <= 0 or not response["results"]:
-            return response, False
-
-        budget_chars = context_budget * 4
-        kept: list[dict[str, Any]] = []
-        used = 0
-        for result in response["results"]:
-            result_size = len(json.dumps(result, default=str))
-            if used + result_size > budget_chars and kept:
-                break
-            kept.append(result)
-            used += result_size
-
-        if not kept:
-            return response, False
-
-        updated = dict(response)
-        updated["results"] = kept
-        updated["total"] = len(kept)
-        updated["tokens"] = len(json.dumps(updated, default=str)) // 4
-        updated["budget_applied"] = True
-        return updated, True
-
-    def _maybe_sandbox_response(
-        self,
-        query: str,
-        response: dict[str, Any],
-        full_results: list[dict[str, Any]],
-        budget_applied: bool,
-    ) -> dict[str, Any]:
-        if not full_results:
-            return response
-
-        threshold = self.settings.search_sandbox_threshold_tokens
-        should_sandbox = budget_applied or response.get("tokens", 0) > threshold
-        if not should_sandbox:
-            return response
-
-        payload = json.dumps(
-            {
-                "query": query,
-                "confidence": response.get("confidence", "low"),
-                "results": full_results,
-            },
-            indent=2,
-            default=str,
-        )
-        sandbox_ref = self.runtime.output_sandbox.store(
-            payload,
-            metadata={"query": query, "total": len(full_results)},
-        )
-
-        preview_results = (
-            response["results"]
-            if budget_applied
-            else self._preview_results(full_results)
-        )
-        preview = dict(response)
-        preview["results"] = preview_results
-        preview["total"] = len(preview_results)
-        preview["full_total"] = len(full_results)
-        preview["sandbox_ref"] = sandbox_ref
-        preview["sandboxed"] = True
-        preview["hint"] = (
-            "Call retrieve() with sandbox_ref to inspect the full result set."
-            if not budget_applied
-            else (
-                "Inline results were budget-trimmed. "
-                "Call retrieve() with sandbox_ref for the full set."
-            )
-        )
-        preview["tokens"] = len(json.dumps(preview, default=str)) // 4
-        return preview
-
-    def _preview_results(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        preview_count = max(1, self.settings.search_preview_results)
-        code_chars = max(80, self.settings.search_preview_code_chars)
-
-        preview: list[dict[str, Any]] = []
-        for index, result in enumerate(results[:preview_count]):
-            entry = dict(result)
-            if index > 0 and entry.get("code"):
-                code = entry["code"]
-                entry["code"] = code[:code_chars] + ("…" if len(code) > code_chars else "")
-            preview.append(entry)
-        return preview
