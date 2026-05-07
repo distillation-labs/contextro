@@ -26,8 +26,8 @@
       },
       "CTX_EMBEDDING_MODEL": {
         "type": "string",
-        "description": "Embedding model (jina-code, bge-small-en)",
-        "default": "jina-code"
+        "description": "Embedding model (potion-code-16m)",
+        "default": "potion-code-16m"
       },
       "CTX_COMMIT_HISTORY_ENABLED": {
         "type": "string",

@@ -14,11 +14,10 @@ startCommand:
         default: ".contextia"
       embedding_model:
         type: "string"
-        description: "Embedding model: jina-code (default, 768d) or bge-small-en (384d)"
-        default: "jina-code"
+        description: "Embedding model: potion-code-16m (256d, 55k/sec)"
+        default: "potion-code-16m"
         enum:
-          - "jina-code"
-          - "bge-small-en"
+          - "potion-code-16m"
       max_memory_mb:
         type: "integer"
         description: "Memory budget in MB"
@@ -46,7 +45,7 @@ startCommand:
       args: [],
       env: {
         CTX_STORAGE_DIR: config.storage_dir || '.contextia',
-        CTX_EMBEDDING_MODEL: config.embedding_model || 'jina-code',
+        CTX_EMBEDDING_MODEL: config.embedding_model || 'potion-code-16m',
         CTX_MAX_MEMORY_MB: String(config.max_memory_mb || 350),
         CTX_SEARCH_MODE: config.search_mode || 'hybrid',
         CTX_LOG_LEVEL: config.log_level || 'INFO',

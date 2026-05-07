@@ -43,10 +43,125 @@ _index_job_lock = threading.Lock()
 def create_server():
     """Create and configure the FastMCP server."""
     from fastmcp import FastMCP
+    from fastmcp.tools.tool import ToolResult
+    from mcp.types import TextContent
 
     from contextia_mcp.core.graph_models import UniversalNode, UniversalRelationship
 
     mcp = FastMCP("Contextia")
+
+    def _fmt_text(data: dict) -> str:
+        """Render a tool result dict as a compact human-readable string.
+
+        Produces a key: value block that agents can read without parsing JSON.
+        Nested dicts are indented one level; lists are comma-joined or line-listed.
+        """
+        lines = []
+        for k, v in data.items():
+            if isinstance(v, dict):
+                lines.append(f"{k}:")
+                for dk, dv in v.items():
+                    lines.append(f"  {dk}: {dv}")
+            elif isinstance(v, list):
+                if not v:
+                    lines.append(f"{k}: (none)")
+                elif all(isinstance(i, str) for i in v):
+                    lines.append(f"{k}: {', '.join(v)}")
+                else:
+                    lines.append(f"{k}:")
+                    for item in v:
+                        if isinstance(item, dict):
+                            # compact single-line for small dicts (search results etc.)
+                            parts = "  " + "  ".join(f"{ik}: {iv}" for ik, iv in item.items() if iv not in (None, "", [], {}))
+                            lines.append(parts)
+                        else:
+                            lines.append(f"  {item}")
+            else:
+                lines.append(f"{k}: {v}")
+        return "\n".join(lines)
+
+    def _fmt_search(data: dict) -> str:
+        """Human-readable formatter for search results."""
+        lines = [
+            f"query: {data.get('query', '')}",
+            f"confidence: {data.get('confidence', '?')}  total: {data.get('total', 0)}  tokens: {data.get('tokens', '?')}",
+        ]
+        if data.get("sandboxed"):
+            lines.append(f"[sandboxed — {data.get('full_total')} results, sandbox_ref: {data.get('sandbox_ref')}]")
+            lines.append(data.get("hint", ""))
+        for r in data.get("results", []):
+            lines.append("")
+            lines.append(f"  {r.get('name', r.get('symbol_name', '?'))}  ({r.get('file', r.get('filepath', '?'))}:{r.get('line', r.get('line_start', '?'))})")
+            lines.append(f"  type: {r.get('language', '?')} {r.get('symbol_type', '')}  score: {r.get('score', '?')}  match: {r.get('match', '?')}")
+            code = r.get("code", "")
+            if code:
+                lines.append("  ---")
+                for cl in code.splitlines()[:6]:
+                    lines.append(f"  {cl}")
+        return "\n".join(lines)
+
+    def _fmt_symbols(data: dict) -> str:
+        """Human-readable formatter for find_symbol results."""
+        lines = [f"total: {data.get('total', 0)}"]
+        if data.get("note"):
+            lines.append(f"note: {data['note']}")
+        for s in data.get("symbols", []):
+            lines.append("")
+            lines.append(f"  {s.get('name')}  ({s.get('file')}:{s.get('line')})")
+            lines.append(f"  type: {s.get('type')}  language: {s.get('language', 'python')}  lines: {s.get('line_count', '?')}")
+            if s.get("top_callers"):
+                lines.append(f"  callers ({s.get('callers_count', 0)}): {', '.join(s['top_callers'])}")
+            if s.get("top_callees"):
+                lines.append(f"  callees ({s.get('callees_count', 0)}): {', '.join(s['top_callees'])}")
+            if s.get("docstring"):
+                lines.append(f"  doc: {s['docstring'][:120]}")
+        return "\n".join(lines)
+
+    def _tool_result(data: dict, fmt: str = "default") -> ToolResult:
+        """Return a ToolResult with human-readable text + structured content."""
+        if fmt == "search":
+            text = _fmt_search(data)
+        elif fmt == "symbols":
+            text = _fmt_symbols(data)
+        else:
+            text = _fmt_text(data)
+        return ToolResult(
+            content=[TextContent(type="text", text=text)],
+            structured_content=data,
+        )
+
+    def _apply_disclosure(
+        data: dict,
+        *,
+        tool_name: str = "",
+        preview_keys: list | None = None,
+        max_list_items: int = 5,
+    ) -> dict:
+        """Apply progressive disclosure: sandbox large responses, return preview.
+
+        Returns the original data if small, or a compact preview with sandbox_ref.
+        """
+        from contextia_mcp.state import get_state
+        from contextia_mcp.engines.output_sandbox import OutputSandbox
+        from contextia_mcp.execution.response_policy import ToolResponsePolicy
+
+        state = get_state()
+        if not hasattr(state, "_output_sandbox") or state._output_sandbox is None:
+            state._output_sandbox = OutputSandbox(
+                max_entries=_settings.search_sandbox_max_entries,
+                ttl=_settings.search_sandbox_ttl_seconds,
+            )
+
+        policy = ToolResponsePolicy(
+            output_sandbox=state._output_sandbox,
+            threshold_tokens=_settings.search_sandbox_threshold_tokens,
+        )
+        return policy.apply(
+            data,
+            tool_name=tool_name,
+            preview_keys=preview_keys,
+            max_list_items=max_list_items,
+        )
 
     # --- Middleware: permissions, rate limiting, audit ---
 
@@ -368,7 +483,7 @@ def create_server():
 
     # --- MCP Tools ---
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def status() -> dict[str, Any]:
         """Get Contextia server status including indexing stats."""
         guard_err = _guard("status")
@@ -466,9 +581,9 @@ def create_server():
         elif job_status != "indexing":
             result.setdefault("hint", "Run 'index' first.")
 
-        return result
+        return _tool_result(result)
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def health() -> dict[str, Any]:
         """Health check for readiness/liveness probes.
 
@@ -486,7 +601,7 @@ def create_server():
         state = get_state()
         uptime = time.time() - state.started_at
 
-        return {
+        return _tool_result({
             "status": "healthy",
             "uptime_seconds": round(uptime, 1),
             "indexed": state.is_indexed,
@@ -496,7 +611,7 @@ def create_server():
                 "graph": state.graph_engine is not None,
                 "memory": state.memory_store is not None,
             },
-        }
+        })
 
     @mcp.tool()
     def index(
@@ -761,7 +876,7 @@ def create_server():
             "path": str(validated[0]),
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def search(
         query: Annotated[str, "Natural language or code query (e.g. 'retry logic')"],
         limit: Annotated[int, "Max results (default 10, max 100)"] = 10,
@@ -793,20 +908,23 @@ def create_server():
         settings = get_settings()
         runtime = build_search_runtime(state, settings)
         engine = SearchExecutionEngine(runtime)
-        return engine.execute(
-            SearchExecutionOptions(
-                query=query,
-                limit=limit,
-                language=language,
-                symbol_type=symbol_type,
-                mode=mode,
-                rerank=rerank,
-                live_grep=live_grep,
-                context_budget=context_budget,
-            )
+        return _tool_result(
+            engine.execute(
+                SearchExecutionOptions(
+                    query=query,
+                    limit=limit,
+                    language=language,
+                    symbol_type=symbol_type,
+                    mode=mode,
+                    rerank=rerank,
+                    live_grep=live_grep,
+                    context_budget=context_budget,
+                )
+            ),
+            fmt="search",
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def find_symbol(
         name: Annotated[str, "Symbol name (e.g. 'create_server', 'TokenBudget')"],
         exact: Annotated[bool, "True for exact match, False for fuzzy substring"] = True,
@@ -863,9 +981,9 @@ def create_server():
                 "Use exact=True for precise lookup."
             )
         _get_tracker().track_find_symbol(name, found=True)
-        return result
+        return _tool_result(result, fmt="symbols")
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def find_callers(
         symbol_name: Annotated[str, "Name of the function to find callers for"]
     ) -> dict[str, Any]:
@@ -899,13 +1017,13 @@ def create_server():
         all_callers = all_callers[:20]
 
         _get_tracker().track_find_symbol(symbol_name, found=bool(all_callers))
-        return {
+        return _tool_result(_apply_disclosure({
             "symbol": symbol_name,
             "total": total,
             "callers": all_callers,
-        }
+        }, tool_name="find_callers", preview_keys=["symbol", "total"]))
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def find_callees(
         symbol_name: Annotated[str, "Name of the function to find callees for"]
     ) -> dict[str, Any]:
@@ -938,13 +1056,13 @@ def create_server():
         all_callees = all_callees[:20]
 
         _get_tracker().track_find_symbol(symbol_name, found=bool(all_callees))
-        return {
+        return _tool_result(_apply_disclosure({
             "symbol": symbol_name,
             "total": total,
             "callees": all_callees,
-        }
+        }, tool_name="find_callees", preview_keys=["symbol", "total"]))
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def analyze(
         path: Annotated[
             str, "Optional relative path to filter analysis (subdirectory or file)"
@@ -1016,9 +1134,9 @@ def create_server():
                     if "location" in item:
                         item["location"] = _relativize_location_str(item["location"], root)
 
-        return result
+        return _apply_disclosure(result, tool_name="analyze", preview_keys=["quality"])
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def impact(
         symbol_name: Annotated[str, "Name of the function to analyze impact for"],
         max_depth: Annotated[int, "Max depth of transitive caller traversal (default 10)"] = 10,
@@ -1079,16 +1197,16 @@ def create_server():
         by_dir = {d: list(dict.fromkeys(files)) for d, files in by_dir.items()}
 
         _get_tracker().track_impact(symbol_name, total)
-        return {
+        return _apply_disclosure({
             "symbol": symbol_name,
             "max_depth": max_depth,
             "total_impacted": total,
             "impacted_symbols": all_impacted,
             "impacted_files": by_file,
             "impacted_dirs": by_dir,
-        }
+        }, tool_name="impact", preview_keys=["symbol", "max_depth", "total_impacted"])
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def explain(
         symbol_name: Annotated[str, "Name of the symbol to explain"],
         verbosity: Annotated[
@@ -1217,9 +1335,10 @@ def create_server():
             _get_tracker().track_explain(symbol_name)
             return builder.build_explain_response(summary_data, search_results, analysis)
         _get_tracker().track_explain(symbol_name)
-        return builder.build_explain_response(symbol_data, search_results, analysis)
+        result = builder.build_explain_response(symbol_data, search_results, analysis)
+        return _apply_disclosure(result, tool_name="explain", preview_keys=["symbol", "type", "file", "line"])
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def overview() -> dict[str, Any]:
         """PREFERRED over Glob/ls for project exploration.
 
@@ -1311,7 +1430,7 @@ def create_server():
 
         return result
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def architecture() -> dict[str, Any]:
         """PREFERRED over manual browsing for project design.
 
@@ -1443,7 +1562,7 @@ def create_server():
 
         stats = graph.get_statistics()
 
-        return {
+        return _apply_disclosure({
             "total_files": stats.get("total_files", len(graph._file_nodes)),
             "total_symbols": stats.get("total_nodes", 0),
             "total_relationships": stats.get("total_relationships", 0),
@@ -1451,7 +1570,7 @@ def create_server():
             "top_classes": class_info[:10],
             "entry_points": entry_points,
             "hub_symbols": hub_symbols[:10],
-        }
+        }, tool_name="architecture", preview_keys=["total_files", "total_symbols", "total_relationships"])
 
     # --- Memory helpers ---
 
@@ -1521,7 +1640,7 @@ def create_server():
         mem_id = store.remember(mem)
         return {"id": mem_id, "status": "stored"}
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def recall(
         query: Annotated[str, "Natural language search query"],
         limit: Annotated[int, "Maximum number of results (default 5)"] = 5,
@@ -1912,7 +2031,7 @@ Content remains available across sessions for later use.
 
     # --- Commit History Tools ---
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def commit_history(
         path: Annotated[str, "Repository path (default: indexed codebase)"] = "",
         limit: Annotated[int, "Max commits to return (default 50, max 500)"] = 50,
@@ -1985,7 +2104,7 @@ Content remains available across sessions for later use.
             "commits": compact_commits,
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def commit_search(
         query: Annotated[
             str, "Natural language query (e.g. 'auth refactoring')"
@@ -2170,7 +2289,7 @@ Content remains available across sessions for later use.
         removed = manager.unregister_repo(path)
         return {"status": "removed" if removed else "not_found", "removed": removed}
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def repo_status() -> dict[str, Any]:
         """Get status of all registered repositories in cross-repo context.
 
@@ -2204,7 +2323,7 @@ Content remains available across sessions for later use.
 
     # --- Session Context Tool ---
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def session_snapshot() -> dict[str, Any]:
         """Get a compressed snapshot of the current session for context recovery.
 
@@ -2242,7 +2361,7 @@ Content remains available across sessions for later use.
         snapshot = state._session_tracker.get_snapshot(max_tokens=500)
         return {**codebase_ctx, **snapshot}
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def code(
         operation: Annotated[str, "Operation: search_symbols, lookup_symbols, get_document_symbols, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map"],
         symbol_name: Annotated[str, "Symbol name (required for search_symbols)"] = "",
@@ -2591,7 +2710,7 @@ CORE FEATURES:
         else:
             return {"error": f"Unknown operation: {operation}. Valid: search_symbols, lookup_symbols, get_document_symbols, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map"}
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def retrieve(
         ref_id: Annotated[str, "Sandbox reference ID (e.g. 'sx_abc12345')"],
         query: Annotated[str, "Optional query to filter content"] = "",
@@ -2625,7 +2744,7 @@ CORE FEATURES:
 
         return {"ref_id": ref_id, "content": content}
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True})
     def introspect(
         query: Annotated[str, "The user's question about this assistant's usage, features, or capabilities"] = "",
         doc_path: Annotated[str, "Path to a specific doc to retrieve (e.g. 'features/tangent-mode.md')"] = "",

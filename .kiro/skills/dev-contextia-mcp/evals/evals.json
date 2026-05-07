@@ -1,14 +1,15 @@
 {
   "skill_name": "dev-contextia-mcp",
-  "version": "2.0.0",
-  "description": "Battle-tested evals for Contextia MCP skill. Covers: triggering accuracy, tool routing, anti-pattern avoidance, workflow correctness, token efficiency, new tools (code/knowledge/introspect), error handling, and end-to-end real-world scenarios.",
+  "version": "3.0.0",
+  "description": "Comprehensive evals for Contextia MCP skill v3. Covers all 25 tools, current output format (human-readable text + structuredContent), sandbox_ref/retrieve flow, cross-repo tools, readOnlyHint annotations, and Anthropic best practices.",
   "categories": {
     "triggering": "Skill loads on relevant queries, does NOT load on unrelated ones",
     "routing": "Correct tool selected for each task type",
     "anti_pattern": "Agent avoids known bad patterns",
     "workflow": "Multi-step workflows execute in correct order",
     "token_efficiency": "Agent uses compact tools instead of verbose alternatives",
-    "new_tools": "code, knowledge, introspect tools used correctly",
+    "output_format": "Agent correctly reads human-readable text output and handles sandbox_ref",
+    "new_tools": "retrieve, repo_add/remove/status, forget, knowledge, introspect used correctly",
     "error_handling": "Agent recovers gracefully from errors",
     "e2e": "End-to-end real-world scenarios complete correctly"
   },
@@ -25,13 +26,13 @@
           "id": "a1",
           "text": "index() is called with the correct path",
           "type": "tool_selection",
-          "passing_condition": "index tool is called with path='/Users/alice/platform' or equivalent"
+          "passing_condition": "index tool called with path='/Users/alice/platform'"
         },
         {
           "id": "a2",
-          "text": "Agent polls status() after index, does not immediately search",
+          "text": "Agent polls status() after index before searching",
           "type": "workflow",
-          "passing_condition": "status() is called after index() before any search/find_symbol call"
+          "passing_condition": "status() called after index() and before any search/find_symbol call"
         }
       ]
     },
@@ -45,9 +46,9 @@
       "assertions": [
         {
           "id": "a1",
-          "text": "search() is called as the first code intelligence action",
+          "text": "search() is called, not grep or readFile",
           "type": "tool_selection",
-          "passing_condition": "search tool is called, not grep or readFile"
+          "passing_condition": "search tool called, not grep or readFile"
         }
       ]
     },
@@ -63,7 +64,7 @@
           "id": "a1",
           "text": "find_callers() is called",
           "type": "tool_selection",
-          "passing_condition": "find_callers('authenticate') or find_callers with authenticate is called"
+          "passing_condition": "find_callers called with 'authenticate'"
         }
       ]
     },
@@ -77,227 +78,197 @@
       "assertions": [
         {
           "id": "a1",
-          "text": "impact() is called before suggesting any changes",
+          "text": "impact() is called",
           "type": "tool_selection",
-          "passing_condition": "impact('TokenBudget') is called"
+          "passing_condition": "impact called with 'TokenBudget'"
         }
       ]
     },
     {
       "id": 5,
-      "name": "trigger-explain-symbol",
+      "name": "trigger-git-history",
       "category": "triggering",
-      "prompt": "Explain how the IndexingPipeline class works.",
+      "prompt": "What changed in the search pipeline last week?",
       "should_trigger": true,
-      "expected_behavior": "Skill loads. Agent calls explain('IndexingPipeline'), not readFile.",
+      "expected_behavior": "Skill loads. Agent calls commit_search('search pipeline changes') or commit_history.",
       "assertions": [
         {
           "id": "a1",
-          "text": "explain() is called",
+          "text": "commit_search() or commit_history() is called",
           "type": "tool_selection",
-          "passing_condition": "explain('IndexingPipeline') is called"
-        },
-        {
-          "id": "a2",
-          "text": "Agent does NOT read the source file first",
-          "type": "anti_pattern",
-          "passing_condition": "No readFile on pipeline.py before explain is called"
+          "passing_condition": "commit_search or commit_history called, not git log shell command"
         }
       ]
     },
     {
       "id": 6,
-      "name": "trigger-git-history",
+      "name": "trigger-retrieve-sandbox",
       "category": "triggering",
-      "prompt": "When was the warm-start feature added and who added it?",
+      "prompt": "Retrieve the full results for sandbox reference sx_abc12345.",
       "should_trigger": true,
-      "expected_behavior": "Skill loads. Agent calls commit_search('warm start auto restore index').",
+      "expected_behavior": "Skill loads. Agent calls retrieve('sx_abc12345').",
       "assertions": [
         {
           "id": "a1",
-          "text": "commit_search() is called with a relevant query",
+          "text": "retrieve() is called with the ref_id",
           "type": "tool_selection",
-          "passing_condition": "commit_search is called with a query about warm start or auto-restore"
-        },
-        {
-          "id": "a2",
-          "text": "Agent does NOT run git log shell commands",
-          "type": "anti_pattern",
-          "passing_condition": "No git log shell command before commit_search"
+          "passing_condition": "retrieve called with ref_id='sx_abc12345'"
         }
       ]
     },
     {
       "id": 7,
-      "name": "trigger-remember-context",
+      "name": "trigger-add-repo",
       "category": "triggering",
-      "prompt": "Remember that we use JWT with 24h expiry and refresh tokens stored in Redis.",
+      "prompt": "Add the backend repo at /Users/alice/backend so I can search across both projects.",
       "should_trigger": true,
-      "expected_behavior": "Skill loads. Agent calls remember() with the content.",
+      "expected_behavior": "Skill loads. Agent calls repo_add('/Users/alice/backend').",
       "assertions": [
         {
           "id": "a1",
-          "text": "remember() is called with the JWT context",
+          "text": "repo_add() is called with the path",
           "type": "tool_selection",
-          "passing_condition": "remember tool is called with content about JWT"
+          "passing_condition": "repo_add called with path='/Users/alice/backend'"
         }
       ]
     },
     {
       "id": 8,
-      "name": "trigger-session-recovery",
+      "name": "no-trigger-general-coding",
       "category": "triggering",
-      "prompt": "My context was just compacted. What was I working on?",
-      "should_trigger": true,
-      "expected_behavior": "Skill loads. Agent calls session_snapshot() first, then recall() if needed.",
+      "prompt": "Write a Python function that reverses a string.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does NOT load. Agent answers directly without calling any Contextia tools.",
       "assertions": [
         {
           "id": "a1",
-          "text": "session_snapshot() is called",
+          "text": "No Contextia tools are called",
           "type": "tool_selection",
-          "passing_condition": "session_snapshot is called as the first action"
+          "passing_condition": "No index/search/find_symbol/explain/impact or other Contextia tool called"
         }
       ]
     },
     {
       "id": 9,
-      "name": "no-trigger-weather",
+      "name": "no-trigger-general-question",
       "category": "triggering",
-      "prompt": "What's the weather in San Francisco today?",
+      "prompt": "What is the difference between TCP and UDP?",
       "should_trigger": false,
-      "expected_behavior": "Skill does NOT load. Agent answers directly without using Contextia tools.",
+      "expected_behavior": "Skill does NOT load. Agent answers from knowledge.",
       "assertions": [
         {
           "id": "a1",
           "text": "No Contextia tools are called",
-          "type": "anti_pattern",
-          "passing_condition": "No search, find_symbol, index, or other Contextia tool is called"
+          "type": "tool_selection",
+          "passing_condition": "No Contextia tools called"
         }
       ]
     },
     {
       "id": 10,
-      "name": "no-trigger-write-poem",
-      "category": "triggering",
-      "prompt": "Write me a haiku about autumn leaves.",
-      "should_trigger": false,
-      "expected_behavior": "Skill does NOT load. Agent writes the haiku directly.",
+      "name": "routing-find-symbol-vs-search",
+      "category": "routing",
+      "prompt": "Find the definition of IndexingPipeline.",
+      "expected_behavior": "Agent calls find_symbol('IndexingPipeline') — exact name known, not a broad concept.",
       "assertions": [
         {
           "id": "a1",
-          "text": "No Contextia tools are called",
-          "type": "anti_pattern",
-          "passing_condition": "No Contextia tool is invoked"
+          "text": "find_symbol() is called, not search()",
+          "type": "tool_selection",
+          "passing_condition": "find_symbol called with 'IndexingPipeline'"
         }
       ]
     },
     {
       "id": 11,
-      "name": "no-trigger-edit-known-file",
-      "category": "triggering",
-      "prompt": "Add a comment to line 42 of src/config.py explaining the timeout value.",
-      "should_trigger": false,
-      "expected_behavior": "Skill does NOT load for a single-file edit where the file and line are already known. Agent reads and edits the file directly.",
+      "name": "routing-search-for-concept",
+      "category": "routing",
+      "prompt": "How does the caching layer work?",
+      "expected_behavior": "Agent calls search('caching layer') — broad concept, not an exact symbol name.",
       "assertions": [
         {
           "id": "a1",
-          "text": "Agent edits the file directly without searching first",
-          "type": "routing",
-          "passing_condition": "Agent reads src/config.py and makes the edit without calling search or find_symbol first"
+          "text": "search() is called for the broad concept",
+          "type": "tool_selection",
+          "passing_condition": "search called with a caching-related query"
         }
       ]
     },
     {
       "id": 12,
-      "name": "routing-overview-not-ls",
+      "name": "routing-impact-before-refactor",
       "category": "routing",
-      "prompt": "Give me a high-level overview of this codebase — languages, file count, main modules.",
-      "should_trigger": true,
-      "expected_behavior": "Agent calls overview(), not ls or glob.",
+      "prompt": "I want to delete the FlashReranker class. Is that safe?",
+      "expected_behavior": "Agent calls impact('FlashReranker') before answering. Never suggests deletion without impact analysis.",
       "assertions": [
         {
           "id": "a1",
-          "text": "overview() is called",
+          "text": "impact() is called before any deletion suggestion",
           "type": "tool_selection",
-          "passing_condition": "overview() is called"
+          "passing_condition": "impact called with 'FlashReranker'"
         },
         {
           "id": "a2",
-          "text": "Agent does NOT use ls, glob, or listDirectory",
+          "text": "Agent does not suggest deletion without impact first",
           "type": "anti_pattern",
-          "passing_condition": "No shell ls or glob call before overview"
-        },
-        {
-          "id": "a3",
-          "text": "Response includes language breakdown and directory structure",
-          "type": "output_quality",
-          "passing_condition": "Response includes specific language percentages or file counts from overview output"
+          "passing_condition": "Response does not recommend deletion before impact analysis"
         }
       ]
     },
     {
       "id": 13,
-      "name": "routing-find-symbol-not-grep",
+      "name": "routing-explain-vs-readfile",
       "category": "routing",
-      "prompt": "Where is the RateLimiter class defined?",
-      "should_trigger": true,
-      "expected_behavior": "Agent calls find_symbol('RateLimiter'), not grep.",
+      "prompt": "Explain how ReciprocalRankFusion works.",
+      "expected_behavior": "Agent calls explain('ReciprocalRankFusion') — not readFile on fusion.py.",
       "assertions": [
         {
           "id": "a1",
-          "text": "find_symbol() is called",
+          "text": "explain() is called",
           "type": "tool_selection",
-          "passing_condition": "find_symbol('RateLimiter') is called"
+          "passing_condition": "explain called with 'ReciprocalRankFusion'"
         },
         {
           "id": "a2",
-          "text": "Agent does NOT grep for the class name",
+          "text": "readFile is not called before explain",
           "type": "anti_pattern",
-          "passing_condition": "No grep or shell search command before find_symbol"
+          "passing_condition": "No readFile on fusion.py before explain"
         }
       ]
     },
     {
       "id": 14,
-      "name": "routing-architecture-for-layers",
+      "name": "routing-overview-for-structure",
       "category": "routing",
-      "prompt": "What are the main architectural layers of this project?",
-      "should_trigger": true,
-      "expected_behavior": "Agent calls architecture(), not overview() or reading multiple files.",
+      "prompt": "How many files are in this project and what languages does it use?",
+      "expected_behavior": "Agent calls overview() — not ls, glob, or directory listing.",
       "assertions": [
         {
           "id": "a1",
-          "text": "architecture() is called",
+          "text": "overview() is called",
           "type": "tool_selection",
-          "passing_condition": "architecture() is called"
+          "passing_condition": "overview() called"
         },
         {
           "id": "a2",
-          "text": "Response includes layers, entry points, or hub symbols",
-          "type": "output_quality",
-          "passing_condition": "Response mentions specific layers or entry points from architecture output"
+          "text": "No shell ls or glob before overview",
+          "type": "anti_pattern",
+          "passing_condition": "No ls or glob command before overview"
         }
       ]
     },
     {
       "id": 15,
-      "name": "routing-analyze-for-smells",
+      "name": "routing-bm25-for-exact-identifier",
       "category": "routing",
-      "prompt": "Are there any code quality issues in the src/auth directory?",
-      "should_trigger": true,
-      "expected_behavior": "Agent calls analyze(path='src/auth'), not reading all files manually.",
+      "prompt": "Find all occurrences of CTX_STORAGE_DIR in the codebase.",
+      "expected_behavior": "Agent calls search('CTX_STORAGE_DIR', mode='bm25') — exact identifier, BM25 is best.",
       "assertions": [
         {
           "id": "a1",
-          "text": "analyze() is called with a scoped path",
+          "text": "search() with mode='bm25' is called",
           "type": "tool_selection",
-          "passing_condition": "analyze(path='src/auth') or analyze with a path containing 'auth' is called"
-        },
-        {
-          "id": "a2",
-          "text": "Agent does NOT read all files in src/auth manually",
-          "type": "anti_pattern",
-          "passing_condition": "No readFile loop over auth directory files before analyze"
+          "passing_condition": "search called with mode='bm25' or mode='keyword'"
         }
       ]
     }
