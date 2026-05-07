@@ -278,3 +278,26 @@ class TestIndexingPipeline:
         assert data["change_detection"] == "content_hash"
         assert "fingerprints" in data
         assert "mtimes" not in data
+
+    def test_multi_index_builds_cross_root_call_edges_and_persists_graph(self, tmp_path, settings):
+        repo_a = tmp_path / "repo_a"
+        repo_b = tmp_path / "repo_b"
+        repo_a.mkdir()
+        repo_b.mkdir()
+        (repo_a / "caller.py").write_text(
+            'def caller():\n    """Call helper."""\n    return helper()\n'
+        )
+        (repo_b / "helper.py").write_text(
+            'def helper():\n    """Return helper value."""\n    return 1\n'
+        )
+
+        pipeline = _make_pipeline(settings)
+        result = pipeline.multi_index([repo_a, repo_b])
+
+        helper_nodes = pipeline.graph_engine.find_nodes_by_name("helper", exact=True)
+        assert helper_nodes
+        callers = pipeline.graph_engine.get_callers(helper_nodes[0].id)
+
+        assert result.total_files == 2
+        assert any(node.name == "caller" for node in callers)
+        assert Path(settings.storage_dir, "graph.db").exists()
