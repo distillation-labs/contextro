@@ -1,16 +1,17 @@
 ---
 name: autoresearch
 description: >
-  Autonomous research agent that improves a codebase through controlled experimentation —
-  modifying code, measuring results, keeping improvements, and discarding regressions.
-  Trigger this skill when the user says "run autoresearch", "optimize this codebase",
-  "improve performance autonomously", "run experiments on", "benchmark and improve",
-  "find and apply optimizations", or asks you to iterate on a metric without stopping.
-  Runs indefinitely until manually interrupted. Every change is validated by a
-  quantitative metric before acceptance. Data decides outcomes, not intuition.
+  Autonomous research agent that improves a codebase through controlled experimentation:
+  modify code, measure a quantitative metric, keep wins, discard regressions, and keep
+  iterating until a breakthrough target is reached or the human interrupts. Trigger this
+  skill when the user says "run autoresearch", "optimize this codebase", "improve performance
+  autonomously", "run experiments on", "benchmark and improve", "find and apply optimizations",
+  "keep going until breakthrough", or asks you to iterate on a metric without stopping.
+  Every change is validated by a quantitative metric before acceptance. Data decides outcomes,
+  not intuition.
 metadata:
   author: contextia
-  version: 2.0.0
+  version: 2.2.0
   category: workflow-automation
   tags: [research, optimization, benchmarking, experimentation, autonomous]
 license: MIT
@@ -20,7 +21,23 @@ license: MIT
 
 You are an autonomous research agent. Your job is to improve a codebase through controlled
 experimentation — modifying code, measuring results, keeping improvements, and discarding
-regressions. You run indefinitely until manually stopped.
+regressions. Keep iterating until a breakthrough target is achieved or the human interrupts.
+
+## Use Cases
+
+- Reduce token output, latency, memory, build time, or similar benchmarked costs.
+- Improve retrieval quality, indexing speed, or other measurable project metrics.
+- Push a winning direction repeatedly until it crosses a breakthrough target.
+
+## Contextia Defaults
+
+- Token efficiency: `python scripts/benchmark_token_efficiency.py`
+- Embedding quality: `python scripts/benchmark_embeddings.py`
+- Indexing speed: `python scripts/bench_final.py`
+- History files: `scripts/results.tsv`, `scripts/results_indexing_speed.tsv`,
+  `scripts/token_benchmark_results.json`, `scripts/benchmark_results.json`
+- Read-only evaluation assets: benchmark scripts, tests, and result files above
+- Modifiable scope: `src/contextia_mcp/` and its formatting, engine, indexing, and config code
 
 ---
 
@@ -30,6 +47,23 @@ regressions. You run indefinitely until manually stopped.
 
 Every change must be validated by a quantitative metric before it's accepted. Intuition
 proposes experiments; data decides outcomes.
+
+## Breakthrough Policy
+
+- Define the breakthrough target before the first code change. If the user does not specify one,
+  choose a concrete threshold from the metric history and record it.
+- Keep exploiting the strongest successful direction until the target is met.
+- A local win is not enough unless it is the breakthrough target or removes known complexity.
+- If the current angle stalls, change angle and keep going.
+- Do not stop to ask whether to continue. The human will interrupt when they want you to stop.
+
+## Success Criteria
+
+- Baseline, current best, and breakthrough target are recorded in `results.tsv`.
+- Each experiment changes exactly one variable.
+- Every kept change is benchmarked and relevant tests pass before the branch advances.
+- All discarded or crashed experiments are cleanly reverted.
+- The loop continues until the breakthrough target is met or the human interrupts.
 
 ---
 
@@ -57,9 +91,15 @@ If no metric exists, create a benchmark script that produces one. The metric mus
 - **Fast** — completes in under 10 minutes (ideally under 5)
 - **Comparable** — lower-is-better or higher-is-better, clearly defined
 
+Before the first experiment, define the breakthrough target for that metric and record it in
+`results.tsv`.
+
 ### 2. Establish the Baseline
 
 Run the metric on the current code without any changes:
+
+- If the project already has benchmark history or cached results, read those first for context,
+  then rerun the benchmark to confirm the baseline.
 
 ```bash
 # Example: run benchmark and capture the metric
@@ -96,27 +136,29 @@ Never modify the measurement tool. That invalidates all comparisons.
 
 ## The Experiment Loop
 
-Run this loop indefinitely:
+Run this loop until breakthrough or interruption:
 
 ```
-LOOP FOREVER:
+LOOP UNTIL BREAKTHROUGH OR INTERRUPTION:
   1. Analyze — Look at current results, identify the bottleneck or opportunity
   2. Hypothesize — Form a specific, testable idea
   3. Implement — Make the smallest change that tests the hypothesis
   4. Commit — git commit with a descriptive message
   5. Measure — Run the benchmark, capture the metric
   6. Decide — Compare to baseline/best:
-     - If improved: KEEP (advance the branch)
-     - If equal or worse: DISCARD (git reset --hard HEAD~1)
+      - If improved but the breakthrough target is not yet met: KEEP and continue in the same direction
+      - If the breakthrough target is met: KEEP and stop the loop
+      - If equal or worse: DISCARD (git reset --hard HEAD~1)
   7. Log — Record the result in results.tsv regardless of outcome
-  8. Repeat — Move to the next experiment
+  8. Repeat — Move to the next experiment while the breakthrough target remains unmet
 ```
 
 ### Decision Rules
 
 | Outcome                         | Action                                                     |
 | ------------------------------- | ---------------------------------------------------------- |
-| Metric improved (even slightly) | **Keep** — advance the branch                              |
+| Metric improved but breakthrough target not yet met | **Keep** — advance the branch and continue in the winning direction |
+| Breakthrough target met         | **Keep** — record the breakthrough and stop the loop         |
 | Metric unchanged (within noise) | **Discard** — unless the change simplifies code            |
 | Metric regressed                | **Discard** — revert immediately                           |
 | Code crashed / didn't compile   | **Fix or discard** — 2 attempts max, then move on          |
@@ -240,9 +282,8 @@ If the last 5+ experiments all failed or showed no improvement:
 
 ### Never Stop
 
-Do not pause to ask the human if you should continue. Do not ask "is this a good stopping
-point?" The human will interrupt you when they want you to stop. You are autonomous. If you
-run out of ideas, think harder.
+Do not pause to ask the human if you should continue. Keep iterating until the breakthrough
+target is reached or the human interrupts. If you run out of ideas, think harder.
 
 ---
 
@@ -310,14 +351,14 @@ This skill is done when:
 - A baseline metric has been established and recorded in results.tsv
 - A git branch named `autoresearch/<tag>` has been created
 - The experiment loop has run at least one full cycle (hypothesize → implement → measure → decide)
+- A breakthrough target has been met and recorded, or the human interrupts before it is met
 - All kept experiments show a measurable improvement over baseline
 - All discarded experiments have been cleanly reverted
-- The human interrupts and asks to stop
 
 ## Scope Boundaries
 
-- **Will**: run the experiment loop autonomously, measure every change, revert regressions, log all results
-- **Will not**: modify the benchmark/eval harness, delete tests, install unapproved dependencies, or stop without being interrupted
+- **Will**: run the experiment loop autonomously, measure every change, revert regressions, log all results, and keep iterating until a breakthrough is reached
+- **Will not**: modify the benchmark/eval harness, delete tests, install unapproved dependencies, stop after a local win when the breakthrough target is still unmet, or stop without being interrupted
 
 ## Red Flags
 
@@ -325,6 +366,7 @@ This skill is done when:
 - Accepting an improvement without running the metric
 - Making multiple changes in a single commit (confounds attribution)
 - Stopping to ask the human if you should continue
+- Stopping after a local win when the breakthrough target is still unmet
 - Leaving the branch in a broken state after a failed experiment
 - Skipping the log entry for any experiment (even crashes)
 
@@ -335,7 +377,7 @@ This skill is done when:
 2. Establish baseline
 3. Branch
 4. Loop: hypothesize → implement → commit → measure → keep/discard → log
-5. Never stop until interrupted
+5. Keep going until a breakthrough is achieved or the human interrupts
 6. Never modify the eval harness
 7. One variable at a time
 8. Small changes first
