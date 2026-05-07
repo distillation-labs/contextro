@@ -380,6 +380,7 @@ def create_server():
 
         state = get_state()
         _status_settings = _get_status_settings()
+        indexed = state.is_indexed
         # Memory monitoring via peak RSS (ru_maxrss = high-water mark)
         rss_raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         # macOS returns bytes, Linux returns KB
@@ -392,7 +393,7 @@ def create_server():
 
         result: dict[str, Any] = {
             "version": __version__,
-            "indexed": state.is_indexed,
+            "indexed": indexed,
             "codebase_path": str(state.codebase_path) if state.codebase_path else None,
             "storage_dir": str(_status_settings.storage_path),
             "memory": {"peak_rss_mb": round(peak_rss_mb, 1)},
@@ -401,22 +402,30 @@ def create_server():
         # Surface background indexing state
         with _index_job_lock:
             job_status = _index_job.get("status")
-        if job_status == "indexing":
+            job_result = dict(_index_job.get("result") or {})
+        is_background_indexing = job_status == "indexing"
+        if is_background_indexing and not indexed:
             result["indexing"] = True
             result["hint"] = "Indexing in progress — call status() again in a few seconds."
         elif job_status == "error":
             with _index_job_lock:
                 result["index_error"] = _index_job.get("error", "Unknown error")
-        elif job_status == "done" and not state.is_indexed:
+        elif job_status == "done" and not indexed:
             result["hint"] = "Index job completed but state not yet loaded. Call status() again."
 
-        if state.is_indexed:
-            if state.vector_engine:
-                result["vector_chunks"] = state.vector_engine.count()
-            if state.bm25_engine:
-                result["bm25_fts_ready"] = state.bm25_engine._fts_index_created
-            if state.graph_engine:
-                result["graph"] = state.graph_engine.get_statistics()
+        if indexed:
+            if not is_background_indexing:
+                if state.vector_engine:
+                    result["vector_chunks"] = state.vector_engine.count()
+                if state.bm25_engine:
+                    result["bm25_fts_ready"] = state.bm25_engine._fts_index_created
+                if state.graph_engine:
+                    result["graph"] = state.graph_engine.get_statistics()
+            else:
+                result.setdefault(
+                    "hint",
+                    "Background indexing is finalizing. Search is available; detailed stats will appear when complete.",
+                )
 
             # Git integration info
             if state.current_branch:
@@ -425,13 +434,19 @@ def create_server():
                 result["head"] = state.current_head[:12]
             if state.branch_watcher and state.branch_watcher.is_running:
                 result["realtime_watching"] = True
-            try:
-                from contextia_mcp.config import get_settings as _gs
-                from contextia_mcp.git.commit_indexer import CommitHistoryIndexer as _CI
-                _s = _gs()
-                result["commits_indexed"] = _CI.count_commits_in_db(str(_s.lancedb_path))
-            except Exception:
-                pass
+            if not is_background_indexing:
+                commit_count = job_result.get("commits_indexed")
+                if commit_count is not None:
+                    result["commits_indexed"] = commit_count
+                else:
+                    try:
+                        from contextia_mcp.config import get_settings as _gs
+                        from contextia_mcp.git.commit_indexer import CommitHistoryIndexer as _CI
+
+                        _s = _gs()
+                        result["commits_indexed"] = _CI.count_commits_in_db(str(_s.lancedb_path))
+                    except Exception:
+                        pass
             if state.cross_repo_manager and state.cross_repo_manager.repo_count > 1:
                 result["cross_repo_count"] = state.cross_repo_manager.repo_count
 
@@ -449,7 +464,7 @@ def create_server():
 
             result["tools"] = "search, code, find_symbol, find_callers, explain, impact, commit_search"
         elif job_status != "indexing":
-            result["hint"] = "Run 'index' first."
+            result.setdefault("hint", "Run 'index' first.")
 
         return result
 
@@ -2666,6 +2681,7 @@ WHEN NOT TO USE:
             "CTX_MAX_MEMORY_MB": "RAM budget. Default: 350.",
             "CTX_SEARCH_MODE": "hybrid (default), vector, or bm25.",
             "CTX_COMMIT_HISTORY_ENABLED": "Index git commits. Default: true.",
+            "CTX_COMMIT_INCLUDE_DIFFS": "Include diff summaries in commit embeddings. Default: false for faster/lower-memory indexing; set true for richer commit_search over code changes.",
             "CTX_REALTIME_INDEXING_ENABLED": "Auto-reindex on branch switch. Default: true.",
             "CTX_CODEBASE_HOST_PATH": "Optional Docker helper. Host path the client will send to index().",
             "CTX_CODEBASE_MOUNT_PATH": "Optional Docker helper. In-container mount path for CTX_CODEBASE_HOST_PATH. Default: /repos/platform",
