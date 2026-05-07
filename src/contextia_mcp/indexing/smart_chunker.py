@@ -19,6 +19,11 @@ from typing import Dict, List, Set
 
 from contextia_mcp.config import get_settings
 from contextia_mcp.core.models import Symbol
+from contextia_mcp.indexing.chunk_context import (
+    ChunkContextSettings,
+    module_hint_from_path,
+    normalize_chunk_path,
+)
 from contextia_mcp.indexing.chunker import CodeChunk
 
 logger = logging.getLogger(__name__)
@@ -39,6 +44,7 @@ def create_relationship_chunks(
     than just what it IS (its own signature).
     """
     chunks = []
+    context_settings = ChunkContextSettings.from_settings(get_settings())
     # Build a lookup of symbol names to their signatures
     sig_lookup: Dict[str, str] = {}
     for sym in symbols:
@@ -49,10 +55,14 @@ def create_relationship_chunks(
             continue
 
         # Build relationship text
+        file_hint = normalize_chunk_path(sym.filepath, context_settings.path_depth)
+        module_hint = module_hint_from_path(sym.filepath, context_settings.path_depth)
         parts = [
-            f"# {sym.filepath}:{sym.line_start}",
-            f"# Relationship context: {sym.qualified_name} calls:",
+            f"# file: {file_hint}",
+            f"# relationship: {sym.qualified_name} calls",
         ]
+        if module_hint:
+            parts.append(f"# module: {module_hint}")
 
         # Add caller signature
         if sym.signature:
@@ -112,11 +122,16 @@ def create_file_context_chunks(
         by_file.setdefault(sym.filepath, []).append(sym)
 
     chunks = []
+    context_settings = ChunkContextSettings.from_settings(get_settings())
     for filepath, file_symbols in by_file.items():
         if len(file_symbols) < 2:
             continue  # Skip single-symbol files
 
-        parts = [f"# File overview: {filepath}"]
+        file_hint = normalize_chunk_path(filepath, context_settings.path_depth)
+        module_hint = module_hint_from_path(filepath, context_settings.path_depth)
+        parts = [f"# File overview: {file_hint}"]
+        if module_hint:
+            parts.append(f"# module: {module_hint}")
 
         # Collect all imports
         all_imports: Set[str] = set()
