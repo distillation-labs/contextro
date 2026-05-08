@@ -3,15 +3,17 @@
 import asyncio
 import shutil
 
-import contextia_mcp.server as server_module
-from contextia_mcp import __version__
+import contextro_mcp.server as server_module
+from contextro_mcp import __version__
+
 from tests.conftest import _call_tool, _mock_embedding_service, _setup_indexed
 
 
 class TestStatus:
     def test_status_before_index(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
-        from contextia_mcp.config import reset_settings
+        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextro"))
+        from contextro_mcp.config import reset_settings
+
         reset_settings()
         mcp = server_module.create_server()
         result = asyncio.run(_call_tool(mcp, "status"))
@@ -22,7 +24,7 @@ class TestStatus:
 
     def test_status_after_index(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "status")
 
         status = asyncio.run(run())
@@ -37,7 +39,7 @@ class TestStatus:
 class TestIndex:
     def test_index_returns_stats(self, mini_codebase, tmp_path):
         async def run():
-            _, _, result = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            _, _, result = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return result
 
         result = asyncio.run(run())
@@ -51,26 +53,25 @@ class TestIndex:
         result = asyncio.run(_call_tool(mcp, "index", {"path": "/nonexistent/path"}))
         assert "error" in result
 
-    def test_index_path_prefix_remap(
-        self, mini_codebase, tmp_path, tmp_path_factory, monkeypatch
-    ):
+    def test_index_path_prefix_remap(self, mini_codebase, tmp_path, tmp_path_factory, monkeypatch):
         async def run():
             mounted_repo = tmp_path_factory.mktemp("mounted") / "platform"
             shutil.copytree(mini_codebase, mounted_repo)
 
-            storage = tmp_path / ".contextia"
+            storage = tmp_path / ".contextro"
             monkeypatch.setenv("CTX_STORAGE_DIR", str(storage))
             monkeypatch.setenv(
                 "CTX_PATH_PREFIX_MAP",
                 f"/client/platform={mounted_repo}",
             )
 
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
 
             server_module._pipeline = None
             with patch(
-                "contextia_mcp.indexing.pipeline.get_embedding_service",
+                "contextro_mcp.indexing.pipeline.get_embedding_service",
                 return_value=_mock_embedding_service(),
             ):
                 mcp = server_module.create_server()
@@ -105,18 +106,19 @@ class TestIndex:
             mounted_repo = tmp_path_factory.mktemp("mounted-auto") / "platform"
             shutil.copytree(mini_codebase, mounted_repo)
 
-            storage = tmp_path / ".contextia"
+            storage = tmp_path / ".contextro"
             monkeypatch.setenv("CTX_STORAGE_DIR", str(storage))
             monkeypatch.setenv("CTX_CODEBASE_HOST_PATH", "/client/platform")
             monkeypatch.setenv("CTX_CODEBASE_MOUNT_PATH", str(mounted_repo))
             monkeypatch.delenv("CTX_PATH_PREFIX_MAP", raising=False)
 
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
 
             server_module._pipeline = None
             with patch(
-                "contextia_mcp.indexing.pipeline.get_embedding_service",
+                "contextro_mcp.indexing.pipeline.get_embedding_service",
                 return_value=_mock_embedding_service(),
             ):
                 mcp = server_module.create_server()
@@ -145,12 +147,12 @@ class TestIndex:
         assert status["codebase_path"] == str(mounted_repo.resolve())
 
     def test_index_invalid_path_surfaces_docker_hint(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
+        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextro"))
         monkeypatch.setenv("CTX_CODEBASE_HOST_PATH", "/client/platform")
         monkeypatch.setenv("CTX_CODEBASE_MOUNT_PATH", "/repos/platform")
         monkeypatch.delenv("CTX_PATH_PREFIX_MAP", raising=False)
 
-        from contextia_mcp.config import reset_settings
+        from contextro_mcp.config import reset_settings
 
         reset_settings()
         mcp = server_module.create_server()
@@ -160,10 +162,11 @@ class TestIndex:
 
     def test_index_sets_state(self, mini_codebase, tmp_path):
         async def run():
-            await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            await _setup_indexed(mini_codebase, tmp_path / ".contextro")
 
         asyncio.run(run())
-        from contextia_mcp.state import get_state
+        from contextro_mcp.state import get_state
+
         state = get_state()
         assert state.is_indexed
         assert state.vector_engine is not None
@@ -175,7 +178,7 @@ class TestIndex:
 
             from tests.conftest import _mock_embedding_service
 
-            storage = tmp_path / ".contextia"
+            storage = tmp_path / ".contextro"
             mcp, _, result1 = await _setup_indexed(mini_codebase, storage)
             assert result1["total_files"] >= 2
 
@@ -183,11 +186,15 @@ class TestIndex:
             # Keep embedding service patched since _setup_indexed's patch has exited
             server_module._pipeline = None
             mock_svc = _mock_embedding_service()
-            with patch(
-                "contextia_mcp.indexing.pipeline.get_embedding_service",
-                return_value=mock_svc,
-            ), patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}):
-                from contextia_mcp.config import reset_settings
+            with (
+                patch(
+                    "contextro_mcp.indexing.pipeline.get_embedding_service",
+                    return_value=mock_svc,
+                ),
+                patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}),
+            ):
+                from contextro_mcp.config import reset_settings
+
                 reset_settings()
                 result2 = await _call_tool(mcp, "index", {"path": str(mini_codebase)})
                 reset_settings()
@@ -199,8 +206,9 @@ class TestIndex:
 
 class TestSearch:
     def test_search_before_index(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
-        from contextia_mcp.config import reset_settings
+        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextro"))
+        from contextro_mcp.config import reset_settings
+
         reset_settings()
         mcp = server_module.create_server()
         result = asyncio.run(_call_tool(mcp, "search", {"query": "hello"}))
@@ -208,7 +216,7 @@ class TestSearch:
 
     def test_search_after_index(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "search", {"query": "hello"})
 
         result = asyncio.run(run())
@@ -219,7 +227,7 @@ class TestSearch:
 
     def test_search_result_format(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "search", {"query": "test"})
 
         result = asyncio.run(run())
@@ -235,7 +243,7 @@ class TestSearch:
 
     def test_search_with_limit(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "search", {"query": "test", "limit": 1})
 
         result = asyncio.run(run())
@@ -243,7 +251,7 @@ class TestSearch:
 
     def test_search_relative_paths(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "search", {"query": "test"})
 
         result = asyncio.run(run())
@@ -256,10 +264,10 @@ class TestSearch:
         async def run():
             monkeypatch.setenv("CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS", "1")
             monkeypatch.setenv("CTX_SEARCH_PREVIEW_RESULTS", "1")
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
 
             reset_settings()
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             search_result = await _call_tool(mcp, "search", {"query": "hello"})
             retrieve_result = await _call_tool(
                 mcp,
