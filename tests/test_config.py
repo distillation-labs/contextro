@@ -1,8 +1,7 @@
 """Tests for config.py."""
 
 import pytest
-
-from contextia_mcp.config import Settings, get_settings, reset_settings
+from contextro_mcp.config import Settings, get_settings, reset_settings
 
 
 @pytest.fixture(autouse=True)
@@ -26,9 +25,10 @@ def test_default_settings():
 
 def test_storage_paths():
     from pathlib import Path
+
     s = Settings()
-    # Default storage is ~/.contextia (absolute, works from any working dir)
-    assert s.storage_path == Path.home() / ".contextia"
+    # Default storage is ~/.contextro (absolute, works from any working dir)
+    assert s.storage_path == Path.home() / ".contextro"
     assert "lancedb" in str(s.lancedb_path)
     assert "graph.db" in str(s.graph_path)
 
