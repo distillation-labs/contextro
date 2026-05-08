@@ -3,9 +3,9 @@
 import asyncio
 import time
 
+import contextro_mcp.server as server_module
 import pytest
 
-import contextia_mcp.server as server_module
 from tests.conftest import _call_tool, _setup_indexed
 
 pytestmark = pytest.mark.slow
@@ -14,8 +14,9 @@ pytestmark = pytest.mark.slow
 class TestPerformanceBenchmarks:
     def test_warm_start_under_5s(self, mini_codebase, tmp_path):
         """Incremental index with no changes should complete in <5s."""
+
         async def run():
-            storage = tmp_path / ".contextia"
+            storage = tmp_path / ".contextro"
             mcp, _, _ = await _setup_indexed(mini_codebase, storage)
 
             start = time.monotonic()
@@ -29,8 +30,9 @@ class TestPerformanceBenchmarks:
 
     def test_search_under_500ms(self, mini_codebase, tmp_path):
         """Search should complete in <500ms."""
+
         async def run():
-            storage = tmp_path / ".contextia"
+            storage = tmp_path / ".contextro"
             mcp, _, _ = await _setup_indexed(mini_codebase, storage)
 
             start = time.monotonic()
@@ -44,8 +46,9 @@ class TestPerformanceBenchmarks:
 
     def test_find_symbol_under_100ms(self, mini_codebase, tmp_path):
         """find_symbol should complete in <100ms."""
+
         async def run():
-            storage = tmp_path / ".contextia"
+            storage = tmp_path / ".contextro"
             mcp, _, _ = await _setup_indexed(mini_codebase, storage)
 
             start = time.monotonic()
