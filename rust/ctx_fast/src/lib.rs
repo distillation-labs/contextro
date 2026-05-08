@@ -1,4 +1,4 @@
-//! contextia_fast: Rust-accelerated core for Contextia-MCP
+//! contextro_fast: Rust-accelerated core for Contextro-MCP
 //!
 //! Provides high-performance implementations of:
 //! - Parallel file discovery with .gitignore support
