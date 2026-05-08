@@ -319,7 +319,7 @@ wheels = [
 ]
 
 [[package]]
-name = "contextia"
+name = "contextro"
 version = "2.0.0"
 source = { editable = "." }
 dependencies = [
