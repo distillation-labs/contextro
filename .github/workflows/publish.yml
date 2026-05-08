@@ -63,7 +63,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/contextia-mcp
+          images: ghcr.io/${{ github.repository_owner }}/contextro-mcp
           tags: |
             type=raw,value=latest
             type=ref,event=tag
