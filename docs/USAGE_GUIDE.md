@@ -20,7 +20,7 @@ Or install from source for development:
 ```bash
 git clone https://github.com/jassskalkat/Contextro.git
 cd Contextro
-pip install -e ".[dev]"
+pip install -e ".[dev,reranker]"
 ```
 
 ### Running the Server

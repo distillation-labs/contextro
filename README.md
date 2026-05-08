@@ -34,11 +34,16 @@ pip install contextro
 
 **Requirements:** Python 3.10–3.12
 
+PyPI wheels bundle the `ctx_fast` Rust extension on supported platforms, so the default install gets the native file discovery, hashing, mtime, and git fast paths automatically.
+
 Optional extras for better performance:
 ```bash
 pip install contextro[reranker]   # Better search quality (FlashRank reranking)
-pip install contextro[model2vec]  # Fast embeddings (55k/sec vs 22/sec default)
 ```
+
+The default install already includes the `potion-code-16m` Model2Vec embedding path used by Contextro out of the box.
+
+For source installs (`pip install -e .`, `./setup.sh`), install a Rust toolchain first so the bundled `ctx_fast` extension can compile.
 
 ---
 

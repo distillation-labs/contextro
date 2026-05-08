@@ -40,6 +40,10 @@ pip install contextro[reranker]
 pip install contextro[gpu,reranker]
 ```
 
+The default install already includes the `potion-code-16m` Model2Vec embedding path used by Contextro out of the box.
+
+PyPI wheels also bundle the `ctx_fast` Rust extension on supported platforms, so the native file discovery, hashing, mtime, and git helpers are available by default.
+
 After installing, the `contextro` command is available globally:
 
 ```bash
@@ -56,6 +60,16 @@ contextro
 ---
 
 ## Install from Source (for development)
+
+### Additional Source-Build Prerequisite
+
+- **Rust toolchain (`cargo`)** — required for source installs because Contextro compiles the bundled `ctx_fast` PyO3 extension locally.
+
+Install it with `rustup` if needed:
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+```
 
 ### Quick Start (Setup Script)
 
@@ -121,11 +135,18 @@ pip install -e ".[gpu]"
 # Check the module imports correctly
 python3 -c "import contextro_mcp; print('OK')"
 
+# Optional: verify the Rust extension is available
+python3 -c "from contextro_mcp import ctx_fast; print('ctx_fast OK')"
+
 # Check the CLI is available
 contextro --help
 
-# Run the self-test demo (exercises all 15 tools)
-python self_test/demo_mcp.py
+# Run the repo validation flow
+pytest -v -m "not slow"
+
+# Optional: start a local HTTP server and verify the MCP endpoint
+CTX_TRANSPORT=http contextro --port 8000
+python scripts/docker_healthcheck.py
 ```
 
 ---

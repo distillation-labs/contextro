@@ -12,12 +12,16 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 
 # Install with dev dependencies
-pip install -e ".[dev,reranker,model2vec]"
+pip install -e ".[dev,reranker]"
 
 # Verify installation
 pytest -v
 ruff check .
 contextro --help
+
+# Optional local HTTP smoke test
+CTX_TRANSPORT=http contextro --port 8000
+python scripts/docker_healthcheck.py
 ```
 
 ## Project Structure
@@ -282,8 +286,8 @@ Stable release:
 2. Run full test suite: `pytest -v`
 3. Run linter: `ruff check .`
 4. Run Snyk scan
-5. Build: `python -m build`
-6. Test install: `pip install dist/contextro_mcp-*.whl` in a clean venv
+5. Build: `maturin build --release --sdist -o dist`
+6. Test install: `pip install dist/contextro-*.whl` in a clean venv
 7. Create a non-prerelease GitHub Release to publish PyPI + `ghcr.io/...:latest`
 
 Alpha release:
