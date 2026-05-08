@@ -1,10 +1,9 @@
 """Tests for trust_remote_code mitigation."""
 
 import pytest
-
-from contextia_mcp.config import Settings, reset_settings
-from contextia_mcp.core.exceptions import ConfigurationError
-from contextia_mcp.indexing.embedding_service import (
+from contextro_mcp.config import Settings, reset_settings
+from contextro_mcp.core.exceptions import ConfigurationError
+from contextro_mcp.indexing.embedding_service import (
     EMBEDDING_MODELS,
     EmbeddingService,
     reset_embedding_service,
@@ -66,7 +65,7 @@ def test_jina_allowed_with_opt_in(monkeypatch):
 
 def test_unsupported_model_rejected():
     """Unsupported model names are rejected with ConfigurationError."""
-    from contextia_mcp.core.exceptions import ConfigurationError
+    from contextro_mcp.core.exceptions import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="Unsupported embedding model"):
         EmbeddingService(model_name="some-custom-model")
