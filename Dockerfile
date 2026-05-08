@@ -36,7 +36,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
     HF_HOME=/opt/hf-cache \
-    CTX_STORAGE_DIR=/data/.contextia \
+    CTX_STORAGE_DIR=/data/.contextro \
     CTX_EMBEDDING_MODEL=potion-code-16m \
     CTX_LOG_LEVEL=INFO \
     CTX_LOG_FORMAT=json \
@@ -67,4 +67,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["python", "/app/scripts/docker_healthcheck.py"]
 
-ENTRYPOINT ["contextia"]
+ENTRYPOINT ["contextro"]
