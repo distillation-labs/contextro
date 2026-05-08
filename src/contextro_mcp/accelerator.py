@@ -98,6 +98,45 @@ def scan_mtimes_fast(paths: List[str]) -> Dict[str, float]:
     return result
 
 
+def _stat_signature(mtime_seconds: float, size_bytes: int, ctime_ns: int) -> str:
+    """Build a stable signature from cheap file metadata."""
+    mtime_ns = int(round(mtime_seconds * 1_000_000_000))
+    return f"{mtime_ns}:{size_bytes}:{ctime_ns}"
+
+
+def scan_file_stats_fast(paths: List[str]) -> Dict[str, str]:
+    """Scan cheap file-stat signatures in parallel.
+
+    Uses the Rust `stat_files()` helper when available for mtime/size, then
+    augments with ctime in Python so preserved-mtime edits still invalidate the
+    signature. Falls back to pure Python os.stat when the extension is absent.
+    """
+    if RUST_AVAILABLE and hasattr(ctx_fast, "stat_files"):
+        try:
+            rust_stats = {
+                path: (mtime, size) for path, mtime, size in ctx_fast.stat_files(paths)
+            }
+            result: Dict[str, str] = {}
+            for path, (mtime, size) in rust_stats.items():
+                try:
+                    stat = os.stat(path)
+                except OSError:
+                    continue
+                result[path] = _stat_signature(mtime, size, stat.st_ctime_ns)
+            return result
+        except Exception as e:
+            logger.warning("Rust stat_files failed, falling back to Python: %s", e)
+
+    result: Dict[str, str] = {}
+    for path in paths:
+        try:
+            stat = os.stat(path)
+        except OSError:
+            continue
+        result[path] = _stat_signature(stat.st_mtime, stat.st_size, stat.st_ctime_ns)
+    return result
+
+
 def _is_numeric_state_map(file_state: Dict[str, FileStateValue]) -> bool:
     """Return True when every value is a real numeric mtime."""
     return all(
