@@ -1,23 +1,23 @@
-# Contextia
+# Contextro
 
 **Give your AI coding agent a brain.**
 
-Contextia is a local MCP server that connects your AI agent (Claude, Cursor, Windsurf, etc.) to your codebase. Instead of reading files and guessing, your agent can search by meaning, trace call graphs, check what breaks before a refactor, search git history, and remember context across sessions — all running locally on your machine.
+Contextro is a local MCP server that connects your AI agent (Claude, Cursor, Windsurf, etc.) to your codebase. Instead of reading files and guessing, your agent can search by meaning, trace call graphs, check what breaks before a refactor, search git history, and remember context across sessions — all running locally on your machine.
 
 No cloud. No API keys. No data leaves your machine.
 
 ---
 
-## Why Contextia?
+## Why Contextro?
 
-Without Contextia, your agent reads 5–10 full files to find one function. With Contextia, it finds the exact chunk in one search call.
+Without Contextro, your agent reads 5–10 full files to find one function. With Contextro, it finds the exact chunk in one search call.
 
 ```
 Without:  grep "auth" → read auth.py → read middleware.py → read utils.py → ...
 With:     search("authentication flow") → exact result in <2ms
 ```
 
-| Task | Without Contextia | With Contextia | Savings |
+| Task | Without Contextro | With Contextro | Savings |
 |---|---|---|---|
 | Find a function | Read 5 files (~5000 tokens) | `search()` (~265 tokens) | **19x** |
 | Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~16 tokens) | **187x** |
@@ -29,15 +29,15 @@ With:     search("authentication flow") → exact result in <2ms
 ## Install
 
 ```bash
-pip install contextia
+pip install contextro
 ```
 
 **Requirements:** Python 3.10–3.12
 
 Optional extras for better performance:
 ```bash
-pip install contextia[reranker]   # Better search quality (FlashRank reranking)
-pip install contextia[model2vec]  # Fast embeddings (55k/sec vs 22/sec default)
+pip install contextro[reranker]   # Better search quality (FlashRank reranking)
+pip install contextro[model2vec]  # Fast embeddings (55k/sec vs 22/sec default)
 ```
 
 ---
@@ -46,7 +46,7 @@ pip install contextia[model2vec]  # Fast embeddings (55k/sec vs 22/sec default)
 
 ### Claude Code
 ```bash
-claude mcp add contextia -- contextia
+claude mcp add contextro -- contextro
 ```
 
 ### Claude Desktop
@@ -54,8 +54,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "contextia": {
-      "command": "contextia"
+    "contextro": {
+      "command": "contextro"
     }
   }
 }
@@ -65,8 +65,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 Add to your MCP configuration:
 ```json
 {
-  "contextia": {
-    "command": "contextia",
+  "contextro": {
+    "command": "contextro",
     "transport": "stdio"
   }
 }
@@ -96,7 +96,7 @@ search("database connection pool", language="python")
 search("TokenBudget", mode="bm25")   ← exact keyword match
 ```
 
-Contextia runs semantic search, keyword search, and graph search in parallel, then fuses the results. You get the code snippet, file path, line number, confidence level, and match type.
+Contextro runs semantic search, keyword search, and graph search in parallel, then fuses the results. You get the code snippet, file path, line number, confidence level, and match type.
 
 If results are large, you'll get a compact preview plus a `sandbox_ref` — call `retrieve(sandbox_ref)` to get the full set.
 
@@ -271,7 +271,7 @@ health()    ← readiness check (use in automated pipelines)
 
 ---
 
-### Look up Contextia's own docs
+### Look up Contextro's own docs
 
 ```
 introspect(query="what tools are available")
@@ -306,7 +306,7 @@ introspect(query="how do I use pattern_search")
 | `knowledge` | Index and search your own docs/notes/files |
 | `compact` | Archive session content before compaction |
 | `session_snapshot` | Compressed session state for context recovery |
-| `introspect` | Look up Contextia's own tool docs and settings |
+| `introspect` | Look up Contextro's own tool docs and settings |
 | `retrieve` | Fetch sandboxed large output by reference ID |
 | `status` | Server status, index stats, cache hit rate |
 | `health` | Readiness check |
@@ -315,7 +315,7 @@ introspect(query="how do I use pattern_search")
 
 ## How Search Works
 
-When you call `search("how does auth work")`, Contextia:
+When you call `search("how does auth work")`, Contextro:
 
 1. Checks the query cache for a semantic or exact hit
 2. Runs vector search (semantic), BM25 (keyword), and graph search (connectivity) in parallel
@@ -326,7 +326,7 @@ When you call `search("how does auth work")`, Contextia:
 7. Compresses code snippets with AST-aware compression
 8. Returns confidence level (`high`/`medium`/`low`), token count, and `sandbox_ref` if needed
 
-Every step is backed by published research. See [CONTRIBUTING.md](CONTRIBUTING.md) for citations.
+Every step is designed to balance relevance, speed, and token efficiency.
 
 ---
 
@@ -338,7 +338,7 @@ All settings are environment variables with the `CTX_` prefix. Most users don't 
 
 | Variable | Default | What it does |
 |---|---|---|
-| `CTX_STORAGE_DIR` | `~/.contextia` | Where the index is stored |
+| `CTX_STORAGE_DIR` | `~/.contextro` | Where the index is stored |
 | `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model (see below) |
 | `CTX_AUTO_WARM_START` | `false` | Restore index on restart without re-indexing |
 | `CTX_RELEVANCE_THRESHOLD` | `0.40` | How strict search filtering is (0–1) |
@@ -385,21 +385,21 @@ The default (`potion-code-16m`) is trained specifically on code and runs at 55,0
 
 ## Docker (Team / Server Use)
 
-If you want to run Contextia on a server and share it across a team:
+If you want to run Contextro on a server and share it across a team:
 
 ```yaml
 # docker-compose.yml
 services:
-  contextia:
-    container_name: contextia-mcp
-    image: ghcr.io/jassskalkat/contextia-mcp:latest
+  contextro:
+    container_name: contextro-mcp
+    image: ghcr.io/jassskalkat/contextro-mcp:latest
     ports:
       - "8000:8000"
     volumes:
-      - contextia-data:/data
+      - contextro-data:/data
       - ${CTX_CODEBASE_HOST_PATH}:/repos/platform:ro
     environment:
-      CTX_STORAGE_DIR: /data/.contextia
+      CTX_STORAGE_DIR: /data/.contextro
       CTX_CODEBASE_HOST_PATH: ${CTX_CODEBASE_HOST_PATH}
       CTX_CODEBASE_MOUNT_PATH: /repos/platform
       CTX_TRANSPORT: http
@@ -408,7 +408,7 @@ services:
       CTX_AUTO_WARM_START: "true"
 
 volumes:
-  contextia-data:
+  contextro-data:
 ```
 
 ```bash
@@ -419,7 +419,7 @@ docker compose up -d
 The image auto-remaps your host path inside the container. Pull it directly:
 
 ```bash
-docker pull ghcr.io/jassskalkat/contextia-mcp:latest
+docker pull ghcr.io/jassskalkat/contextro-mcp:latest
 ```
 
 ---
@@ -436,24 +436,6 @@ docker pull ghcr.io/jassskalkat/contextia-mcp:latest
 | Memory usage | <350MB |
 | Progressive disclosure savings | ~44% on large responses |
 | AST snippet compression | ~73% on code previews |
-
----
-
-## Development
-
-```bash
-git clone https://github.com/jassskalkat/Contextia-MCP.git
-cd Contextia-MCP
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev,reranker,model2vec]"
-
-pytest -v                # Run tests
-ruff check .             # Lint
-contextia                # Run the server locally
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details, how to add tools, and PR guidelines.
 
 ---
 
