@@ -68,7 +68,7 @@ def _runtime(
     settings.search_query_aware_compression = query_aware_compression
 
     reranker = MagicMock()
-    reranker.rerank.side_effect = lambda query, results, limit: results[:limit]
+    reranker.rerank.side_effect = lambda query, results, limit, **kwargs: results[:limit]
     tracker = MagicMock()
 
     return SearchRuntime(
@@ -388,6 +388,45 @@ def test_execute_skips_reranker_for_tiny_result_sets():
     engine.execute(SearchExecutionOptions(query="symbol", mode="vector", rerank=True, limit=5))
 
     runtime.state._reranker.rerank.assert_not_called()
+
+
+def test_execute_limits_reranker_candidate_count():
+    backend = _VectorBackend([_result(index, score=1.0 - (index * 0.01)) for index in range(1, 21)])
+    runtime = _runtime(backend, codebase_path=Path("/repo"))
+    runtime.settings.search_rerank_max_candidates = 7
+    engine = SearchExecutionEngine(runtime)
+
+    engine.execute(
+        SearchExecutionOptions(query="symbol lookup", mode="vector", rerank=True, limit=5)
+    )
+
+    rerank_args = runtime.state._reranker.rerank.call_args
+    assert rerank_args is not None
+    assert len(rerank_args.args[1]) == 7
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_chars"),
+    [
+        ("hybrid", 400),
+        ("bm25", 400),
+        ("vector", 800),
+    ],
+)
+def test_execute_uses_mode_specific_rerank_passage_limit(mode, expected_chars):
+    results = [_result(index, score=1.0 - (index * 0.01)) for index in range(1, 6)]
+    backend = _VectorBackend(results)
+    bm25_backend = _BM25Backend(results) if mode == "bm25" else None
+    runtime = _runtime(backend, bm25_backend=bm25_backend, codebase_path=Path("/repo"))
+    runtime.settings.search_rerank_max_passage_chars = 800
+    runtime.settings.search_rerank_non_vector_passage_chars = 400
+    engine = SearchExecutionEngine(runtime)
+
+    engine.execute(SearchExecutionOptions(query="symbol lookup", mode=mode, rerank=True, limit=5))
+
+    rerank_args = runtime.state._reranker.rerank.call_args
+    assert rerank_args is not None
+    assert rerank_args.kwargs["max_passage_chars"] == expected_chars
 
 
 def test_output_sandbox_prunes_expired_entries_before_retrieve():
