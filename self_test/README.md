@@ -1,11 +1,11 @@
-# Contextia Self-Test Demo
+# Contextro Self-Test Demo
 
-Verifies the Contextia installation by exercising **all 15 MCP tools** end-to-end, bypassing the MCP protocol layer to call tool functions directly.
+Verifies the Contextro installation by exercising **all 15 MCP tools** end-to-end, bypassing the MCP protocol layer to call tool functions directly.
 
 ## Quick Start
 
 ```bash
-# From the project root (with contextia installed)
+# From the project root (with contextro installed)
 python self_test/demo_mcp.py
 
 # Or point it at an existing project
@@ -64,10 +64,10 @@ pip install rich
 
 ## How It Works
 
-The script imports `create_server()` from `contextia_mcp.server`, which returns a `FastMCP` instance. Each registered tool's underlying function is accessed via `tool.fn`, allowing direct invocation without starting the MCP transport.
+The script imports `create_server()` from `contextro_mcp.server`, which returns a `FastMCP` instance. Each registered tool's underlying function is accessed via `tool.fn`, allowing direct invocation without starting the MCP transport.
 
 ```python
-from contextia_mcp.server import create_server
+from contextro_mcp.server import create_server
 
 mcp = create_server()
 tools = {
@@ -84,7 +84,7 @@ result = tools["search"]("find authentication logic", 10)
 
 | Problem | Fix |
 |---------|-----|
-| `ModuleNotFoundError: contextia_mcp` | Run `pip install -e ".[dev]"` from the project root |
+| `ModuleNotFoundError: contextro_mcp` | Run `pip install -e ".[dev]"` from the project root |
 | `ImportError: rich` | `pip install rich` (optional — runs without it) |
 | Memory errors during indexing | Set `CTX_MAX_FILE_SIZE_MB=5` to skip large files |
 | Slow on large codebases | Use `python self_test/demo_mcp.py` without args to test with the small sample project |
