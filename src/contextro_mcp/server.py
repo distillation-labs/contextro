@@ -280,7 +280,11 @@ def create_server():
             from contextro_mcp.engines.reranker import FlashReranker
 
             if not hasattr(state, "_reranker") or state._reranker is None:
-                state._reranker = FlashReranker(model_name=settings.reranker_model)
+                max_passage_chars = int(getattr(settings, "search_rerank_max_passage_chars", 0))
+                state._reranker = FlashReranker(
+                    model_name=settings.reranker_model,
+                    max_passage_chars=max_passage_chars if max_passage_chars > 0 else None,
+                )
             if state._reranker.available:
                 state._reranker._load_ranker()
         except Exception as exc:
@@ -766,8 +770,9 @@ def create_server():
             # Incremental is fast enough to run synchronously
             codebase_path = validated[0]
             try:
+                previous_branch = state.current_branch if (state := get_state()) else None
+                previous_head = state.current_head
                 result = _pipeline.incremental_index(codebase_path)
-                state = get_state()
                 state.codebase_path = codebase_path
                 state.codebase_paths = [codebase_path]
                 state.vector_engine = _pipeline.vector_engine
@@ -788,19 +793,29 @@ def create_server():
                     state.current_branch = get_current_branch(str(codebase_path))
                     state.current_head = get_current_head(str(codebase_path))
                     index_result["branch"] = state.current_branch
+                    fast_path_enabled = settings.incremental_index_fast_path_enabled
+                    head_changed = (
+                        state.current_branch != previous_branch or state.current_head != previous_head
+                    )
+                    files_changed = bool(
+                        result.files_added or result.files_modified or result.files_deleted
+                    )
                     if settings.commit_history_enabled:
-                        try:
-                            indexer = _get_commit_indexer()
-                            cr = indexer.index_commits(
-                                repo_path=str(codebase_path),
-                                db_path=str(settings.lancedb_path),
-                                limit=settings.commit_history_limit,
-                                since=settings.commit_history_since or None,
-                                include_diffs=settings.commit_include_diffs,
-                            )
-                            index_result["commits_indexed"] = cr.get("total_commits", 0)
-                        except Exception as eg:
-                            logger.warning("Commit indexing failed: %s", eg)
+                        if (not fast_path_enabled) or head_changed or files_changed:
+                            try:
+                                indexer = _get_commit_indexer()
+                                cr = indexer.index_commits(
+                                    repo_path=str(codebase_path),
+                                    db_path=str(settings.lancedb_path),
+                                    limit=settings.commit_history_limit,
+                                    since=settings.commit_history_since or None,
+                                    include_diffs=settings.commit_include_diffs,
+                                )
+                                index_result["commits_indexed"] = cr.get("total_commits", 0)
+                            except Exception as eg:
+                                logger.warning("Commit indexing failed: %s", eg)
+                        elif state.index_snapshot.get("commits_indexed") is not None:
+                            index_result["commits_indexed"] = state.index_snapshot["commits_indexed"]
                     if settings.realtime_indexing_enabled:
                         try:
                             watcher = _get_branch_watcher()
