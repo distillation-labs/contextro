@@ -2,7 +2,8 @@
 
 import asyncio
 
-import contextia_mcp.server as server_module
+import contextro_mcp.server as server_module
+
 from tests.conftest import _call_tool, _setup_indexed
 
 
@@ -41,7 +42,7 @@ class TestPathValidation:
 class TestSymbolNameValidation:
     def test_symbol_name_null_bytes(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": "hello\x00world"})
 
         result = asyncio.run(run())
@@ -50,7 +51,7 @@ class TestSymbolNameValidation:
 
     def test_symbol_name_too_long(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": "a" * 501})
 
         result = asyncio.run(run())
@@ -59,7 +60,7 @@ class TestSymbolNameValidation:
 
     def test_symbol_name_empty(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": ""})
 
         result = asyncio.run(run())
@@ -67,7 +68,7 @@ class TestSymbolNameValidation:
 
     def test_symbol_name_no_alphanumeric(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": "---"})
 
         result = asyncio.run(run())
@@ -76,7 +77,7 @@ class TestSymbolNameValidation:
 
     def test_symbol_name_valid_passes(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": "hello"})
 
         result = asyncio.run(run())
@@ -87,7 +88,7 @@ class TestSymbolNameValidation:
 
     def test_callers_validates_name(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_callers", {"symbol_name": "\x00bad"})
 
         result = asyncio.run(run())
@@ -95,7 +96,7 @@ class TestSymbolNameValidation:
 
     def test_callees_validates_name(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_callees", {"symbol_name": "x" * 501})
 
         result = asyncio.run(run())
@@ -103,7 +104,7 @@ class TestSymbolNameValidation:
 
     def test_impact_validates_name(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "impact", {"symbol_name": ""})
 
         result = asyncio.run(run())
@@ -111,7 +112,7 @@ class TestSymbolNameValidation:
 
     def test_explain_validates_name(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "explain", {"symbol_name": "\x00"})
 
         result = asyncio.run(run())
@@ -121,7 +122,7 @@ class TestSymbolNameValidation:
 class TestQueryValidation:
     def test_search_null_bytes(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "search", {"query": "hello\x00world"})
 
         result = asyncio.run(run())
@@ -129,7 +130,7 @@ class TestQueryValidation:
 
     def test_search_too_long(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "search", {"query": "a" * 10001})
 
         result = asyncio.run(run())
@@ -137,7 +138,7 @@ class TestQueryValidation:
 
     def test_search_empty(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "search", {"query": "   "})
 
         result = asyncio.run(run())
@@ -145,7 +146,7 @@ class TestQueryValidation:
 
     def test_recall_validates_query(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "recall", {"query": "\x00"})
 
         result = asyncio.run(run())
@@ -155,9 +156,10 @@ class TestQueryValidation:
 class TestSQLInjection:
     def test_language_filter_injection(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(
-                mcp, "search",
+                mcp,
+                "search",
                 {"query": "hello", "language": "'; DROP TABLE chunks; --"},
             )
 
@@ -167,9 +169,10 @@ class TestSQLInjection:
 
     def test_symbol_type_filter_injection(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(
-                mcp, "search",
+                mcp,
+                "search",
                 {"query": "hello", "symbol_type": "' OR 1=1 --"},
             )
 
