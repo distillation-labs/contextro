@@ -100,6 +100,52 @@ class TestReranking:
 
         assert len(output) == 2
 
+    def test_rerank_truncates_passages_when_configured(self):
+        mock_flashrank = MagicMock()
+        mock_request = MagicMock()
+        mock_flashrank.RerankRequest = mock_request
+
+        with patch.dict("sys.modules", {"flashrank": mock_flashrank}):
+            reranker = FlashReranker(max_passage_chars=5)
+            reranker._available = True
+
+            mock_ranker = MagicMock()
+            mock_ranker.rerank.return_value = [
+                {"id": "a", "score": 0.9, "meta": _make_result("a", text="abcdefghij")},
+            ]
+            reranker._ranker = mock_ranker
+
+            reranker.rerank("query", [_make_result("a", text="abcdefghij")], limit=1)
+
+        assert mock_request.call_count == 1
+        _, kwargs = mock_request.call_args
+        assert kwargs["passages"][0]["text"] == "abcde"
+
+    def test_rerank_override_uses_call_specific_passage_limit(self):
+        mock_flashrank = MagicMock()
+        mock_request = MagicMock()
+        mock_flashrank.RerankRequest = mock_request
+
+        with patch.dict("sys.modules", {"flashrank": mock_flashrank}):
+            reranker = FlashReranker(max_passage_chars=10)
+            reranker._available = True
+
+            mock_ranker = MagicMock()
+            mock_ranker.rerank.return_value = [
+                {"id": "a", "score": 0.9, "meta": _make_result("a", text="abcdefghij")},
+            ]
+            reranker._ranker = mock_ranker
+
+            reranker.rerank(
+                "query",
+                [_make_result("a", text="abcdefghij")],
+                limit=1,
+                max_passage_chars=4,
+            )
+
+        _, kwargs = mock_request.call_args
+        assert kwargs["passages"][0]["text"] == "abcd"
+
 
 class TestUnload:
     def test_unload_frees_ranker(self):
