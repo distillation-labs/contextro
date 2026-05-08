@@ -1,10 +1,9 @@
 """Tests for Symbol-to-CodeChunk conversion."""
 
 import pytest
-
-from contextia_mcp.config import reset_settings
-from contextia_mcp.core.models import Symbol, SymbolType
-from contextia_mcp.indexing.chunker import (
+from contextro_mcp.config import reset_settings
+from contextro_mcp.core.models import Symbol, SymbolType
+from contextro_mcp.indexing.chunker import (
     CodeChunk,
     _generate_chunk_id,
     create_chunk,
@@ -221,9 +220,18 @@ class TestCodeChunkToDict:
         )
         d = chunk.to_dict()
         expected_keys = {
-            "id", "text", "vector", "filepath", "symbol_name",
-            "symbol_type", "language", "line_start", "line_end",
-            "signature", "parent", "docstring",
+            "id",
+            "text",
+            "vector",
+            "filepath",
+            "symbol_name",
+            "symbol_type",
+            "language",
+            "line_start",
+            "line_end",
+            "signature",
+            "parent",
+            "docstring",
         }
         assert set(d.keys()) == expected_keys
         assert d["vector"] == [0.1, 0.2]
