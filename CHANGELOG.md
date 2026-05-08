@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Universal progressive disclosure** — All tool responses >1200 tokens (configurable) are automatically sandboxed. Returns compact preview with `sandbox_ref` for on-demand retrieval. Achieves 43.9% token reduction on large responses (validated against Cursor's 46.9% A/B test).
+- **AST-aware snippet compression** — Search previews compress code snippets by keeping function/class signatures and collapsing bodies to first meaningful line + `...`. Achieves 73.3% character reduction on realistic code (86.3% on functions, 93.6% on JavaScript).
+- **Searchable compaction archive** — New `compact` tool archives pre-compaction session content. Extended `recall` with `memory_type='archive'` to search archived context. Enables recovery of key decisions and findings after context compaction.
 - **Live-reloading Docker dev loop** — `docker-compose.dev.yml` plus `scripts/dev_http_server.py` now run Contextia from source over HTTP, restart automatically when `src/` or `scripts/` change, and preserve warm-started indexes between restarts.
 - **Alpha deployment channel** — `.github/workflows/alpha.yml` now validates, builds, and publishes `ghcr.io/<owner>/contextia-mcp:alpha` and `:alpha-<short-sha>` on `alpha` branch pushes, with optional remote SSH deploy support via `deploy/alpha/`.
 

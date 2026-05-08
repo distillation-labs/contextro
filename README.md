@@ -219,6 +219,17 @@ Index any text, markdown, or code files and search them semantically.
 
 ---
 
+### Archive and search compaction history
+
+```
+compact(content)      ← archive session content before compaction
+recall(query, memory_type="archive")  ← search archived sessions
+```
+
+Archive pre-compaction context (decisions, findings, code changes) and search it later. Complements `session_snapshot()` for full context recovery.
+
+---
+
 ### Recover after context compaction
 
 ```
@@ -266,7 +277,7 @@ retrieve("sx_abc12345")
 retrieve("sx_abc12345", query="authentication")
 ```
 
-When a tool result is very large, Contextia stores it in a sandbox and returns a reference ID. Use `retrieve` to fetch it when you need it. Search now pairs this with `full_total` so agents can keep working from the preview without paying the full token cost up front.
+Tool responses >1200 tokens are automatically sandboxed and return a preview with `sandbox_ref`. Use `retrieve` to fetch the full result on demand. This progressive disclosure reduces token usage by ~44% on large responses while keeping agents unblocked with inline previews.
 
 ---
 
@@ -294,6 +305,7 @@ When a tool result is very large, Contextia stores it in a sandbox and returns a
 | `recall` | Search memories by meaning |
 | `forget` | Delete memories |
 | `knowledge` | Index and search your own docs/notes/files |
+| `compact` | Archive session content before compaction for later search |
 | `session_snapshot` | Compressed session state for context recovery |
 | `introspect` | Look up Contextia's own tool docs and settings |
 | `retrieve` | Fetch sandboxed large output by reference ID |
