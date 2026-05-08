@@ -1,8 +1,7 @@
 """Tests for core/graph_models.py."""
 
 import pytest
-
-from contextia_mcp.core.graph_models import (
+from contextro_mcp.core.graph_models import (
     CacheConfig,
     NodeType,
     RelationshipType,
@@ -13,6 +12,7 @@ from contextia_mcp.core.graph_models import (
 )
 
 # --- UniversalLocation ---
+
 
 def test_location_creation():
     loc = UniversalLocation(file_path="/test.py", start_line=1, end_line=10)
@@ -42,6 +42,7 @@ def test_location_negative_column():
 
 # --- UniversalNode ---
 
+
 def _make_node(**overrides):
     defaults = {
         "id": "node-1",
@@ -70,6 +71,7 @@ def test_node_with_metadata():
 
 # --- UniversalRelationship ---
 
+
 def test_relationship_creation():
     rel = UniversalRelationship(
         id="rel-1",
@@ -82,6 +84,7 @@ def test_relationship_creation():
 
 
 # --- UniversalGraph ---
+
 
 def test_graph_add_and_get_node():
     g = UniversalGraph()
@@ -112,7 +115,9 @@ def test_graph_add_relationship():
     g.add_node(_make_node(id="a"))
     g.add_node(_make_node(id="b"))
     rel = UniversalRelationship(
-        id="r1", source_id="a", target_id="b",
+        id="r1",
+        source_id="a",
+        target_id="b",
         relationship_type=RelationshipType.CALLS,
     )
     g.add_relationship(rel)
@@ -122,14 +127,22 @@ def test_graph_add_relationship():
 
 def test_graph_relationships_by_type():
     g = UniversalGraph()
-    g.add_relationship(UniversalRelationship(
-        id="r1", source_id="a", target_id="b",
-        relationship_type=RelationshipType.CALLS,
-    ))
-    g.add_relationship(UniversalRelationship(
-        id="r2", source_id="a", target_id="c",
-        relationship_type=RelationshipType.IMPORTS,
-    ))
+    g.add_relationship(
+        UniversalRelationship(
+            id="r1",
+            source_id="a",
+            target_id="b",
+            relationship_type=RelationshipType.CALLS,
+        )
+    )
+    g.add_relationship(
+        UniversalRelationship(
+            id="r2",
+            source_id="a",
+            target_id="c",
+            relationship_type=RelationshipType.IMPORTS,
+        )
+    )
     assert len(g.get_relationships_by_type(RelationshipType.CALLS)) == 1
     assert len(g.get_relationships_by_type(RelationshipType.IMPORTS)) == 1
 
@@ -146,10 +159,14 @@ def test_graph_connected_nodes():
     g = UniversalGraph()
     g.add_node(_make_node(id="a"))
     g.add_node(_make_node(id="b"))
-    g.add_relationship(UniversalRelationship(
-        id="r1", source_id="a", target_id="b",
-        relationship_type=RelationshipType.CALLS,
-    ))
+    g.add_relationship(
+        UniversalRelationship(
+            id="r1",
+            source_id="a",
+            target_id="b",
+            relationship_type=RelationshipType.CALLS,
+        )
+    )
     connected = g.get_connected_nodes("a")
     assert len(connected) == 1
     assert connected[0].id == "b"
