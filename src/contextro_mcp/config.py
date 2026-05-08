@@ -56,6 +56,7 @@ class Settings:
     skip_astgrep: bool = True  # Skip ast-grep for faster indexing (tree-sitter handles most cases)
     smart_chunk_relationships_enabled: bool = True
     smart_chunk_file_context_enabled: bool = True
+    incremental_index_fast_path_enabled: bool = True
 
     # Graph
     graph_max_depth: int = 10
@@ -79,6 +80,9 @@ class Settings:
     search_adaptive_result_count_enabled: bool = True
     search_adaptive_high_confidence_limit: int = 3
     search_adaptive_medium_confidence_limit: int = 6
+    search_rerank_max_candidates: int = 10
+    search_rerank_max_passage_chars: int = 800
+    search_rerank_non_vector_passage_chars: int = 400
     search_prewarm_enabled: bool = True
     search_prewarm_reranker: bool = True
     search_query_aware_compression: bool = True
@@ -152,6 +156,10 @@ class Settings:
             "CTX_CHUNK_CONTEXT_PATH_DEPTH": ("chunk_context_path_depth", int),
             "CTX_INDEX_FILE_BATCH_SIZE": ("index_file_batch_size", int),
             "CTX_SKIP_ASTGREP": ("skip_astgrep", _bool),
+            "CTX_INCREMENTAL_INDEX_FAST_PATH_ENABLED": (
+                "incremental_index_fast_path_enabled",
+                _bool,
+            ),
             "CTX_SMART_CHUNK_RELATIONSHIPS_ENABLED": (
                 "smart_chunk_relationships_enabled",
                 _bool,
@@ -188,6 +196,12 @@ class Settings:
             ),
             "CTX_SEARCH_ADAPTIVE_MEDIUM_CONFIDENCE_LIMIT": (
                 "search_adaptive_medium_confidence_limit",
+                int,
+            ),
+            "CTX_SEARCH_RERANK_MAX_CANDIDATES": ("search_rerank_max_candidates", int),
+            "CTX_SEARCH_RERANK_MAX_PASSAGE_CHARS": ("search_rerank_max_passage_chars", int),
+            "CTX_SEARCH_RERANK_NON_VECTOR_PASSAGE_CHARS": (
+                "search_rerank_non_vector_passage_chars",
                 int,
             ),
             "CTX_SEARCH_PREWARM_ENABLED": ("search_prewarm_enabled", _bool),
