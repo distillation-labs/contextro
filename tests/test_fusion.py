@@ -1,16 +1,15 @@
 """Tests for Reciprocal Rank Fusion and graph relevance scoring."""
 
 import pytest
-
-from contextia_mcp.core.graph_models import (
+from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,
     UniversalLocation,
     UniversalNode,
     UniversalRelationship,
 )
-from contextia_mcp.engines.fusion import ReciprocalRankFusion, graph_relevance_search
-from contextia_mcp.engines.graph_engine import RustworkxCodeGraph
+from contextro_mcp.engines.fusion import ReciprocalRankFusion, graph_relevance_search
+from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
 
 
 def _make_node(name, filepath="/a.py", line=1, node_type=NodeType.FUNCTION, language="python"):
@@ -97,10 +96,12 @@ class TestGraphRelevance:
 class TestRRFAlgorithm:
     def test_basic_fusion(self):
         rrf = ReciprocalRankFusion(k=60)
-        results = rrf.fuse({
-            "vector": [{"id": "a", "score": 0.9}, {"id": "b", "score": 0.5}],
-            "bm25": [{"id": "b", "score": 0.8}, {"id": "c", "score": 0.3}],
-        })
+        results = rrf.fuse(
+            {
+                "vector": [{"id": "a", "score": 0.9}, {"id": "b", "score": 0.5}],
+                "bm25": [{"id": "b", "score": 0.8}, {"id": "c", "score": 0.3}],
+            }
+        )
         ids = [r["id"] for r in results]
         assert "a" in ids
         assert "b" in ids
@@ -109,9 +110,11 @@ class TestRRFAlgorithm:
     def test_rrf_score_calculation(self):
         """Verify RRF formula: weight / (k + rank)."""
         rrf = ReciprocalRankFusion(weights={"engine": 1.0}, k=60)
-        results = rrf.fuse({
-            "engine": [{"id": "a"}, {"id": "b"}],
-        })
+        results = rrf.fuse(
+            {
+                "engine": [{"id": "a"}, {"id": "b"}],
+            }
+        )
         # rank 1: 1.0 / (60 + 1) = 0.01639...
         # rank 2: 1.0 / (60 + 2) = 0.01613...
         assert abs(results[0]["rrf_score"] - 1.0 / 61) < 1e-6
@@ -119,13 +122,13 @@ class TestRRFAlgorithm:
 
     def test_deduplication(self):
         """Same ID from multiple engines accumulates score."""
-        rrf = ReciprocalRankFusion(
-            weights={"vector": 0.5, "bm25": 0.5}, k=60
+        rrf = ReciprocalRankFusion(weights={"vector": 0.5, "bm25": 0.5}, k=60)
+        results = rrf.fuse(
+            {
+                "vector": [{"id": "shared", "score": 0.9, "text": "vector_text"}],
+                "bm25": [{"id": "shared", "score": 0.8, "text": "bm25_text"}],
+            }
         )
-        results = rrf.fuse({
-            "vector": [{"id": "shared", "score": 0.9, "text": "vector_text"}],
-            "bm25": [{"id": "shared", "score": 0.8, "text": "bm25_text"}],
-        })
         assert len(results) == 1
         assert results[0]["id"] == "shared"
         # Score from both engines
@@ -134,29 +137,29 @@ class TestRRFAlgorithm:
 
     def test_metadata_from_highest_weight(self):
         """Metadata comes from the highest-weight engine."""
-        rrf = ReciprocalRankFusion(
-            weights={"vector": 0.7, "bm25": 0.3}, k=60
+        rrf = ReciprocalRankFusion(weights={"vector": 0.7, "bm25": 0.3}, k=60)
+        results = rrf.fuse(
+            {
+                "vector": [{"id": "x", "text": "from_vector"}],
+                "bm25": [{"id": "x", "text": "from_bm25"}],
+            }
         )
-        results = rrf.fuse({
-            "vector": [{"id": "x", "text": "from_vector"}],
-            "bm25": [{"id": "x", "text": "from_bm25"}],
-        })
         assert results[0]["text"] == "from_vector"
 
     def test_fusion_sources_tracked(self):
         rrf = ReciprocalRankFusion(k=60)
-        results = rrf.fuse({
-            "vector": [{"id": "a"}],
-            "bm25": [{"id": "a"}, {"id": "b"}],
-        })
+        results = rrf.fuse(
+            {
+                "vector": [{"id": "a"}],
+                "bm25": [{"id": "a"}, {"id": "b"}],
+            }
+        )
         a_result = next(r for r in results if r["id"] == "a")
         assert "vector" in a_result["_fusion_sources"]
         assert "bm25" in a_result["_fusion_sources"]
 
     def test_missing_engine_skipped(self):
-        rrf = ReciprocalRankFusion(
-            weights={"vector": 0.5, "bm25": 0.3, "graph": 0.2}, k=60
-        )
+        rrf = ReciprocalRankFusion(weights={"vector": 0.5, "bm25": 0.3, "graph": 0.2}, k=60)
         # Only vector results provided
         results = rrf.fuse({"vector": [{"id": "a"}]})
         assert len(results) == 1
@@ -167,25 +170,25 @@ class TestRRFAlgorithm:
         assert results == []
 
     def test_zero_weight_skipped(self):
-        rrf = ReciprocalRankFusion(
-            weights={"vector": 1.0, "bm25": 0.0}, k=60
+        rrf = ReciprocalRankFusion(weights={"vector": 1.0, "bm25": 0.0}, k=60)
+        results = rrf.fuse(
+            {
+                "vector": [{"id": "a"}],
+                "bm25": [{"id": "b"}],
+            }
         )
-        results = rrf.fuse({
-            "vector": [{"id": "a"}],
-            "bm25": [{"id": "b"}],
-        })
         ids = [r["id"] for r in results]
         assert "a" in ids
         assert "b" not in ids
 
     def test_custom_weights(self):
-        rrf = ReciprocalRankFusion(
-            weights={"a": 0.8, "b": 0.2}, k=60
+        rrf = ReciprocalRankFusion(weights={"a": 0.8, "b": 0.2}, k=60)
+        results = rrf.fuse(
+            {
+                "a": [{"id": "x"}],
+                "b": [{"id": "y"}],
+            }
         )
-        results = rrf.fuse({
-            "a": [{"id": "x"}],
-            "b": [{"id": "y"}],
-        })
         # x should have higher score due to higher weight
         assert results[0]["id"] == "x"
         assert results[0]["rrf_score"] > results[1]["rrf_score"]
