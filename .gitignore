@@ -29,7 +29,7 @@ htmlcov/
 .hypothesis/
 
 # LanceDB data
-.contextia/
+.contextro/
 *.lance/
 
 # Models
@@ -53,5 +53,5 @@ Thumbs.db
 # Documentation build artifacts
 docs-preautoresearch-master/
 scratch/
-rust/contextia_fast/target/
+rust/contextro_fast/target/
 rust/ctx_fast/target/
