@@ -1,7 +1,7 @@
 """Tests for core/interfaces.py."""
 
-from contextia_mcp.core.interfaces import IEngine, IParser
-from contextia_mcp.core.models import ParsedFile
+from contextro_mcp.core.interfaces import IEngine, IParser
+from contextro_mcp.core.models import ParsedFile
 
 
 class ConcreteParser(IParser):
