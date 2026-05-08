@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Contextia Setup Script
+# Contextro Setup Script
 # Sets up Python virtual environment and installs all dependencies
 #
 # Usage:
@@ -33,7 +33,7 @@ SKIP_VERIFY=false
 RERANKER=false
 
 print_usage() {
-    echo -e "${CYAN}Contextia Setup Script${NC}"
+    echo -e "${CYAN}Contextro Setup Script${NC}"
     echo ""
     echo "Usage: ./setup.sh [OPTIONS]"
     echo ""
@@ -84,7 +84,7 @@ done
 
 echo -e "${CYAN}"
 echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║             Contextia — Environment Setup                ║"
+echo "║             Contextro — Environment Setup                ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -169,14 +169,14 @@ if [[ "$SKIP_VERIFY" = true ]]; then
 else
     echo -e "${BLUE}[5/6]${NC} Verifying installation..."
 
-    if command -v contextia &> /dev/null; then
-        echo -e "${GREEN}  ✓ contextia CLI available${NC}"
+    if command -v contextro &> /dev/null; then
+        echo -e "${GREEN}  ✓ contextro CLI available${NC}"
     else
-        echo -e "${RED}  ✗ contextia CLI not found${NC}"
+        echo -e "${RED}  ✗ contextro CLI not found${NC}"
         exit 1
     fi
 
-    if $PYTHON_CMD -c "import contextia_mcp; print('OK')" &> /dev/null; then
+    if $PYTHON_CMD -c "import contextro_mcp; print('OK')" &> /dev/null; then
         echo -e "${GREEN}  ✓ Core imports verified${NC}"
     else
         echo -e "${RED}  ✗ Import verification failed${NC}"
@@ -196,13 +196,13 @@ echo -e "To activate the environment:"
 echo -e "  ${CYAN}source ${VENV_DIR}/bin/activate${NC}"
 echo ""
 echo -e "To start the server:"
-echo -e "  ${CYAN}contextia${NC}"
+echo -e "  ${CYAN}contextro${NC}"
 echo ""
 echo -e "To run the self-test demo:"
 echo -e "  ${CYAN}python self_test/demo_mcp.py${NC}"
 echo ""
 echo -e "To add to Claude Code:"
-echo -e "  ${CYAN}claude mcp add contextia -- contextia${NC}"
+echo -e "  ${CYAN}claude mcp add contextro -- contextro${NC}"
 echo ""
 if [[ "$PROD_ONLY" = false ]]; then
     echo -e "To run tests:"
