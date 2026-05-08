@@ -4,8 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-from contextia_mcp.accelerator import (
+from contextro_mcp.accelerator import (
     RUST_AVAILABLE,
     diff_mtimes_fast,
     discover_files_fast,
@@ -22,25 +21,27 @@ def git_repo(tmp_path):
     """Create a temporary git repository."""
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(
-        ["git", "init"], cwd=str(repo), capture_output=True, check=True
-    )
+    subprocess.run(["git", "init"], cwd=str(repo), capture_output=True, check=True)
     subprocess.run(
         ["git", "config", "user.email", "t@t.com"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "T"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     (repo / "main.py").write_text("x = 1\n")
     (repo / "utils.py").write_text("y = 2\n")
-    subprocess.run(
-        ["git", "add", "."], cwd=str(repo), capture_output=True, check=True
-    )
+    subprocess.run(["git", "add", "."], cwd=str(repo), capture_output=True, check=True)
     subprocess.run(
         ["git", "commit", "-m", "init"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     return repo
 
@@ -53,9 +54,7 @@ class TestDiscoverFiles:
         (tmp_path / "b.py").write_text("y=2")
         (tmp_path / "c.txt").write_text("text")
 
-        files = discover_files_fast(
-            str(tmp_path), extensions={".py"}
-        )
+        files = discover_files_fast(str(tmp_path), extensions={".py"})
         names = [Path(f).name for f in files]
         assert "a.py" in names
         assert "b.py" in names
@@ -65,9 +64,7 @@ class TestDiscoverFiles:
         (tmp_path / "small.py").write_text("x=1")
         (tmp_path / "big.py").write_text("x" * 1000)
 
-        files = discover_files_fast(
-            str(tmp_path), extensions={".py"}, max_file_size_bytes=500
-        )
+        files = discover_files_fast(str(tmp_path), extensions={".py"}, max_file_size_bytes=500)
         names = [Path(f).name for f in files]
         assert "small.py" in names
         assert "big.py" not in names
@@ -79,7 +76,8 @@ class TestDiscoverFiles:
         (node_modules / "bad.py").write_text("y=2")
 
         files = discover_files_fast(
-            str(tmp_path), extensions={".py"},
+            str(tmp_path),
+            extensions={".py"},
             skip_dirs={"node_modules"},
         )
         names = [Path(f).name for f in files]
