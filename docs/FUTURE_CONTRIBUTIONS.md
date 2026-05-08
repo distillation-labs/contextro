@@ -1,6 +1,6 @@
 # Future Contributions
 
-> Features and improvements that would make Contextia faster, smarter, and more capable. Contributions welcome!
+> Features and improvements that would make Contextro faster, smarter, and more capable. Contributions welcome!
 
 ## How to Contribute
 
@@ -15,7 +15,7 @@
 
 **Priority: High** | **Difficulty: Medium**
 
-Currently Contextia supports two local models (jina-code, bge-small-en) with GPU/MPS auto-detection. Add support for external embedding providers so users can trade latency for quality.
+Currently Contextro supports two local models (jina-code, bge-small-en) with GPU/MPS auto-detection. Add support for external embedding providers so users can trade latency for quality.
 
 **Targets:**
 - OpenAI `text-embedding-3-small` / `text-embedding-3-large`
@@ -170,7 +170,7 @@ The file watcher code exists (`parsing/file_watcher.py`) but is not integrated.
 
 **Priority: Medium** | **Difficulty: Low**
 
-Measure and report how many tokens Contextia saves compared to sending full files.
+Measure and report how many tokens Contextro saves compared to sending full files.
 
 **Features:**
 - Track tokens-sent vs tokens-if-full-files per query
@@ -223,9 +223,9 @@ Integrate with external SAST/SCA tools for security-aware code intelligence.
 Allow direct command-line usage without an MCP client.
 
 **Features:**
-- `contextia search "auth middleware" --mode hybrid`
-- `contextia index /path/to/repo`
-- `contextia impact MyClass.my_method`
+- `contextro search "auth middleware" --mode hybrid`
+- `contextro index /path/to/repo`
+- `contextro impact MyClass.my_method`
 - JSON or human-readable output
 - Shell completion support
 
@@ -254,7 +254,7 @@ Currently expired memories remain in the database until manually cleaned.
 Understand how your codebase uses its dependencies — not just what the library API is (that's what tools like Context7 do), but how your project interacts with it.
 
 **Why not just use Context7?**
-Context7 fetches up-to-date library documentation. That's valuable for *writing* code. But Contextia sits at a different layer — it understands *your* code. The opportunity is to bridge the gap: map the relationship between your codebase and its dependencies.
+Context7 fetches up-to-date library documentation. That's valuable for *writing* code. But Contextro sits at a different layer — it understands *your* code. The opportunity is to bridge the gap: map the relationship between your codebase and its dependencies.
 
 **Features:**
 - **Dependency call-site mapping**: Index which functions/methods from external packages are used, and where. Answer "which files import `lancedb.connect`?" or "how many call sites use `fastmcp.tool`?"
@@ -271,7 +271,7 @@ Context7 fetches up-to-date library documentation. That's valuable for *writing*
 - "Show me all the patterns we use for tree-sitter parsing"
 - "Which modules are most coupled to `rustworkx`? What would it take to swap it out?"
 
-**Complements, not competes with Context7:** Use Context7 to learn *what* a library offers. Use Contextia to understand *how your project uses it* and *what breaks if it changes*.
+**Complements, not competes with Context7:** Use Context7 to learn *what* a library offers. Use Contextro to understand *how your project uses it* and *what breaks if it changes*.
 
 ---
 
@@ -281,7 +281,7 @@ Context7 fetches up-to-date library documentation. That's valuable for *writing*
 
 Understand cloud infrastructure *as it appears in your code* — not as a cloud console replacement.
 
-**Scope (what Contextia should do):**
+**Scope (what Contextro should do):**
 - Index Terraform, Pulumi, CloudFormation, and CDK files as part of the code graph
 - Map SDK call sites to cloud services (e.g., `boto3.client('s3')`, `storage.Client()`, `BlobServiceClient`)
 - Link hardcoded resource ARNs, URLs, project IDs, and bucket names to the code that references them
@@ -299,7 +299,7 @@ Understand cloud infrastructure *as it appears in your code* — not as a cloud 
 - "Show me all GCP API calls in the payments module"
 - "If I rename this Terraform resource, what config files and code references break?"
 
-**Same principle as Context7:** Contextia understands your code's *relationship* to cloud services. Use cloud MCP servers for live resource management.
+**Same principle as Context7:** Contextro understands your code's *relationship* to cloud services. Use cloud MCP servers for live resource management.
 
 ---
 
