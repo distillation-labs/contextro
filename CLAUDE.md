@@ -1,21 +1,21 @@
-# Contextia
+# Contextro
 
 Unified MCP server: hybrid search + code graph + semantic memory. Target: <350MB RAM.
 
-## MANDATORY: Use Contextia Tools Before Built-in Tools
+## MANDATORY: Use Contextro Tools Before Built-in Tools
 
-Contextia is registered as an MCP server (`contextia`). **You MUST use Contextia tools as your PRIMARY method for understanding and navigating code.** This is a BLOCKING REQUIREMENT — do not skip it.
+Contextro is registered as an MCP server (`contextro`). **You MUST use Contextro tools as your PRIMARY method for understanding and navigating code.** This is a BLOCKING REQUIREMENT — do not skip it.
 
 ### Required workflow for EVERY code task
 
-1. **Start of session**: Run `mcp__contextia__status` to check index state. If not indexed, run `mcp__contextia__index`.
-2. **Before reading any file**: Use `mcp__contextia__search` to find relevant code first. Do NOT jump straight to Read/Grep/Glob.
-3. **Before exploring a symbol**: Use `mcp__contextia__find_symbol`, `mcp__contextia__explain`, `mcp__contextia__find_callers`, or `mcp__contextia__find_callees` instead of grepping for it.
-4. **Before refactoring**: Use `mcp__contextia__impact` to assess blast radius.
-5. **For project understanding**: Use `mcp__contextia__overview` or `mcp__contextia__architecture` instead of manually browsing directories.
-6. **Only use Read/Grep/Glob AFTER** Contextia tools have identified the specific files/lines you need to examine or edit.
+1. **Start of session**: Run `mcp__contextro__status` to check index state. If not indexed, run `mcp__contextro__index`.
+2. **Before reading any file**: Use `mcp__contextro__search` to find relevant code first. Do NOT jump straight to Read/Grep/Glob.
+3. **Before exploring a symbol**: Use `mcp__contextro__find_symbol`, `mcp__contextro__explain`, `mcp__contextro__find_callers`, or `mcp__contextro__find_callees` instead of grepping for it.
+4. **Before refactoring**: Use `mcp__contextro__impact` to assess blast radius.
+5. **For project understanding**: Use `mcp__contextro__overview` or `mcp__contextro__architecture` instead of manually browsing directories.
+6. **Only use Read/Grep/Glob AFTER** Contextro tools have identified the specific files/lines you need to examine or edit.
 
-**Why this matters**: Contextia provides semantic search, call graph analysis, and code intelligence that built-in tools cannot. Using Read/Grep first means you miss semantic matches, don't understand call relationships, and waste time manually browsing.
+**Why this matters**: Contextro provides semantic search, call graph analysis, and code intelligence that built-in tools cannot. Using Read/Grep first means you miss semantic matches, don't understand call relationships, and waste time manually browsing.
 
 ### Workflow: Always index first
 
@@ -23,13 +23,13 @@ Before using any search/graph/analysis tools, index the codebase:
 
 ```
 # Single directory
-mcp__contextia__index(path="/path/to/codebase")
+mcp__contextro__index(path="/path/to/codebase")
 
 # Multiple directories (comma-separated) — indexed folder-by-folder
-mcp__contextia__index(path="/path/to/src,/path/to/lib,/path/to/tests")
+mcp__contextro__index(path="/path/to/src,/path/to/lib,/path/to/tests")
 
 # Or use the paths parameter for additional directories
-mcp__contextia__index(path="/path/to/src", paths="/path/to/lib,/path/to/tests")
+mcp__contextro__index(path="/path/to/src", paths="/path/to/lib,/path/to/tests")
 ```
 
 For subsequent sessions or after file changes, use incremental mode (auto-detected).
@@ -56,7 +56,7 @@ For subsequent sessions or after file changes, use incremental mode (auto-detect
 
 ### Best practices
 
-- **NEVER use Grep/Glob/Read as your first action for code exploration**: Always start with `search`, `find_symbol`, or `overview`. Only fall back to built-in tools for reading specific files identified by Contextia, or for files outside the indexed codebase.
+- **NEVER use Grep/Glob/Read as your first action for code exploration**: Always start with `search`, `find_symbol`, or `overview`. Only fall back to built-in tools for reading specific files identified by Contextro, or for files outside the indexed codebase.
 - **Search before reading files**: Use `search` to find relevant code instead of manually browsing. It's faster and finds semantic matches.
 - **Use `impact` before refactoring**: Always check change impact before modifying shared symbols.
 - **Use `explain` for unfamiliar code**: Combines graph relationships, related code, and quality metrics in one call.
@@ -72,7 +72,7 @@ For subsequent sessions or after file changes, use incremental mode (auto-detect
 ## Structure (all implemented)
 
 ```
-src/contextia_mcp/
+src/contextro_mcp/
 ├── server.py              # FastMCP server, 15 tools + health + input validation + graceful shutdown
 ├── config.py              # Settings with CTX_ env prefix (security, audit, rate limit)
 ├── state.py               # Session state singleton + shutdown()
@@ -80,7 +80,7 @@ src/contextia_mcp/
 │   ├── models.py          # Symbol, ParsedFile, CodebaseIndex, Memory
 │   ├── graph_models.py    # UniversalNode, Relationship
 │   ├── interfaces.py      # IParser, IEngine
-│   └── exceptions.py      # ContextiaException hierarchy + Auth/RateLimit errors
+│   └── exceptions.py      # ContextroException hierarchy + Auth/RateLimit errors
 ├── parsing/
 │   ├── treesitter_parser.py   # Symbol extraction → embeddings
 │   ├── astgrep_parser.py      # Structural analysis → graph
@@ -122,15 +122,15 @@ self_test/
 ## Commands
 
 ```bash
-pip install contextia   # Install from PyPI
+pip install contextro   # Install from PyPI
 pip install -e ".[dev]"    # Install from source with dev deps
 ./setup.sh                 # Setup script (venv + install + verify)
 pytest -v                  # Run tests (441 tests)
 pytest -m "not slow"       # Skip performance benchmarks
 ruff check .               # Lint
-contextia               # Run server
+contextro               # Run server
 python self_test/demo_mcp.py  # Run self-test demo (all 15 tools)
-claude mcp add contextia -- contextia  # Add to Claude Code
+claude mcp add contextro -- contextro  # Add to Claude Code
 ```
 
 ## Key Decisions
@@ -184,13 +184,13 @@ Set the `CTX_EMBEDDING_MODEL` environment variable:
 
 ```bash
 # Use bge-small-en (lightweight, no trust_remote_code needed)
-CTX_EMBEDDING_MODEL=bge-small-en contextia
+CTX_EMBEDDING_MODEL=bge-small-en contextro
 
 # Or set in your shell profile
 export CTX_EMBEDDING_MODEL=bge-small-en
 
 # For Claude Code MCP config
-claude mcp add contextia -e CTX_EMBEDDING_MODEL=bge-small-en -- contextia
+claude mcp add contextro -e CTX_EMBEDDING_MODEL=bge-small-en -- contextro
 ```
 
 ### GPU / MPS acceleration
@@ -200,7 +200,7 @@ Device is auto-detected by default (`CTX_EMBEDDING_DEVICE=auto`):
 - **MPS** (Apple Silicon): Detected via `torch.backends.mps` or onnxruntime CoreMLExecutionProvider
 - **CPU**: Fallback
 
-For CUDA GPU support, install the gpu extra: `pip install contextia[gpu]`
+For CUDA GPU support, install the gpu extra: `pip install contextro[gpu]`
 
 To force a specific device: `CTX_EMBEDDING_DEVICE=cpu` or `CTX_EMBEDDING_DEVICE=cuda`
 
