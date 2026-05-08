@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Contextia Self-Test Demo
+Contextro Self-Test Demo
 =========================
 Exercises all 13 MCP tools end-to-end by calling the underlying functions
 directly (bypassing the MCP protocol transport layer).
@@ -43,7 +43,7 @@ except ImportError:
             print(*args, **kwargs)
 
         def rule(self, title="", **kw):
-            print(f"\n{'='*60}\n  {title}\n{'='*60}")
+            print(f"\n{'=' * 60}\n  {title}\n{'=' * 60}")
 
     console = _FallbackConsole()
 
@@ -155,6 +155,7 @@ SAMPLE_NEW_FEATURE = textwrap.dedent("""\
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def pp(obj):
     """Pretty-print a dict / list as indented JSON."""
     console.print(json.dumps(obj, indent=2, default=str))
@@ -203,7 +204,7 @@ def _sanitize_project_path(raw: str) -> Path:
 
 def _create_sample_project() -> Path:
     """Write the sample project to a temp directory and return the path."""
-    tmp = Path(tempfile.mkdtemp(prefix="contextia_demo_"))
+    tmp = Path(tempfile.mkdtemp(prefix="contextro_demo_"))
     (tmp / "main.py").write_text(SAMPLE_MAIN)
     (tmp / "utils.py").write_text(SAMPLE_UTILS)
     (tmp / "models.py").write_text(SAMPLE_MODELS)
@@ -211,18 +212,19 @@ def _create_sample_project() -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Import Contextia tools — we reach through .fn on the FastMCP wrappers
+# Import Contextro tools — we reach through .fn on the FastMCP wrappers
 # ---------------------------------------------------------------------------
 
+
 def _get_tools():
-    """Import and return the raw tool functions from the Contextia server."""
+    """Import and return the raw tool functions from the Contextro server."""
     # Ensure the package is importable
     project_root = Path(__file__).resolve().parent.parent
     src = project_root / "src"
     if str(src) not in sys.path:
         sys.path.insert(0, str(src))
 
-    from contextia_mcp.server import create_server
+    from contextro_mcp.server import create_server
 
     mcp = create_server()
 
@@ -239,18 +241,19 @@ def _get_tools():
 # Demo sequence
 # ---------------------------------------------------------------------------
 
+
 def main():
     if HAS_RICH:
         console.print(
             Panel(
-                "[bold]Contextia Self-Test Demo[/bold]\n"
+                "[bold]Contextro Self-Test Demo[/bold]\n"
                 "Exercises all 13 MCP tools against a sample project.",
-                title="contextia",
+                title="contextro",
                 border_style="blue",
             )
         )
     else:
-        console.print("\n=== Contextia Self-Test Demo ===\n")
+        console.print("\n=== Contextro Self-Test Demo ===\n")
 
     # ---- Resolve project path (sanitized) ----
     if len(sys.argv) > 1:
@@ -361,15 +364,15 @@ def _run_demo(project_path: Path, cleanup: bool):
                         str(i),
                         r.get("symbol_name", r.get("name", "—")),
                         r.get("filepath", "—"),
-                        f'{r.get("score", 0):.4f}',
+                        f"{r.get('score', 0):.4f}",
                     )
                 console.print(tbl)
             else:
                 for i, r in enumerate(result["results"], 1):
                     console.print(
-                        f'    {i}. {r.get("symbol_name", "—")} '
-                        f'({r.get("filepath", "—")}) '
-                        f'score={r.get("score", 0):.4f}'
+                        f"    {i}. {r.get('symbol_name', '—')} "
+                        f"({r.get('filepath', '—')}) "
+                        f"score={r.get('score', 0):.4f}"
                     )
 
     # ------------------------------------------------------------------
@@ -554,7 +557,7 @@ def _run_demo(project_path: Path, cleanup: bool):
             5,
         )
         if new_search and new_search.get("results"):
-            console.print(f'  Found {new_search["total"]} results for new_feature')
+            console.print(f"  Found {new_search['total']} results for new_feature")
     else:
         console.print("  (Skipped — using user-provided project, won't modify files)")
 
