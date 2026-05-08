@@ -1,4 +1,4 @@
-# Contextia Agent Guidelines
+# Contextro Agent Guidelines
 
 ## Architecture
 Single unified MCP server. 26 tools, <350MB RAM.
