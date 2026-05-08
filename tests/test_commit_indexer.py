@@ -5,8 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
-from contextia_mcp.git.commit_indexer import (
+from contextro_mcp.git.commit_indexer import (
     CommitChunk,
     CommitHistoryIndexer,
     CommitInfo,
@@ -27,52 +26,69 @@ def git_repo(tmp_path):
 
     # Initialize git repo
     subprocess.run(
-        ["git", "init"], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "init"],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
 
     # Create initial commit
     (repo / "main.py").write_text("def hello():\n    print('hello')\n")
     subprocess.run(
-        ["git", "add", "."], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit: add hello function"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
 
     # Second commit
     (repo / "utils.py").write_text("def helper():\n    return 42\n")
     subprocess.run(
-        ["git", "add", "."], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "Add utility helper function"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
 
     # Third commit
     (repo / "main.py").write_text(
-        "from utils import helper\n\n"
-        "def hello():\n    helper()\n    print('hello')\n"
+        "from utils import helper\n\ndef hello():\n    helper()\n    print('hello')\n"
     )
     subprocess.run(
-        ["git", "add", "."], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "Refactor: use helper in hello"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
 
     return repo
@@ -204,9 +220,7 @@ class TestCommitHistoryIndexer:
 
     def test_index_commits(self, git_repo, tmp_path):
         mock_svc = MagicMock()
-        mock_svc.embed_batch.side_effect = lambda texts, **kw: [
-            [0.1] * 384 for _ in texts
-        ]
+        mock_svc.embed_batch.side_effect = lambda texts, **kw: [[0.1] * 384 for _ in texts]
         mock_svc.embed.return_value = [0.1] * 384
 
         indexer = CommitHistoryIndexer(
@@ -228,9 +242,7 @@ class TestCommitHistoryIndexer:
 
     def test_search_commits(self, git_repo, tmp_path):
         mock_svc = MagicMock()
-        mock_svc.embed_batch.side_effect = lambda texts, **kw: [
-            [0.1] * 384 for _ in texts
-        ]
+        mock_svc.embed_batch.side_effect = lambda texts, **kw: [[0.1] * 384 for _ in texts]
         mock_svc.embed.return_value = [0.1] * 384
 
         indexer = CommitHistoryIndexer(
@@ -256,9 +268,7 @@ class TestCommitHistoryIndexer:
 
     def test_get_commit_count(self, git_repo, tmp_path):
         mock_svc = MagicMock()
-        mock_svc.embed_batch.side_effect = lambda texts, **kw: [
-            [0.1] * 384 for _ in texts
-        ]
+        mock_svc.embed_batch.side_effect = lambda texts, **kw: [[0.1] * 384 for _ in texts]
 
         indexer = CommitHistoryIndexer(
             embedding_service=mock_svc,
