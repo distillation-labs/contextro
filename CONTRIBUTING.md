@@ -1,14 +1,14 @@
-# Contributing to Contextia
+# Contributing to Contextro
 
-Thank you for your interest in contributing! Contextia is a fully local MCP server for code intelligence — your contributions help make AI coding agents faster, smarter, and more token-efficient.
+Thank you for your interest in contributing! Contextro is a fully local MCP server for code intelligence — your contributions help make AI coding agents faster, smarter, and more token-efficient.
 
 ---
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/jassskalkat/Contextia-MCP.git
-cd Contextia-MCP
+git clone https://github.com/jassskalkat/Contextro-MCP.git
+cd Contextro-MCP
 
 # Automated setup (creates venv, installs all deps, verifies)
 ./setup.sh
@@ -32,7 +32,7 @@ python scripts/bench_final.py    # Benchmark
 ## Project Structure
 
 ```
-src/contextia_mcp/
+src/contextro_mcp/
 ├── server.py              # All 26 MCP tools (the main entry point)
 ├── config.py              # CTX_* env var configuration
 ├── state.py               # Singleton session state + warm-start
@@ -92,7 +92,7 @@ pytest tests/test_hybrid_search.py -v
 pytest -v -m "not slow"
 
 # With coverage
-pytest --cov=src/contextia_mcp --cov-report=term-missing
+pytest --cov=src/contextro_mcp --cov-report=term-missing
 ```
 
 ### Linting
@@ -179,7 +179,7 @@ from tests.conftest import _call_tool, _setup_indexed
 class TestMyTool:
     def test_basic(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "my_tool", {"param": "value"})
         result = asyncio.run(run())
         assert "error" not in result
@@ -251,7 +251,7 @@ class TestMyTool:
 
 Please include:
 - Python version (`python --version`)
-- Contextia version (`pip show contextia`)
+- Contextro version (`pip show contextro`)
 - Operating system
 - Minimal reproduction case
 - Full error traceback
