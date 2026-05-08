@@ -1,6 +1,6 @@
 """Tests for research catalog registry."""
 
-from contextia_mcp.research.catalog import build_default_catalog
+from contextro_mcp.research.catalog import build_default_catalog
 
 
 def test_default_catalog_has_expected_publishers():
@@ -20,7 +20,4 @@ def test_catalog_target_filter_matches_governance_surfaces():
     catalog = build_default_catalog()
     matches = catalog.by_target("security/permissions.py")
     assert matches
-    assert any(
-        "rule" in entry.topic.lower() or "hook" in entry.topic.lower()
-        for entry in matches
-    )
+    assert any("rule" in entry.topic.lower() or "hook" in entry.topic.lower() for entry in matches)
