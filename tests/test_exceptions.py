@@ -1,10 +1,9 @@
 """Tests for core/exceptions.py."""
 
 import pytest
-
-from contextia_mcp.core.exceptions import (
+from contextro_mcp.core.exceptions import (
     ConfigurationError,
-    ContextiaException,
+    ContextroException,
     EmbeddingError,
     GraphError,
     IndexingError,
@@ -13,9 +12,9 @@ from contextia_mcp.core.exceptions import (
 )
 
 
-def test_contextia_exception_base():
-    with pytest.raises(ContextiaException):
-        raise ContextiaException("base error")
+def test_contextro_exception_base():
+    with pytest.raises(ContextroException):
+        raise ContextroException("base error")
 
 
 def test_parse_error():
@@ -50,10 +49,10 @@ def test_graph_error():
         raise GraphError("graph op failed")
 
 
-def test_all_inherit_from_contextia():
-    assert issubclass(ParseError, ContextiaException)
-    assert issubclass(IndexingError, ContextiaException)
-    assert issubclass(EmbeddingError, ContextiaException)
-    assert issubclass(SearchError, ContextiaException)
-    assert issubclass(ConfigurationError, ContextiaException)
-    assert issubclass(GraphError, ContextiaException)
+def test_all_inherit_from_contextro():
+    assert issubclass(ParseError, ContextroException)
+    assert issubclass(IndexingError, ContextroException)
+    assert issubclass(EmbeddingError, ContextroException)
+    assert issubclass(SearchError, ContextroException)
+    assert issubclass(ConfigurationError, ContextroException)
+    assert issubclass(GraphError, ContextroException)
