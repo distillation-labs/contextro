@@ -1,7 +1,7 @@
 """
-Full autoresearch-style embedding benchmark for Contextia.
+Full autoresearch-style embedding benchmark for Contextro.
 
-Indexes the ENTIRE Contextia codebase (not just 80 chunks), runs 50 diverse
+Indexes the ENTIRE Contextro codebase (not just 80 chunks), runs 50 diverse
 search queries, measures:
   1. Indexing throughput (tokens/sec)
   2. Query latency (ms per query)
@@ -68,7 +68,10 @@ EVAL_QUERIES: List[Tuple[str, List[str]]] = [
     ("how does hybrid search combine vector and keyword results", ["fuse", "search"]),
     ("what is the indexing pipeline flow from files to vectors", ["index", "IndexingPipeline"]),
     ("how are code chunks created from parsed symbols", ["create_chunk", "create_chunks"]),
-    ("how does the graph engine find callers of a function", ["get_callers", "_get_callers_unlocked"]),
+    (
+        "how does the graph engine find callers of a function",
+        ["get_callers", "_get_callers_unlocked"],
+    ),
     ("what happens during server shutdown", ["shutdown"]),
     ("how does incremental indexing detect changed files", ["incremental_index", "_load_metadata"]),
     ("how are memories stored and retrieved", ["remember", "recall", "MemoryStore"]),
@@ -85,7 +88,10 @@ EVAL_QUERIES: List[Tuple[str, List[str]]] = [
     ("delete memories by tag or type", ["forget"]),
     ("find nodes by name in the graph", ["find_nodes_by_name"]),
     ("get project architecture layers and hubs", ["architecture"]),
-    ("smart chunking with relationship context", ["create_smart_chunks", "create_relationship_chunks"]),
+    (
+        "smart chunking with relationship context",
+        ["create_smart_chunks", "create_relationship_chunks"],
+    ),
 ]
 
 
@@ -129,7 +135,7 @@ def build_full_corpus(src_root: Path) -> List[Tuple[str, str]]:
                     try:
                         source_lines = py_file.read_text().splitlines()
                         body_start = node.lineno  # 1-indexed, body starts after def line
-                        body_lines = source_lines[body_start:body_start + 5]
+                        body_lines = source_lines[body_start : body_start + 5]
                         if body_lines:
                             text += "body:\n" + "\n".join(body_lines) + "\n"
                     except Exception:
@@ -152,8 +158,8 @@ def cosine_sim(a: List[float], b: List[float]) -> float:
 
 def run_full_benchmark(model_key: str, corpus: List[Tuple[str, str]]) -> Dict:
     """Run comprehensive benchmark for one model."""
-    from contextia_mcp.config import reset_settings
-    from contextia_mcp.indexing.embedding_service import EMBEDDING_MODELS, EmbeddingService
+    from contextro_mcp.config import reset_settings
+    from contextro_mcp.indexing.embedding_service import EMBEDDING_MODELS, EmbeddingService
 
     reset_settings()
 
@@ -161,12 +167,12 @@ def run_full_benchmark(model_key: str, corpus: List[Tuple[str, str]]) -> Dict:
         return {"model": model_key, "error": "Not in EMBEDDING_MODELS"}
 
     cfg = EMBEDDING_MODELS[model_key]
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  Model: {model_key}")
     print(f"  HF:    {cfg['hf_name']}")
     print(f"  Dims:  {cfg['dimensions']}, Context: {cfg['max_seq_length']}")
     print(f"  trust_remote_code: {cfg['trust_remote_code']}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     try:
         svc = EmbeddingService(model_key, device="cpu", batch_size=32)
@@ -192,7 +198,11 @@ def run_full_benchmark(model_key: str, corpus: List[Tuple[str, str]]) -> Dict:
     total_chars = sum(len(t) for t in texts)
     total_tokens_approx = sum(len(t.split()) for t in texts)
 
-    print(f"  Indexing {len(texts)} chunks ({total_chars:,} chars, ~{total_tokens_approx:,} tokens)...", end="", flush=True)
+    print(
+        f"  Indexing {len(texts)} chunks ({total_chars:,} chars, ~{total_tokens_approx:,} tokens)...",
+        end="",
+        flush=True,
+    )
     t0 = time.perf_counter()
     corpus_vecs = svc.embed_batch(texts, batch_size=32)
     index_time = time.perf_counter() - t0
@@ -276,7 +286,9 @@ def run_full_benchmark(model_key: str, corpus: List[Tuple[str, str]]) -> Dict:
     results["total_queries"] = len(EVAL_QUERIES)
     results["recall_at_5"] = round(hits_at_5 / len(EVAL_QUERIES), 3)
     results["recall_at_10"] = round(hits_at_10 / len(EVAL_QUERIES), 3)
-    print(f" MRR@10={mrr:.3f}  R@5={hits_at_5}/{len(EVAL_QUERIES)}  R@10={hits_at_10}/{len(EVAL_QUERIES)}")
+    print(
+        f" MRR@10={mrr:.3f}  R@5={hits_at_5}/{len(EVAL_QUERIES)}  R@10={hits_at_10}/{len(EVAL_QUERIES)}"
+    )
 
     if misses:
         print(f"  Misses ({len(misses)}):")
@@ -344,7 +356,9 @@ def print_final_results(all_results: List[Dict]) -> str:
         if safe_valid:
             safe_scores = {r["model"]: scores[r["model"]] for r in safe_valid}
             safe_winner = max(safe_scores, key=safe_scores.get)
-            print(f"🔒 Best without trust_remote_code: {safe_winner}  (score={safe_scores[safe_winner]:.3f})")
+            print(
+                f"🔒 Best without trust_remote_code: {safe_winner}  (score={safe_scores[safe_winner]:.3f})"
+            )
     else:
         print("🔒 Winner does NOT require trust_remote_code — safe default ✓")
 
@@ -353,14 +367,16 @@ def print_final_results(all_results: List[Dict]) -> str:
 
 def main():
     print("=" * 70)
-    print("  CONTEXTIA EMBEDDING BENCHMARK — AUTORESEARCH LOOP")
+    print("  CONTEXTRO EMBEDDING BENCHMARK — AUTORESEARCH LOOP")
     print("  Indexing full codebase, 50 queries, 3 runs per query")
     print("=" * 70)
 
-    src_root = Path(__file__).parent.parent / "src" / "contextia_mcp"
+    src_root = Path(__file__).parent.parent / "src" / "contextro_mcp"
     print(f"\nBuilding corpus from {src_root}...")
     corpus = build_full_corpus(src_root)
-    print(f"Corpus: {len(corpus)} symbols from {len(set(Path(t.split('file: ')[1].split(chr(10))[0]) for _, t in corpus if 'file: ' in t))} files")
+    print(
+        f"Corpus: {len(corpus)} symbols from {len(set(Path(t.split('file: ')[1].split(chr(10))[0]) for _, t in corpus if 'file: ' in t))} files"
+    )
 
     models_to_test = ["bge-small-en", "jina-code", "nomic-embed", "codesearch-modernbert"]
 
