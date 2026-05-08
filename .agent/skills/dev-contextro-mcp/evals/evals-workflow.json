@@ -1,0 +1,326 @@
+{
+  "skill_name": "dev-contextro-mcp",
+  "version": "4.0.0",
+  "eval_set": "workflow-functional-performance",
+  "description": "Functional workflow evals for the Contextro skill. Covers the highest-value problem-first flows: orientation, safe refactor, bug investigation, compaction recovery, AST rewrite safety, and output-handling discipline.",
+  "categories": {
+    "workflow": "Multi-step tool sequences happen in the right order",
+    "functional": "The chosen tools solve the user task correctly",
+    "output_format": "The agent handles confidence, sandbox_ref, and text-first outputs correctly",
+    "performance_comparison": "The skill reduces reads and tool chatter relative to baseline"
+  },
+  "evals": [
+    {
+      "id": 101,
+      "name": "workflow-safe-refactor-order",
+      "category": "workflow",
+      "prompt": "I want to rename BaseEmbeddingService to EmbeddingBackend across the codebase.",
+      "expected_behavior": "Agent calls impact first, then explain and/or find_callers before giving rename guidance.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "impact is called first",
+          "type": "workflow",
+          "passing_condition": "impact('BaseEmbeddingService') called before any rename recommendation"
+        },
+        {
+          "id": "a2",
+          "text": "response includes affected callers or files",
+          "type": "output_quality",
+          "passing_condition": "Response includes specific callers or affected files from impact output"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "name": "workflow-index-then-status-then-search",
+      "category": "workflow",
+      "prompt": "Index /Users/alice/myapp and then find all the database connection logic.",
+      "expected_behavior": "Agent performs index, waits on status, then searches.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "index happens first",
+          "type": "tool_selection",
+          "passing_condition": "index('/Users/alice/myapp') called"
+        },
+        {
+          "id": "a2",
+          "text": "status is polled before search",
+          "type": "workflow",
+          "passing_condition": "status() called after index() and before search()"
+        },
+        {
+          "id": "a3",
+          "text": "search happens only after status confirms readiness",
+          "type": "workflow",
+          "passing_condition": "search called after status confirms indexed: true"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "name": "workflow-bug-investigation",
+      "category": "functional",
+      "prompt": "Users are getting 'rate limit exceeded' errors. Find the rate limiting code, understand it, and check what recently changed.",
+      "expected_behavior": "Agent uses search, then explain or call-graph navigation, then commit history.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search starts the investigation",
+          "type": "tool_selection",
+          "passing_condition": "search called with 'rate limit' query"
+        },
+        {
+          "id": "a2",
+          "text": "explain or call graph follows search",
+          "type": "workflow",
+          "passing_condition": "explain or find_callers called on a relevant rate limiter symbol"
+        },
+        {
+          "id": "a3",
+          "text": "history search is used",
+          "type": "tool_selection",
+          "passing_condition": "commit_search called with a rate-limiter-related query"
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "name": "workflow-session-recovery",
+      "category": "workflow",
+      "prompt": "Context was just compacted. I was working on the payment flow refactor. What was I doing?",
+      "expected_behavior": "Agent calls session_snapshot first, then searches archive and memory.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "session_snapshot is first",
+          "type": "workflow",
+          "passing_condition": "session_snapshot() is the first Contextro tool called"
+        },
+        {
+          "id": "a2",
+          "text": "archive recall is used",
+          "type": "tool_selection",
+          "passing_condition": "recall called with memory_type='archive' and payment-related query"
+        },
+        {
+          "id": "a3",
+          "text": "agent does not restart from scratch",
+          "type": "anti_pattern",
+          "passing_condition": "No index() call and no broad search before session_snapshot"
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "name": "workflow-ast-rewrite-dry-run-first",
+      "category": "workflow",
+      "prompt": "Replace all print() calls with logger.info() in src/contextro_mcp/indexing/pipeline.py. Show me what would change first.",
+      "expected_behavior": "Agent pattern-searches, then runs pattern_rewrite with dry_run before applying.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "pattern_search happens before rewrite",
+          "type": "workflow",
+          "passing_condition": "code(operation='pattern_search') called before pattern_rewrite"
+        },
+        {
+          "id": "a2",
+          "text": "dry_run preview happens before apply",
+          "type": "workflow",
+          "passing_condition": "code(operation='pattern_rewrite', dry_run=True) called before dry_run=False"
+        },
+        {
+          "id": "a3",
+          "text": "preview is shown before apply",
+          "type": "output_quality",
+          "passing_condition": "Response includes diff_preview from dry_run result before applying"
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "name": "output-format-search-confidence",
+      "category": "output_format",
+      "prompt": "Find the payment processing logic.",
+      "expected_behavior": "If search returns confidence low, the agent refines or switches tools instead of presenting low-confidence results as final.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search is called",
+          "type": "tool_selection",
+          "passing_condition": "search called"
+        },
+        {
+          "id": "a2",
+          "text": "low confidence causes refinement",
+          "type": "workflow",
+          "passing_condition": "If search returns confidence=low, agent refines query or calls find_symbol"
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "name": "output-format-sandbox-retrieve",
+      "category": "output_format",
+      "prompt": "Find all callers of the search function.",
+      "expected_behavior": "If the initial result is sandboxed, the agent uses retrieve rather than claiming the preview is complete.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search is called",
+          "type": "tool_selection",
+          "passing_condition": "search called"
+        },
+        {
+          "id": "a2",
+          "text": "sandboxed results are retrieved",
+          "type": "workflow",
+          "passing_condition": "If search response contains sandbox_ref, retrieve called with that ref_id"
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "name": "performance-orientation-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "I just joined this project. Give me an orientation: what it does, how it's structured, and the main entry points.",
+      "expected_behavior": "Agent uses overview, architecture, and one or more explain calls, with materially fewer file reads than a manual baseline.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "orientation uses overview and architecture",
+          "type": "tool_selection",
+          "passing_condition": "overview() and architecture() are called"
+        },
+        {
+          "id": "a2",
+          "text": "manual file reading is minimized",
+          "type": "performance",
+          "passing_condition": "Fewer than 3 readFile calls during orientation"
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "name": "performance-safe-refactor-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "I need to add a new export parameter to the search() function. Walk me through what I need to check first.",
+      "expected_behavior": "Agent uses find_symbol, impact, find_callers, and explain instead of broad grep and many file reads.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "impact is used for the refactor check",
+          "type": "tool_selection",
+          "passing_condition": "impact('search') called"
+        },
+        {
+          "id": "a2",
+          "text": "caller discovery is used",
+          "type": "tool_selection",
+          "passing_condition": "find_callers('search') called"
+        },
+        {
+          "id": "a3",
+          "text": "shell grep is avoided",
+          "type": "anti_pattern",
+          "passing_condition": "No grep or git log shell command before Contextro analysis"
+        }
+      ]
+    },
+    {
+      "id": 110,
+      "name": "performance-bug-investigation-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "Production is throwing 'Table already exists' errors in the memory store. Find the root cause and check if it was recently introduced.",
+      "expected_behavior": "Agent uses search, explain, and commit_search with fewer reads and less tool chatter than the no-skill baseline.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search is used for the symptom",
+          "type": "tool_selection",
+          "passing_condition": "search('Table already exists') or similar called"
+        },
+        {
+          "id": "a2",
+          "text": "history search is used for regression detection",
+          "type": "tool_selection",
+          "passing_condition": "commit_search called with memory store or table creation query"
+        },
+        {
+          "id": "a3",
+          "text": "full-file reads are kept low",
+          "type": "performance",
+          "passing_condition": "Fewer than 3 readFile calls before root-cause summary"
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "name": "workflow-modularization-orientation",
+      "category": "workflow",
+      "prompt": "I need to split a growing MCP feature out of server.py. Show me the architecture and what modules or boundaries I should inspect first.",
+      "expected_behavior": "Agent uses architecture and targeted symbol/code explanation to understand current boundaries before recommending modularization work.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "architecture is used for modularization context",
+          "type": "tool_selection",
+          "passing_condition": "architecture() called before modularization advice"
+        },
+        {
+          "id": "a2",
+          "text": "broad manual reading is avoided",
+          "type": "anti_pattern",
+          "passing_condition": "No broad file-by-file read sweep before architecture or targeted symbol analysis"
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "name": "performance-modular-refactor-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "Before I add a new memory feature, help me understand how to keep the code modular and avoid piling more logic into one file.",
+      "expected_behavior": "Agent uses architecture, explain, and impact to reason about boundaries instead of many ad hoc reads.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "boundary analysis uses architecture and explain",
+          "type": "tool_selection",
+          "passing_condition": "architecture() plus explain() or impact() are used for the modularity analysis"
+        },
+        {
+          "id": "a2",
+          "text": "manual reads stay low for modularity guidance",
+          "type": "performance",
+          "passing_condition": "Fewer than 3 readFile calls before the modularity recommendation"
+        }
+      ]
+    }
+  ],
+  "baseline_comparison": {
+    "without_skill": {
+      "orientation": {
+        "tool_calls": 15,
+        "readFile_calls": 8,
+        "tokens_consumed": 18060
+      },
+      "safe_refactor_check": {
+        "tool_calls": 12,
+        "grep_commands": 5,
+        "tokens_consumed": 12000
+      },
+      "bug_investigation": {
+        "tool_calls": 10,
+        "readFile_calls": 6,
+        "tokens_consumed": 9000
+      }
+    },
+    "with_skill_target": {
+      "orientation": { "tool_calls": 3, "readFile_calls": 0 },
+      "safe_refactor_check": { "tool_calls": 4, "grep_commands": 0 },
+      "bug_investigation": { "tool_calls": 3, "readFile_calls": 0 }
+    }
+  }
+}
