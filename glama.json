@@ -1,11 +1,9 @@
 {
-  "name": "contextia",
+  "name": "contextro",
   "description": "AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, real-time branch-aware indexing",
-  "homepage": "https://github.com/jassskalkat/Contextia",
-  "repository": "https://github.com/jassskalkat/Contextia",
-  "maintainers": [
-    "jassskalkat"
-  ],
+  "homepage": "https://github.com/jassskalkat/Contextro",
+  "repository": "https://github.com/jassskalkat/Contextro",
+  "maintainers": ["jassskalkat"],
   "configSchema": {
     "type": "object",
     "properties": {
@@ -22,7 +20,7 @@
       "CTX_STORAGE_DIR": {
         "type": "string",
         "description": "Storage directory for indexes",
-        "default": ".contextia"
+        "default": ".contextro"
       },
       "CTX_EMBEDDING_MODEL": {
         "type": "string",
@@ -42,9 +40,17 @@
     }
   },
   "keywords": [
-    "code-search", "semantic-search", "hybrid-search",
-    "code-graph", "mcp", "lancedb", "tree-sitter",
-    "commit-history", "cross-repo", "real-time-indexing",
-    "contextia", "ai-coding"
+    "code-search",
+    "semantic-search",
+    "hybrid-search",
+    "code-graph",
+    "mcp",
+    "lancedb",
+    "tree-sitter",
+    "commit-history",
+    "cross-repo",
+    "real-time-indexing",
+    "contextro",
+    "ai-coding"
   ]
 }
