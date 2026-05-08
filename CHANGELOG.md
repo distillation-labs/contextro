@@ -8,11 +8,11 @@ All notable changes to this project will be documented in this file.
 - **Universal progressive disclosure** — All tool responses >1200 tokens (configurable) are automatically sandboxed. Returns compact preview with `sandbox_ref` for on-demand retrieval. Achieves 43.9% token reduction on large responses (validated against Cursor's 46.9% A/B test).
 - **AST-aware snippet compression** — Search previews compress code snippets by keeping function/class signatures and collapsing bodies to first meaningful line + `...`. Achieves 73.3% character reduction on realistic code (86.3% on functions, 93.6% on JavaScript).
 - **Searchable compaction archive** — New `compact` tool archives pre-compaction session content. Extended `recall` with `memory_type='archive'` to search archived context. Enables recovery of key decisions and findings after context compaction.
-- **Live-reloading Docker dev loop** — `docker-compose.dev.yml` plus `scripts/dev_http_server.py` now run Contextia from source over HTTP, restart automatically when `src/` or `scripts/` change, and preserve warm-started indexes between restarts.
-- **Alpha deployment channel** — `.github/workflows/alpha.yml` now validates, builds, and publishes `ghcr.io/<owner>/contextia-mcp:alpha` and `:alpha-<short-sha>` on `alpha` branch pushes, with optional remote SSH deploy support via `deploy/alpha/`.
+- **Live-reloading Docker dev loop** — `docker-compose.dev.yml` plus `scripts/dev_http_server.py` now run Contextro from source over HTTP, restart automatically when `src/` or `scripts/` change, and preserve warm-started indexes between restarts.
+- **Alpha deployment channel** — `.github/workflows/alpha.yml` now validates, builds, and publishes `ghcr.io/<owner>/contextro-mcp:alpha` and `:alpha-<short-sha>` on `alpha` branch pushes, with optional remote SSH deploy support via `deploy/alpha/`.
 
 ### Changed
-- **Stable Docker distribution** — compose/docs now default to GHCR image references (`ghcr.io/<owner>/contextia-mcp`) and stable release publishing skips prereleases so `latest` stays reserved for stable GitHub Releases.
+- **Stable Docker distribution** — compose/docs now default to GHCR image references (`ghcr.io/<owner>/contextro-mcp`) and stable release publishing skips prereleases so `latest` stays reserved for stable GitHub Releases.
 
 ## [2.0.0] - 2026-05-06
 
@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file.
 **New Tools (25 total, up from 22):**
 - **`code`** — AST-based code intelligence with 7 operations: `search_symbols`, `lookup_symbols`, `get_document_symbols`, `pattern_search`, `pattern_rewrite`, `generate_codebase_overview`, `search_codebase_map`. Enables structural code search and rewrite via ast-grep.
 - **`knowledge`** — Index and search user-provided content (docs, notes, files, directories) with semantic search. 8 commands: `show`, `add`, `remove`, `clear`, `search`, `update`, `status`, `cancel`.
-- **`introspect`** — Agents can look up Contextia's own tool documentation, settings reference, and usage workflows without reading the README.
+- **`introspect`** — Agents can look up Contextro's own tool documentation, settings reference, and usage workflows without reading the README.
 
 **Research-backed search improvements** (all validated by published papers):
 - **Relevance threshold 0.40** (raised from 0.30) — "The Power of Noise" SIGIR 2024: borderline results hurt accuracy by 35%
@@ -64,7 +64,7 @@ All notable changes to this project will be documented in this file.
 - **`find_symbol(exact=False)` 94KB payload** — skip caller/callee graph traversal when `total_matches > 5`
 - **`session_snapshot` too shallow** — now includes codebase path, branch, head, chunk/symbol counts, and all tracked events
 - **Docker indexing path remap** — `index()` now auto-remaps host paths from `CTX_CODEBASE_HOST_PATH` to `CTX_CODEBASE_MOUNT_PATH` even without an explicit `CTX_PATH_PREFIX_MAP`, and invalid-path errors now explain the Docker mapping requirement
-- **Docker image reference drift** — Docker docs/compose examples now point at the published Docker Hub image `jassskalkat/contextia-mcp:latest`
+- **Docker image reference drift** — Docker docs/compose examples now point at the published Docker Hub image `jassskalkat/contextro-mcp:latest`
 
 ### Changed
 - `commit_history` output: removed misleading `+/-` fields (always 0 after `--numstat` removal)
@@ -101,4 +101,4 @@ All notable changes to this project will be documented in this file.
 - **Input Validation**: Hardened all tool entry points with strict parameter validation via FastMCP/Pydantic.
 
 ---
-*Note: This release marks the transition of Contextia from an experimental consolidation to an industrial-grade coding intelligence server.*
+*Note: This release marks the transition of Contextro from an experimental consolidation to an industrial-grade coding intelligence server.*
