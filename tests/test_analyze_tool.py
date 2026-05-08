@@ -2,16 +2,17 @@
 
 import asyncio
 
-import contextia_mcp.server as server_module
-from contextia_mcp.core.graph_models import (
+import contextro_mcp.server as server_module
+from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,
     UniversalLocation,
     UniversalNode,
     UniversalRelationship,
 )
-from contextia_mcp.engines.graph_engine import RustworkxCodeGraph
-from contextia_mcp.state import get_state
+from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
+from contextro_mcp.state import get_state
+
 from tests.conftest import _call_tool, _setup_indexed
 
 
@@ -82,12 +83,14 @@ def _setup_analysis_graph(state, codebase_path):
     graph.add_node(func_utils)
 
     # Add a CALLS relationship
-    graph.add_relationship(UniversalRelationship(
-        id="calls:complex->simple",
-        source_id="function:complex_func",
-        target_id="function:simple_func",
-        relationship_type=RelationshipType.CALLS,
-    ))
+    graph.add_relationship(
+        UniversalRelationship(
+            id="calls:complex->simple",
+            source_id="function:complex_func",
+            target_id="function:simple_func",
+            relationship_type=RelationshipType.CALLS,
+        )
+    )
 
     state.graph_engine = graph
     state.codebase_path = codebase_path
@@ -95,8 +98,9 @@ def _setup_analysis_graph(state, codebase_path):
 
 class TestAnalyze:
     def test_analyze_before_index(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
-        from contextia_mcp.config import reset_settings
+        monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextro"))
+        from contextro_mcp.config import reset_settings
+
         reset_settings()
         mcp = server_module.create_server()
         result = asyncio.run(_call_tool(mcp, "analyze"))
@@ -160,8 +164,9 @@ class TestAnalyze:
 
     def test_analyze_after_real_index(self, mini_codebase, tmp_path):
         """Test analyze works after a real indexing pipeline run."""
+
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "analyze")
 
         result = asyncio.run(run())
