@@ -1,4 +1,5 @@
-"""Final comprehensive benchmark of all Contextia MCP tools."""
+"""Final comprehensive benchmark of all Contextro MCP tools."""
+
 import json
 import os
 import sys
@@ -9,12 +10,12 @@ os.environ["CTX_STORAGE_DIR"] = "/tmp/ctx_final_bench"
 
 from pathlib import Path
 
-from contextia_mcp.config import get_settings, reset_settings
-from contextia_mcp.engines.fusion import ReciprocalRankFusion, graph_relevance_search
-from contextia_mcp.git.commit_indexer import CommitHistoryIndexer, extract_commits
-from contextia_mcp.indexing.embedding_service import EMBEDDING_MODELS, get_embedding_service
-from contextia_mcp.indexing.pipeline import IndexingPipeline
-from contextia_mcp.state import get_state, reset_state
+from contextro_mcp.config import get_settings, reset_settings
+from contextro_mcp.engines.fusion import ReciprocalRankFusion, graph_relevance_search
+from contextro_mcp.git.commit_indexer import CommitHistoryIndexer, extract_commits
+from contextro_mcp.indexing.embedding_service import EMBEDDING_MODELS, get_embedding_service
+from contextro_mcp.indexing.pipeline import IndexingPipeline
+from contextro_mcp.state import get_state, reset_state
 
 reset_settings()
 reset_state()
@@ -22,7 +23,7 @@ settings = get_settings()
 repo = Path(__file__).resolve().parents[1]
 
 print("=" * 60)
-print("CONTEXTIA MCP — FINAL BENCHMARK")
+print("CONTEXTRO MCP — FINAL BENCHMARK")
 print("=" * 60)
 
 # Index
@@ -38,8 +39,10 @@ state.bm25_engine = pipeline.bm25_engine
 state.graph_engine = pipeline.graph_engine
 graph = state.graph_engine
 
-print(f"\nIndex: {result.total_files} files, {result.total_symbols} symbols, "
-      f"{result.total_chunks} chunks in {idx_time:.2f}s")
+print(
+    f"\nIndex: {result.total_files} files, {result.total_symbols} symbols, "
+    f"{result.total_chunks} chunks in {idx_time:.2f}s"
+)
 
 # Commits
 embedding_svc = get_embedding_service(settings.embedding_model)
@@ -105,9 +108,13 @@ def t_find_symbol():
         return {"error": "not found"}
     n = m[0]
     c = graph.get_callers(n.id)
-    return {"name": n.name, "file": str(Path(n.location.file_path).relative_to(repo)),
-            "line": n.location.start_line, "callers": len(c),
-            "top_callers": [x.name for x in c[:5]]}
+    return {
+        "name": n.name,
+        "file": str(Path(n.location.file_path).relative_to(repo)),
+        "line": n.location.start_line,
+        "callers": len(c),
+        "top_callers": [x.name for x in c[:5]],
+    }
 
 
 bench("find_symbol(exact)", t_find_symbol)
@@ -168,9 +175,12 @@ def t_overview():
             continue
         top = parts[0] if parts else "."
         dirs[top] = dirs.get(top, 0) + 1
-    return {"files": stats.get("total_files", 0), "symbols": stats.get("total_nodes", 0),
-            "dirs": dict(sorted(dirs.items(), key=lambda x: x[1], reverse=True)[:10]),
-            "langs": stats.get("nodes_by_language", {})}
+    return {
+        "files": stats.get("total_files", 0),
+        "symbols": stats.get("total_nodes", 0),
+        "dirs": dict(sorted(dirs.items(), key=lambda x: x[1], reverse=True)[:10]),
+        "langs": stats.get("nodes_by_language", {}),
+    }
 
 
 bench("overview", t_overview)
@@ -198,7 +208,9 @@ print("\n--- GIT ---")
 
 def t_commit_history():
     commits = extract_commits(str(repo), limit=5)
-    return [{"hash": c.short_hash, "msg": c.message[:80], "date": c.timestamp[:10]} for c in commits]
+    return [
+        {"hash": c.short_hash, "msg": c.message[:80], "date": c.timestamp[:10]} for c in commits
+    ]
 
 
 bench("commit_history(5)", t_commit_history)
@@ -216,14 +228,15 @@ print("\n--- MEMORY ---")
 def t_remember():
     import uuid
 
-    from contextia_mcp.core.models import Memory, MemoryType
-    from contextia_mcp.memory.memory_store import MemoryStore
+    from contextro_mcp.core.models import Memory, MemoryType
+    from contextro_mcp.memory.memory_store import MemoryStore
+
     store = MemoryStore(str(settings.lancedb_path), embedding_svc, vector_dims=dims)
     mem = Memory(
         id=str(uuid.uuid4())[:8],
         content="IndexingPipeline uses tree-sitter for parsing",
         memory_type=MemoryType.NOTE,
-        project="contextia",
+        project="contextro",
         tags=["arch"],
     )
     store.remember(mem)
@@ -234,7 +247,8 @@ bench("remember", t_remember)
 
 
 def t_recall():
-    from contextia_mcp.memory.memory_store import MemoryStore
+    from contextro_mcp.memory.memory_store import MemoryStore
+
     store = MemoryStore(str(settings.lancedb_path), embedding_svc, vector_dims=dims)
     mems = store.recall("tree-sitter parsing", limit=3)
     return [{"content": m.content[:80], "type": m.memory_type.value} for m in mems]
