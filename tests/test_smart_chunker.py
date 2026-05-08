@@ -1,9 +1,8 @@
 """Tests for smart context-aware chunking."""
 
 import pytest
-
-from contextia_mcp.core.models import Symbol, SymbolType
-from contextia_mcp.indexing.smart_chunker import (
+from contextro_mcp.core.models import Symbol, SymbolType
+from contextro_mcp.indexing.smart_chunker import (
     create_file_context_chunks,
     create_relationship_chunks,
     create_smart_chunks,
@@ -89,9 +88,7 @@ class TestRelationshipChunks:
     def test_chunk_contains_caller_info(self, sample_symbols):
         chunks = create_relationship_chunks(sample_symbols)
         # Find the authenticate chunk
-        auth_chunk = next(
-            (c for c in chunks if "authenticate" in c.symbol_name), None
-        )
+        auth_chunk = next((c for c in chunks if "authenticate" in c.symbol_name), None)
         assert auth_chunk is not None
         assert "verify_password" in auth_chunk.text
         assert "get_user" in auth_chunk.text
@@ -139,9 +136,7 @@ class TestFileContextChunks:
 
     def test_chunk_contains_all_signatures(self, sample_symbols):
         chunks = create_file_context_chunks(sample_symbols)
-        auth_chunk = next(
-            (c for c in chunks if "auth.py" in c.filepath), None
-        )
+        auth_chunk = next((c for c in chunks if "auth.py" in c.filepath), None)
         assert auth_chunk is not None
         assert "authenticate" in auth_chunk.text
         assert "verify_password" in auth_chunk.text
@@ -155,9 +150,7 @@ class TestFileContextChunks:
 
     def test_chunk_contains_imports(self, sample_symbols):
         chunks = create_file_context_chunks(sample_symbols)
-        auth_chunk = next(
-            (c for c in chunks if "auth.py" in c.filepath), None
-        )
+        auth_chunk = next((c for c in chunks if "auth.py" in c.filepath), None)
         assert auth_chunk is not None
         assert "hashlib" in auth_chunk.text
 
@@ -192,17 +185,13 @@ class TestSmartChunks:
         assert "file_overview" in types
 
     def test_can_disable_relationships(self, sample_symbols):
-        chunks = create_smart_chunks(
-            sample_symbols, include_relationships=False
-        )
+        chunks = create_smart_chunks(sample_symbols, include_relationships=False)
         types = {c.symbol_type for c in chunks}
         assert "relationship" not in types
         assert "file_overview" in types
 
     def test_can_disable_file_context(self, sample_symbols):
-        chunks = create_smart_chunks(
-            sample_symbols, include_file_context=False
-        )
+        chunks = create_smart_chunks(sample_symbols, include_file_context=False)
         types = {c.symbol_type for c in chunks}
         assert "relationship" in types
         assert "file_overview" not in types
