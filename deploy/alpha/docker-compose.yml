@@ -1,13 +1,13 @@
 services:
-  contextia:
-    container_name: contextia-mcp-alpha
-    image: ${CONTEXTIA_IMAGE:-ghcr.io/jassskalkat/contextia-mcp:alpha}
+  contextro:
+    container_name: contextro-mcp-alpha
+    image: ${CONTEXTRO_IMAGE:-ghcr.io/jassskalkat/contextro-mcp:alpha}
     ports:
       - "${ALPHA_HTTP_PORT:-8000}:8000"
     volumes:
-      - contextia-alpha-data:/data
+      - contextro-alpha-data:/data
     environment:
-      CTX_STORAGE_DIR: /data/.contextia
+      CTX_STORAGE_DIR: /data/.contextro
       CTX_EMBEDDING_MODEL: potion-code-16m
       CTX_TRANSPORT: http
       CTX_HTTP_HOST: 0.0.0.0
@@ -32,5 +32,5 @@ services:
       start_period: 15s
 
 volumes:
-  contextia-alpha-data:
+  contextro-alpha-data:
     driver: local
