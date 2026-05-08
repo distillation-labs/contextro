@@ -1,16 +1,15 @@
 """Tests for SQLite graph persistence."""
 
 import pytest
-
-from contextia_mcp.core.graph_models import (
+from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,
     UniversalLocation,
     UniversalNode,
     UniversalRelationship,
 )
-from contextia_mcp.engines.graph_engine import RustworkxCodeGraph
-from contextia_mcp.persistence.store import GraphPersistence
+from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
+from contextro_mcp.persistence.store import GraphPersistence
 
 
 def _make_node(name, filepath="/a.py", line=1, node_type=NodeType.FUNCTION, language="python"):
