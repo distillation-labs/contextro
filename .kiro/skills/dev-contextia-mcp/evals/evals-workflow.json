@@ -1,30 +1,31 @@
 {
-  "skill_name": "dev-contextia-mcp",
-  "version": "3.1.0",
-  "eval_set": "workflow-antipattern-efficiency-output",
+  "skill_name": "dev-contextro-mcp",
+  "version": "4.0.0",
+  "eval_set": "workflow-functional-performance",
+  "description": "Functional workflow evals for the Contextro skill. Covers the highest-value problem-first flows: orientation, safe refactor, bug investigation, compaction recovery, AST rewrite safety, and output-handling discipline.",
+  "categories": {
+    "workflow": "Multi-step tool sequences happen in the right order",
+    "functional": "The chosen tools solve the user task correctly",
+    "output_format": "The agent handles confidence, sandbox_ref, and text-first outputs correctly",
+    "performance_comparison": "The skill reduces reads and tool chatter relative to baseline"
+  },
   "evals": [
     {
       "id": 101,
       "name": "workflow-safe-refactor-order",
       "category": "workflow",
       "prompt": "I want to rename BaseEmbeddingService to EmbeddingBackend across the codebase.",
-      "expected_behavior": "Agent calls impact('BaseEmbeddingService') FIRST, then find_callers, then explains the scope of changes needed. Never suggests the rename without impact first.",
+      "expected_behavior": "Agent calls impact first, then explain and/or find_callers before giving rename guidance.",
       "assertions": [
         {
           "id": "a1",
-          "text": "impact() is called before any rename suggestion",
-          "type": "tool_selection",
-          "passing_condition": "impact('BaseEmbeddingService') called"
+          "text": "impact is called first",
+          "type": "workflow",
+          "passing_condition": "impact('BaseEmbeddingService') called before any rename recommendation"
         },
         {
           "id": "a2",
-          "text": "Agent does not suggest renaming without impact first",
-          "type": "anti_pattern",
-          "passing_condition": "Response does not recommend renaming before impact analysis completes"
-        },
-        {
-          "id": "a3",
-          "text": "Response lists affected symbols or files",
+          "text": "response includes affected callers or files",
           "type": "output_quality",
           "passing_condition": "Response includes specific callers or affected files from impact output"
         }
@@ -35,58 +36,52 @@
       "name": "workflow-index-then-status-then-search",
       "category": "workflow",
       "prompt": "Index /Users/alice/myapp and then find all the database connection logic.",
-      "expected_behavior": "Agent: index() → poll status() until indexed: true → search(). Never searches immediately after index.",
+      "expected_behavior": "Agent performs index, waits on status, then searches.",
       "assertions": [
         {
           "id": "a1",
-          "text": "index() is called first",
+          "text": "index happens first",
           "type": "tool_selection",
           "passing_condition": "index('/Users/alice/myapp') called"
         },
         {
           "id": "a2",
-          "text": "status() is polled before search",
+          "text": "status is polled before search",
           "type": "workflow",
           "passing_condition": "status() called after index() and before search()"
         },
         {
           "id": "a3",
-          "text": "search() is called after indexed: true confirmed",
-          "type": "tool_selection",
-          "passing_condition": "search('database connection') or similar called after status confirms indexed: true"
+          "text": "search happens only after status confirms readiness",
+          "type": "workflow",
+          "passing_condition": "search called after status confirms indexed: true"
         }
       ]
     },
     {
       "id": 103,
       "name": "workflow-bug-investigation",
-      "category": "workflow",
+      "category": "functional",
       "prompt": "Users are getting 'rate limit exceeded' errors. Find the rate limiting code, understand it, and check what recently changed.",
-      "expected_behavior": "Agent: search('rate limit exceeded') → explain or find_callers on the rate limiter → commit_search('rate limiter changes'). No full file reads.",
+      "expected_behavior": "Agent uses search, then explain or call-graph navigation, then commit history.",
       "assertions": [
         {
           "id": "a1",
-          "text": "search() is called with the error message",
+          "text": "search starts the investigation",
           "type": "tool_selection",
           "passing_condition": "search called with 'rate limit' query"
         },
         {
           "id": "a2",
-          "text": "explain() or find_callers() is called on the rate limiter",
-          "type": "tool_selection",
-          "passing_condition": "explain or find_callers called on rate limiter symbol"
+          "text": "explain or call graph follows search",
+          "type": "workflow",
+          "passing_condition": "explain or find_callers called on a relevant rate limiter symbol"
         },
         {
           "id": "a3",
-          "text": "commit_search() is called to check recent changes",
+          "text": "history search is used",
           "type": "tool_selection",
-          "passing_condition": "commit_search called with query about rate limiter changes"
-        },
-        {
-          "id": "a4",
-          "text": "Agent does not read full source files before using Contextia tools",
-          "type": "anti_pattern",
-          "passing_condition": "No readFile on rate_limiter.py before search/explain"
+          "passing_condition": "commit_search called with a rate-limiter-related query"
         }
       ]
     },
@@ -95,339 +90,237 @@
       "name": "workflow-session-recovery",
       "category": "workflow",
       "prompt": "Context was just compacted. I was working on the payment flow refactor. What was I doing?",
-      "expected_behavior": "Agent calls session_snapshot() FIRST, then recall('payment flow refactor') and/or recall('payment flow refactor', memory_type='archive').",
+      "expected_behavior": "Agent calls session_snapshot first, then searches archive and memory.",
       "assertions": [
         {
           "id": "a1",
-          "text": "session_snapshot() is the first tool called",
-          "type": "tool_selection",
-          "passing_condition": "session_snapshot() is the first Contextia tool called"
+          "text": "session_snapshot is first",
+          "type": "workflow",
+          "passing_condition": "session_snapshot() is the first Contextro tool called"
         },
         {
           "id": "a2",
-          "text": "recall() is called to retrieve stored context",
+          "text": "archive recall is used",
           "type": "tool_selection",
-          "passing_condition": "recall called with 'payment flow' or similar"
+          "passing_condition": "recall called with memory_type='archive' and payment-related query"
         },
         {
           "id": "a3",
-          "text": "Agent does not re-index or re-search from scratch",
+          "text": "agent does not restart from scratch",
           "type": "anti_pattern",
           "passing_condition": "No index() call and no broad search before session_snapshot"
-        },
-        {
-          "id": "a4",
-          "text": "Agent considers searching the compaction archive",
-          "type": "workflow",
-          "passing_condition": "recall called with memory_type='archive' or agent mentions archive as a recovery option"
         }
       ]
     },
     {
       "id": 105,
-      "name": "workflow-no-reindex-per-call",
-      "category": "workflow",
-      "prompt": "Find the auth logic, then find who calls verify_password, then check what breaks if we change it.",
-      "expected_behavior": "Agent calls index() at most once (or skips if already indexed), then search → find_callers → impact in sequence.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "index() is called at most once",
-          "type": "anti_pattern",
-          "passing_condition": "index tool called 0 or 1 times total"
-        },
-        {
-          "id": "a2",
-          "text": "search() is called for auth logic",
-          "type": "tool_selection",
-          "passing_condition": "search('authentication') or similar called"
-        },
-        {
-          "id": "a3",
-          "text": "find_callers('verify_password') is called",
-          "type": "tool_selection",
-          "passing_condition": "find_callers called for verify_password"
-        },
-        {
-          "id": "a4",
-          "text": "impact() is called before suggesting changes",
-          "type": "tool_selection",
-          "passing_condition": "impact('verify_password') called"
-        }
-      ]
-    },
-    {
-      "id": 106,
       "name": "workflow-ast-rewrite-dry-run-first",
       "category": "workflow",
-      "prompt": "Replace all print() calls with logger.info() in src/contextia_mcp/indexing/pipeline.py. Show me what would change first.",
-      "expected_behavior": "Agent: code(pattern_search) to find matches → code(pattern_rewrite, dry_run=True) to preview → code(pattern_rewrite, dry_run=False) to apply.",
+      "prompt": "Replace all print() calls with logger.info() in src/contextro_mcp/indexing/pipeline.py. Show me what would change first.",
+      "expected_behavior": "Agent pattern-searches, then runs pattern_rewrite with dry_run before applying.",
       "assertions": [
         {
           "id": "a1",
-          "text": "pattern_search is called before pattern_rewrite",
+          "text": "pattern_search happens before rewrite",
           "type": "workflow",
           "passing_condition": "code(operation='pattern_search') called before pattern_rewrite"
         },
         {
           "id": "a2",
-          "text": "dry_run=True is used before applying",
+          "text": "dry_run preview happens before apply",
           "type": "workflow",
           "passing_condition": "code(operation='pattern_rewrite', dry_run=True) called before dry_run=False"
         },
         {
           "id": "a3",
-          "text": "Agent shows diff preview before applying",
+          "text": "preview is shown before apply",
           "type": "output_quality",
           "passing_condition": "Response includes diff_preview from dry_run result before applying"
         }
       ]
     },
     {
-      "id": 201,
-      "name": "antipattern-no-readfile-before-search",
-      "category": "anti_pattern",
-      "prompt": "How does the embedding service work?",
-      "expected_behavior": "Agent calls search('embedding service') or explain('EmbeddingService') — NOT readFile on embedding_service.py.",
+      "id": 106,
+      "name": "output-format-search-confidence",
+      "category": "output_format",
+      "prompt": "Find the payment processing logic.",
+      "expected_behavior": "If search returns confidence low, the agent refines or switches tools instead of presenting low-confidence results as final.",
       "assertions": [
         {
           "id": "a1",
-          "text": "search() or explain() is called first",
-          "type": "tool_selection",
-          "passing_condition": "search or explain called before any readFile"
-        },
-        {
-          "id": "a2",
-          "text": "readFile is not called before search/explain",
-          "type": "anti_pattern",
-          "passing_condition": "No readFile on embedding_service.py before search or explain"
-        }
-      ]
-    },
-    {
-      "id": 202,
-      "name": "antipattern-no-grep",
-      "category": "anti_pattern",
-      "prompt": "Find all places where CTX_STORAGE_DIR is referenced.",
-      "expected_behavior": "Agent calls search('CTX_STORAGE_DIR', mode='bm25') — NOT grep or shell find.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "search() with bm25 mode is called",
-          "type": "tool_selection",
-          "passing_condition": "search called with mode='bm25'"
-        },
-        {
-          "id": "a2",
-          "text": "No grep or shell find command",
-          "type": "anti_pattern",
-          "passing_condition": "No grep or find shell command executed"
-        }
-      ]
-    },
-    {
-      "id": 203,
-      "name": "antipattern-no-high-limit",
-      "category": "anti_pattern",
-      "prompt": "Search for all authentication-related code.",
-      "expected_behavior": "Agent calls search('authentication') with default limit (10), not limit=100.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "search() is called with limit <= 20",
-          "type": "tool_selection",
-          "passing_condition": "search called with limit <= 20 or no limit (default 10)"
-        }
-      ]
-    },
-    {
-      "id": 204,
-      "name": "antipattern-no-serial-find-symbol",
-      "category": "anti_pattern",
-      "prompt": "Show me the source code for IndexingPipeline, EmbeddingService, and RustworkxCodeGraph.",
-      "expected_behavior": "Agent calls code(lookup_symbols, symbols='IndexingPipeline,EmbeddingService,RustworkxCodeGraph', include_source=True) — one call, not three.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "code(lookup_symbols) is called with all three symbols",
-          "type": "tool_selection",
-          "passing_condition": "code called with operation='lookup_symbols' and all three symbol names"
-        },
-        {
-          "id": "a2",
-          "text": "Agent does not make three separate find_symbol calls",
-          "type": "anti_pattern",
-          "passing_condition": "find_symbol called at most once, not three times"
-        }
-      ]
-    },
-    {
-      "id": 205,
-      "name": "antipattern-no-ignore-sandbox-ref",
-      "category": "anti_pattern",
-      "prompt": "Search for all usages of the search function across the codebase.",
-      "expected_behavior": "Agent calls search('search function usages'). If response contains sandbox_ref, agent calls retrieve(sandbox_ref) to get full results — does not ignore it.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "search() is called",
+          "text": "search is called",
           "type": "tool_selection",
           "passing_condition": "search called"
         },
         {
           "id": "a2",
-          "text": "If sandbox_ref present, retrieve() is called",
+          "text": "low confidence causes refinement",
+          "type": "workflow",
+          "passing_condition": "If search returns confidence=low, agent refines query or calls find_symbol"
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "name": "output-format-sandbox-retrieve",
+      "category": "output_format",
+      "prompt": "Find all callers of the search function.",
+      "expected_behavior": "If the initial result is sandboxed, the agent uses retrieve rather than claiming the preview is complete.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search is called",
+          "type": "tool_selection",
+          "passing_condition": "search called"
+        },
+        {
+          "id": "a2",
+          "text": "sandboxed results are retrieved",
           "type": "workflow",
           "passing_condition": "If search response contains sandbox_ref, retrieve called with that ref_id"
         }
       ]
     },
     {
-      "id": 301,
-      "name": "efficiency-explain-over-readfile",
-      "category": "token_efficiency",
-      "prompt": "Explain how the ReciprocalRankFusion class works and what it's used for.",
-      "expected_behavior": "Agent calls explain('ReciprocalRankFusion') — ~230 tokens vs ~3000+ for readFile on fusion.py.",
+      "id": 108,
+      "name": "performance-orientation-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "I just joined this project. Give me an orientation: what it does, how it's structured, and the main entry points.",
+      "expected_behavior": "Agent uses overview, architecture, and one or more explain calls, with materially fewer file reads than a manual baseline.",
       "assertions": [
         {
           "id": "a1",
-          "text": "explain() is called as the primary tool",
+          "text": "orientation uses overview and architecture",
           "type": "tool_selection",
-          "passing_condition": "explain('ReciprocalRankFusion') called"
+          "passing_condition": "overview() and architecture() are called"
         },
         {
           "id": "a2",
-          "text": "readFile is not called before explain",
-          "type": "anti_pattern",
-          "passing_condition": "No readFile on fusion.py before explain"
+          "text": "manual file reading is minimized",
+          "type": "performance",
+          "passing_condition": "Fewer than 3 readFile calls during orientation"
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "name": "performance-safe-refactor-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "I need to add a new export parameter to the search() function. Walk me through what I need to check first.",
+      "expected_behavior": "Agent uses find_symbol, impact, find_callers, and explain instead of broad grep and many file reads.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "impact is used for the refactor check",
+          "type": "tool_selection",
+          "passing_condition": "impact('search') called"
+        },
+        {
+          "id": "a2",
+          "text": "caller discovery is used",
+          "type": "tool_selection",
+          "passing_condition": "find_callers('search') called"
         },
         {
           "id": "a3",
-          "text": "Response includes callers or callees from explain output",
-          "type": "output_quality",
-          "passing_condition": "Response mentions callers or callees of ReciprocalRankFusion"
+          "text": "shell grep is avoided",
+          "type": "anti_pattern",
+          "passing_condition": "No grep or git log shell command before Contextro analysis"
         }
       ]
     },
     {
-      "id": 302,
-      "name": "efficiency-find-callers-compact",
-      "category": "token_efficiency",
-      "prompt": "Who calls the IndexingPipeline class?",
-      "expected_behavior": "Agent calls find_callers('IndexingPipeline'). Output is compact 'name (file:line)' strings — ~16 tokens vs ~600+ for reading all files.",
+      "id": 110,
+      "name": "performance-bug-investigation-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "Production is throwing 'Table already exists' errors in the memory store. Find the root cause and check if it was recently introduced.",
+      "expected_behavior": "Agent uses search, explain, and commit_search with fewer reads and less tool chatter than the no-skill baseline.",
       "assertions": [
         {
           "id": "a1",
-          "text": "find_callers() is called",
+          "text": "search is used for the symptom",
           "type": "tool_selection",
-          "passing_condition": "find_callers('IndexingPipeline') called"
-        }
-      ]
-    },
-    {
-      "id": 303,
-      "name": "efficiency-search-with-budget",
-      "category": "token_efficiency",
-      "prompt": "I only have 300 tokens left in my context. Find the authentication middleware.",
-      "expected_behavior": "Agent calls search('authentication middleware', context_budget=300).",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "search() is called with context_budget",
-          "type": "tool_selection",
-          "passing_condition": "search called with context_budget <= 300"
-        }
-      ]
-    },
-    {
-      "id": 401,
-      "name": "output-format-reads-text-not-json",
-      "category": "output_format",
-      "prompt": "Check the health of the Contextia server.",
-      "expected_behavior": "Agent calls health(). Response content[0].text is human-readable (e.g. 'status: healthy\\nuptime_seconds: 234.7'). Agent reads and presents this text — does not try to parse it as JSON.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "health() is called",
-          "type": "tool_selection",
-          "passing_condition": "health() called"
+          "passing_condition": "search('Table already exists') or similar called"
         },
         {
           "id": "a2",
-          "text": "Agent presents the human-readable text output",
-          "type": "output_quality",
-          "passing_condition": "Response includes status, uptime, and engine availability from health output"
-        }
-      ]
-    },
-    {
-      "id": 402,
-      "name": "output-format-search-result-structure",
-      "category": "output_format",
-      "prompt": "Search for how authentication works.",
-      "expected_behavior": "Agent calls search('authentication'). content[0].text shows 'query: ... confidence: ... total: ...' followed by result blocks with file, line, type, score, and code preview. Agent reads this format correctly.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "search() is called",
+          "text": "history search is used for regression detection",
           "type": "tool_selection",
-          "passing_condition": "search called"
-        },
-        {
-          "id": "a2",
-          "text": "Agent correctly reads confidence and result count from text output",
-          "type": "output_quality",
-          "passing_condition": "Response references confidence level and specific results from search output"
-        }
-      ]
-    },
-    {
-      "id": 403,
-      "name": "output-format-sandbox-ref-handling",
-      "category": "output_format",
-      "prompt": "Find all callers of the search function.",
-      "expected_behavior": "If search returns sandbox_ref, agent reads the preview results from content[0].text, notes full_total, and calls retrieve(sandbox_ref) to get the complete set.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "search() is called",
-          "type": "tool_selection",
-          "passing_condition": "search called"
-        },
-        {
-          "id": "a2",
-          "text": "If sandbox_ref present, retrieve() is called",
-          "type": "workflow",
-          "passing_condition": "retrieve called with sandbox_ref value if search response is sandboxed"
+          "passing_condition": "commit_search called with memory store or table creation query"
         },
         {
           "id": "a3",
-          "text": "Agent does not ignore sandboxed results",
-          "type": "anti_pattern",
-          "passing_condition": "Agent does not present only preview results as the complete answer when sandbox_ref is present"
+          "text": "full-file reads are kept low",
+          "type": "performance",
+          "passing_condition": "Fewer than 3 readFile calls before root-cause summary"
         }
       ]
     },
     {
-      "id": 404,
-      "name": "output-format-confidence-low-handling",
-      "category": "output_format",
-      "prompt": "Find the payment processing logic.",
-      "expected_behavior": "Agent calls search('payment processing'). If confidence=low in text output, agent refines query or uses find_symbol — does not blindly accept low-confidence results.",
+      "id": 111,
+      "name": "workflow-modularization-orientation",
+      "category": "workflow",
+      "prompt": "I need to split a growing MCP feature out of server.py. Show me the architecture and what modules or boundaries I should inspect first.",
+      "expected_behavior": "Agent uses architecture and targeted symbol/code explanation to understand current boundaries before recommending modularization work.",
       "assertions": [
         {
           "id": "a1",
-          "text": "search() is called",
+          "text": "architecture is used for modularization context",
           "type": "tool_selection",
-          "passing_condition": "search called"
+          "passing_condition": "architecture() called before modularization advice"
         },
         {
           "id": "a2",
-          "text": "If confidence=low, agent refines or uses find_symbol",
-          "type": "workflow",
-          "passing_condition": "If search returns confidence=low, agent refines query or calls find_symbol"
+          "text": "broad manual reading is avoided",
+          "type": "anti_pattern",
+          "passing_condition": "No broad file-by-file read sweep before architecture or targeted symbol analysis"
+        }
+      ]
+    },
+    {
+      "id": 112,
+      "name": "performance-modular-refactor-vs-baseline",
+      "category": "performance_comparison",
+      "prompt": "Before I add a new memory feature, help me understand how to keep the code modular and avoid piling more logic into one file.",
+      "expected_behavior": "Agent uses architecture, explain, and impact to reason about boundaries instead of many ad hoc reads.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "boundary analysis uses architecture and explain",
+          "type": "tool_selection",
+          "passing_condition": "architecture() plus explain() or impact() are used for the modularity analysis"
+        },
+        {
+          "id": "a2",
+          "text": "manual reads stay low for modularity guidance",
+          "type": "performance",
+          "passing_condition": "Fewer than 3 readFile calls before the modularity recommendation"
         }
       ]
     }
-  ]
+  ],
+  "baseline_comparison": {
+    "without_skill": {
+      "orientation": {
+        "tool_calls": 15,
+        "readFile_calls": 8,
+        "tokens_consumed": 18060
+      },
+      "safe_refactor_check": {
+        "tool_calls": 12,
+        "grep_commands": 5,
+        "tokens_consumed": 12000
+      },
+      "bug_investigation": {
+        "tool_calls": 10,
+        "readFile_calls": 6,
+        "tokens_consumed": 9000
+      }
+    },
+    "with_skill_target": {
+      "orientation": { "tool_calls": 3, "readFile_calls": 0 },
+      "safe_refactor_check": { "tool_calls": 4, "grep_commands": 0 },
+      "bug_investigation": { "tool_calls": 3, "readFile_calls": 0 }
+    }
+  }
 }
