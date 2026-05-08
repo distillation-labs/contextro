@@ -14,10 +14,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from contextia_mcp.engines.output_sandbox import OutputSandbox
-from contextia_mcp.execution.ast_compression import compress_snippet
-from contextia_mcp.execution.response_policy import ToolResponsePolicy
-from contextia_mcp.memory.compaction_archive import CompactionArchive
+from contextro_mcp.engines.output_sandbox import OutputSandbox
+from contextro_mcp.execution.ast_compression import compress_snippet
+from contextro_mcp.execution.response_policy import ToolResponsePolicy
+from contextro_mcp.memory.compaction_archive import CompactionArchive
 
 
 def estimate_tokens(data) -> int:
@@ -36,9 +36,15 @@ def benchmark_progressive_disclosure():
         # Small response (should pass through)
         {
             "name": "find_callers_small",
-            "data": {"symbol": "parse", "total": 3, "callers": [
-                "main (src/app.py:10)", "test_parse (tests/test.py:5)", "cli (src/cli.py:20)"
-            ]},
+            "data": {
+                "symbol": "parse",
+                "total": 3,
+                "callers": [
+                    "main (src/app.py:10)",
+                    "test_parse (tests/test.py:5)",
+                    "cli (src/cli.py:20)",
+                ],
+            },
         },
         # Medium response (borderline)
         {
@@ -47,7 +53,9 @@ def benchmark_progressive_disclosure():
                 "symbol": "DatabaseConnection",
                 "max_depth": 10,
                 "total_impacted": 15,
-                "impacted_symbols": [f"handler_{i} (src/handlers/h{i}.py:{i*10})" for i in range(15)],
+                "impacted_symbols": [
+                    f"handler_{i} (src/handlers/h{i}.py:{i * 10})" for i in range(15)
+                ],
                 "impacted_files": {f"src/handlers/h{i}.py": [f"handler_{i}"] for i in range(15)},
                 "impacted_dirs": {"src/handlers": [f"h{i}.py" for i in range(15)]},
             },
@@ -59,10 +67,14 @@ def benchmark_progressive_disclosure():
                 "symbol": "BaseModel",
                 "max_depth": 10,
                 "total_impacted": 50,
-                "impacted_symbols": [f"model_{i} (src/models/m{i}.py:{i*5})" for i in range(50)],
-                "impacted_files": {f"src/models/m{i}.py": [f"model_{i}", f"validate_{i}"] for i in range(25)},
-                "impacted_dirs": {f"src/models": [f"m{i}.py" for i in range(25)],
-                                  "src/api": [f"endpoint_{i}.py" for i in range(15)]},
+                "impacted_symbols": [f"model_{i} (src/models/m{i}.py:{i * 5})" for i in range(50)],
+                "impacted_files": {
+                    f"src/models/m{i}.py": [f"model_{i}", f"validate_{i}"] for i in range(25)
+                },
+                "impacted_dirs": {
+                    f"src/models": [f"m{i}.py" for i in range(25)],
+                    "src/api": [f"endpoint_{i}.py" for i in range(15)],
+                },
             },
         },
         # Very large explain response
@@ -73,13 +85,19 @@ def benchmark_progressive_disclosure():
                 "type": "class",
                 "file": "src/engines/search.py",
                 "line": 45,
-                "code": "class SearchEngine:\n" + "    def method_{i}(self): pass\n".format(i=i) * 30
-                        if False else "class SearchEngine:\n" + "\n".join(
+                "code": "class SearchEngine:\n"
+                + "    def method_{i}(self): pass\n".format(i=i) * 30
+                if False
+                else "class SearchEngine:\n"
+                + "\n".join(
                     [f"    def method_{i}(self, arg{i}): return self.data[{i}]" for i in range(30)]
                 ),
                 "callers": [f"caller_{i} (src/c{i}.py:{i})" for i in range(20)],
                 "callees": [f"callee_{i} (src/e{i}.py:{i})" for i in range(15)],
-                "related": [{"name": f"related_{i}", "file": f"src/r{i}.py", "score": 0.9 - i*0.05} for i in range(10)],
+                "related": [
+                    {"name": f"related_{i}", "file": f"src/r{i}.py", "score": 0.9 - i * 0.05}
+                    for i in range(10)
+                ],
             },
         },
     ]
@@ -103,7 +121,9 @@ def benchmark_progressive_disclosure():
         total_original += original_tokens
         total_after += after_tokens
 
-        print(f"{case['name']:<25} {original_tokens:>10} {after_tokens:>10} {saved:>8} {'YES' if sandboxed else 'no'}")
+        print(
+            f"{case['name']:<25} {original_tokens:>10} {after_tokens:>10} {saved:>8} {'YES' if sandboxed else 'no'}"
+        )
 
     total_saved = total_original - total_after
     pct = (total_saved / total_original * 100) if total_original > 0 else 0
@@ -188,7 +208,7 @@ def benchmark_ast_compression():
         {
             "name": "javascript_function",
             "lang": "javascript",
-            "code": '''async function fetchAndProcessResults(query, options = {}) {
+            "code": """async function fetchAndProcessResults(query, options = {}) {
   const { limit = 10, timeout = 5000, retries = 3 } = options;
 
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -220,7 +240,7 @@ def benchmark_ast_compression():
     }
   }
 }
-''',
+""",
         },
     ]
 
@@ -248,8 +268,11 @@ def benchmark_ast_compression():
     print("-" * 60)
     print(f"{'TOTAL':<25} {total_original:>10} {total_compressed:>10} {total_reduction:>9.1f}%")
     print()
-    return {"original_chars": total_original, "compressed_chars": total_compressed,
-            "reduction_pct": round(total_reduction, 1)}
+    return {
+        "original_chars": total_original,
+        "compressed_chars": total_compressed,
+        "reduction_pct": round(total_reduction, 1),
+    }
 
 
 def benchmark_compaction_archive():
@@ -301,7 +324,11 @@ if __name__ == "__main__":
     print("=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    print(f"Progressive Disclosure: {disclosure_results['saved_pct']}% token reduction on large responses")
-    print(f"AST Compression:        {ast_results['reduction_pct']}% character reduction on code snippets")
+    print(
+        f"Progressive Disclosure: {disclosure_results['saved_pct']}% token reduction on large responses"
+    )
+    print(
+        f"AST Compression:        {ast_results['reduction_pct']}% character reduction on code snippets"
+    )
     print(f"Compaction Archive:     Searchable ({archive_results['archive_size']} chars archived)")
     print()
