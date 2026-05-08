@@ -4,7 +4,8 @@ import asyncio
 import resource
 import sys
 
-import contextia_mcp.server as server_module
+import contextro_mcp.server as server_module
+
 from tests.conftest import _call_tool, _setup_indexed
 
 
@@ -28,13 +29,14 @@ class TestMemoryMonitoring:
 
     def test_rss_under_350mb_after_index(self, mini_codebase, tmp_path):
         """Indexing a small codebase should not add more than 350MB to RSS."""
+
         async def run():
             # Capture baseline before indexing
             mcp_pre = server_module.create_server()
             status_pre = await _call_tool(mcp_pre, "status")
             baseline = status_pre["memory"]["peak_rss_mb"]
 
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             status = await _call_tool(mcp, "status")
             return status["memory"]["peak_rss_mb"] - baseline
 
@@ -43,8 +45,9 @@ class TestMemoryMonitoring:
 
     def test_memory_stable_across_searches(self, mini_codebase, tmp_path):
         """RSS should not grow unboundedly across multiple searches."""
+
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
 
             # Get baseline RSS
             status = await _call_tool(mcp, "status")
