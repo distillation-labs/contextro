@@ -8,12 +8,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
-from contextia_mcp.config import Settings
-from contextia_mcp.engines.output_sandbox import OutputSandbox
-from contextia_mcp.engines.query_cache import QueryCache
-from contextia_mcp.execution.runtime import SearchRuntime, build_search_runtime
-from contextia_mcp.execution.search import SearchExecutionEngine, SearchExecutionOptions
+from contextro_mcp.config import Settings
+from contextro_mcp.engines.output_sandbox import OutputSandbox
+from contextro_mcp.engines.query_cache import QueryCache
+from contextro_mcp.execution.runtime import SearchRuntime, build_search_runtime
+from contextro_mcp.execution.search import SearchExecutionEngine, SearchExecutionOptions
 
 
 class _VectorBackend:
@@ -240,7 +239,7 @@ def test_execute_skips_auto_live_grep_for_natural_language_queries(monkeypatch):
             calls.append((query, limit))
             return []
 
-    monkeypatch.setattr("contextia_mcp.execution.search.LiveGrepEngine", _LiveGrepStub)
+    monkeypatch.setattr("contextro_mcp.execution.search.LiveGrepEngine", _LiveGrepStub)
 
     engine.execute(
         SearchExecutionOptions(query="prepare issue worktree", mode="hybrid", rerank=False, limit=3)
@@ -262,7 +261,7 @@ def test_execute_auto_live_grep_for_single_token_queries(monkeypatch):
             calls.append((query, limit))
             return []
 
-    monkeypatch.setattr("contextia_mcp.execution.search.LiveGrepEngine", _LiveGrepStub)
+    monkeypatch.setattr("contextro_mcp.execution.search.LiveGrepEngine", _LiveGrepStub)
 
     engine.execute(
         SearchExecutionOptions(query="TokenBudget", mode="hybrid", rerank=False, limit=3)
