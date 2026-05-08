@@ -1,4 +1,4 @@
-"""Retrieval-quality benchmark for Contextia search."""
+"""Retrieval-quality benchmark for Contextro search."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ async def run_benchmark(
 ) -> dict:
     """Run retrieval-quality benchmarks across search modes."""
     tmp_dir = Path(tempfile.mkdtemp(prefix="ctx_retrieval_"))
-    storage_dir = tmp_dir / ".contextia"
+    storage_dir = tmp_dir / ".contextro"
     storage_dir.mkdir()
 
     queries = collect_docstring_queries(codebase_path, limit=query_limit)
@@ -121,7 +121,7 @@ async def run_benchmark(
             "time_seconds": index_result.get("time_seconds", 0),
         }
 
-        from contextia_mcp.state import get_state
+        from contextro_mcp.state import get_state
 
         state = get_state()
         sync_vector_engine(state, mock_svc)
@@ -169,7 +169,7 @@ async def run_benchmark(
 
 
 def main() -> dict:
-    parser = argparse.ArgumentParser(description="Run retrieval-quality benchmarks for Contextia.")
+    parser = argparse.ArgumentParser(description="Run retrieval-quality benchmarks for Contextro.")
     parser.add_argument(
         "--path",
         type=Path,
@@ -198,9 +198,7 @@ def main() -> dict:
 
     import asyncio
 
-    metrics = asyncio.run(
-        run_benchmark(args.path.resolve(), args.query_limit, args.index_timeout)
-    )
+    metrics = asyncio.run(run_benchmark(args.path.resolve(), args.query_limit, args.index_timeout))
     print(json.dumps(metrics, indent=2))
 
     if args.output is not None:
