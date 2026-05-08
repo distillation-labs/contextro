@@ -3,15 +3,15 @@
 from pathlib import Path
 
 import pytest
-
-from contextia_mcp.state import get_state, reset_state
+from contextro_mcp.state import get_state, reset_state
 
 
 @pytest.fixture(autouse=True)
 def clean_state(tmp_path, monkeypatch):
     """Reset global state and point storage at a fresh tmp dir before each test."""
-    monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
-    from contextia_mcp.config import reset_settings
+    monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextro"))
+    from contextro_mcp.config import reset_settings
+
     reset_settings()
     reset_state()
     yield
