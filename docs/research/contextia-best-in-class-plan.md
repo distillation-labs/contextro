@@ -1,4 +1,4 @@
-# Contextia Best-in-Class Research Plan
+# Contextro Best-in-Class Research Plan
 
 **Date:** 2026-05-07  
 **Author:** Research synthesis from primary sources  
@@ -8,15 +8,15 @@
 
 ## Executive Summary
 
-After surveying primary sources from Cursor, Windsurf/Devin, Anthropic, OpenAI, Google/DeepMind, NVIDIA, Mistral, and peer-reviewed academic work, three patterns emerge as the highest-ROI improvements for Contextia:
+After surveying primary sources from Cursor, Windsurf/Devin, Anthropic, OpenAI, Google/DeepMind, NVIDIA, Mistral, and peer-reviewed academic work, three patterns emerge as the highest-ROI improvements for Contextro:
 
-1. **Query-aware retrieval training** — Cursor's custom embedding model trained on agent session traces delivers 12.5% higher accuracy than generic embeddings. Contextia can approximate this by mining its own search logs to fine-tune potion-code-16m or train a distilled reranker.
+1. **Query-aware retrieval training** — Cursor's custom embedding model trained on agent session traces delivers 12.5% higher accuracy than generic embeddings. Contextro can approximate this by mining its own search logs to fine-tune potion-code-16m or train a distilled reranker.
 
-2. **Structured compaction with retrievable history** — Every leading system (Cursor, Anthropic, OpenAI, Devin) now treats compaction as a first-class feature. Contextia's `session_snapshot` is a good start but lacks the ability to recover specific details post-compaction. Adding a searchable compaction archive (like Cursor's "chat history as files") would close this gap.
+2. **Structured compaction with retrievable history** — Every leading system (Cursor, Anthropic, OpenAI, Devin) now treats compaction as a first-class feature. Contextro's `session_snapshot` is a good start but lacks the ability to recover specific details post-compaction. Adding a searchable compaction archive (like Cursor's "chat history as files") would close this gap.
 
-3. **Progressive disclosure via lightweight index maps** — Both OpenAI ("give Codex a map, not a manual") and Cursor (dynamic context discovery with 46.9% token reduction) converge on the same principle: return minimal metadata first, let the agent pull details on demand. Contextia's sandbox/retrieve pattern already does this; the improvement is making it the default for all tools, not just oversized search results.
+3. **Progressive disclosure via lightweight index maps** — Both OpenAI ("give Codex a map, not a manual") and Cursor (dynamic context discovery with 46.9% token reduction) converge on the same principle: return minimal metadata first, let the agent pull details on demand. Contextro's sandbox/retrieve pattern already does this; the improvement is making it the default for all tools, not just oversized search results.
 
-These three changes are implementable within Contextia's current architecture (single MCP server, <350MB RAM, disk-backed) and target the metrics that matter most: retrieval precision, token efficiency, and developer trust.
+These three changes are implementable within Contextro's current architecture (single MCP server, <350MB RAM, disk-backed) and target the metrics that matter most: retrieval precision, token efficiency, and developer trust.
 
 ---
 
@@ -70,26 +70,26 @@ These three changes are implementable within Contextia's current architecture (s
 
 | Strategy | Verdict | Rationale | Effort | Risk |
 |----------|---------|-----------|--------|------|
-| **Dynamic context discovery (files as primitive)** | ADAPT | Contextia already uses sandbox/retrieve. Extend to all tool outputs above a threshold. Don't need filesystem—use in-memory sandbox with ref IDs | Low | Low |
+| **Dynamic context discovery (files as primitive)** | ADAPT | Contextro already uses sandbox/retrieve. Extend to all tool outputs above a threshold. Don't need filesystem—use in-memory sandbox with ref IDs | Low | Low |
 | **Custom embedding from agent traces** | ADAPT | Can't train a full model, but can mine search logs to build hard-negative training pairs for fine-tuning potion-code-16m or training a reranker | Medium | Medium |
-| **Sparse N-gram text index** | AVOID (for now) | Contextia already has BM25 via LanceDB FTS. Sparse N-grams shine for monorepos (>50k files). Not worth the complexity for typical Contextia users | High | Low |
-| **SWE-grep style subagent** | AVOID | Requires training a specialized model. Contextia is model-agnostic MCP server—this is the client's job | High | High |
-| **M-Query (LLM-based search)** | ADAPT | Contextia could offer an optional "LLM rerank" mode using the calling model itself to re-score top-K results. Lightweight to implement | Low | Low |
+| **Sparse N-gram text index** | AVOID (for now) | Contextro already has BM25 via LanceDB FTS. Sparse N-grams shine for monorepos (>50k files). Not worth the complexity for typical Contextro users | High | Low |
+| **SWE-grep style subagent** | AVOID | Requires training a specialized model. Contextro is model-agnostic MCP server—this is the client's job | High | High |
+| **M-Query (LLM-based search)** | ADAPT | Contextro could offer an optional "LLM rerank" mode using the calling model itself to re-score top-K results. Lightweight to implement | Low | Low |
 | **Context pinning** | ADOPT | Add explicit "pin" capability to remember/recall. Let users mark certain search results or symbols as always-include | Low | Low |
 | **Compaction with searchable history** | ADOPT | Extend session_snapshot to write full compaction archive. Make it searchable via recall/search | Medium | Low |
 | **Tool result clearing** | ADOPT | Already partially done via sandbox. Formalize: after N turns, offer to clear old tool results from context | Low | Low |
 | **Progressive disclosure (map not manual)** | ADOPT | Make overview/architecture return compact maps by default. Detailed content on demand via retrieve | Low | Low |
-| **Prompt caching optimization** | ADAPT | Structure Contextia's tool responses to be cache-friendly: stable metadata prefix + dynamic content suffix | Low | Low |
+| **Prompt caching optimization** | ADAPT | Structure Contextro's tool responses to be cache-friendly: stable metadata prefix + dynamic content suffix | Low | Low |
 | **Infini-attention / compressive memory** | AVOID | Architectural research, not applicable to an MCP server. This is the model provider's job | N/A | N/A |
-| **MemGPT-style virtual context** | ADAPT | Contextia's remember/recall already implements the core primitives. Add automatic summarization of old memories and hierarchical organization | Medium | Low |
+| **MemGPT-style virtual context** | ADAPT | Contextro's remember/recall already implements the core primitives. Add automatic summarization of old memories and hierarchical organization | Medium | Low |
 | **Hierarchical memory (HiMem)** | ADAPT | Add memory categories (decisions, facts, preferences) with automatic relevance decay. Already have tags—add TTL-based pruning | Low | Low |
-| **Code-specific prompt compression** | ADAPT | Contextia already does snippet truncation. Add AST-aware compression: keep signatures, collapse bodies, preserve imports | Medium | Medium |
+| **Code-specific prompt compression** | ADAPT | Contextro already does snippet truncation. Add AST-aware compression: keep signatures, collapse bodies, preserve imports | Medium | Medium |
 | **Relevance-scored sentence compression** | ADAPT | Apply to search results: score each line's relevance to query, drop low-scoring lines from snippets | Medium | Medium |
 | **ReAct-style conditional retrieval** | ADOPT | Already implemented via search confidence levels. Formalize: if confidence=high, return fewer results | Low | Low |
 | **Git-commit-based index state** | ADOPT | Already using git for branch detection. Extend: store index generation keyed to commit hash for instant validation | Low | Low |
-| **Initializer + progress file pattern** | ADAPT | Contextia can generate a "project context file" on first index that serves as the agent's map. Auto-update on reindex | Medium | Low |
-| **Interleaved thinking (DeepSeek-V4)** | ADAPT | Contextia's compaction archive already preserves tool-call context. Could add a mode where tool results are preserved across compactions while general chat is discarded | Low | Low |
-| **On-disk KV cache with periodic checkpointing (DeepSeek-V4)** | ADAPT | Contextia already uses disk-backed LanceDB. The periodic checkpoint pattern maps to compaction archive: checkpoint every N tool calls, not just at context limit | Low | Low |
+| **Initializer + progress file pattern** | ADAPT | Contextro can generate a "project context file" on first index that serves as the agent's map. Auto-update on reindex | Medium | Low |
+| **Interleaved thinking (DeepSeek-V4)** | ADAPT | Contextro's compaction archive already preserves tool-call context. Could add a mode where tool results are preserved across compactions while general chat is discarded | Low | Low |
+| **On-disk KV cache with periodic checkpointing (DeepSeek-V4)** | ADAPT | Contextro already uses disk-backed LanceDB. The periodic checkpoint pattern maps to compaction archive: checkpoint every N tool calls, not just at context limit | Low | Low |
 | **Quick Instruction / KV reuse (DeepSeek-V4)** | ADAPT | Structure tool responses with stable prefix (metadata) + dynamic suffix (content) to maximize prompt cache hits. Already implemented in cache-friendly response structure | Low | Low |
 | **Trajectory logging (DeepSeek-V4 DSec)** | ADAPT | The compaction archive is a form of trajectory logging. Could extend to log every tool call + result for deterministic replay | Medium | Low |
 
@@ -111,7 +111,7 @@ These three changes are implementable within Contextia's current architecture (s
 | # | Improvement | Expected Benefit | Metric | Cost |
 |---|-------------|-----------------|--------|------|
 | 5 | **AST-aware snippet compression** — Keep function signatures + docstrings, collapse implementation bodies, preserve imports/types | 40-60% snippet size reduction with minimal information loss | Tokens/result, answer quality | 2-3 weeks |
-| 6 | **Query-log-trained reranker** — Mine Contextia search logs to build training pairs. Fine-tune FlashRank or train lightweight reranker | 10-15% retrieval precision improvement | MRR, Recall@5 | 3-4 weeks |
+| 6 | **Query-log-trained reranker** — Mine Contextro search logs to build training pairs. Fine-tune FlashRank or train lightweight reranker | 10-15% retrieval precision improvement | MRR, Recall@5 | 3-4 weeks |
 | 7 | **Hierarchical memory with auto-summarization** — Group memories by type (decision/fact/preference). Auto-summarize old memories. Relevance decay | Better recall precision, reduced memory noise | Memory recall precision, storage efficiency | 2-3 weeks |
 | 8 | **Project context map** — Auto-generate on first index: key entry points, architecture layers, hot files, dependency graph summary. Serve as first-call response | Faster agent orientation, fewer exploratory searches | Searches-to-first-useful-result | 2 weeks |
 
@@ -129,7 +129,7 @@ These three changes are implementable within Contextia's current architecture (s
 
 ### Immediate: Preserve current architecture, optimize outputs
 
-Contextia's architecture (LanceDB + rustworkx + tree-sitter + Model2Vec) is sound and competitive. No structural changes needed. Focus on:
+Contextro's architecture (LanceDB + rustworkx + tree-sitter + Model2Vec) is sound and competitive. No structural changes needed. Focus on:
 
 - **Response shaping**: Every tool response should follow the pattern: `{compact_summary, sandbox_ref?, confidence, token_count}`. The agent decides whether to retrieve full content.
 - **Compaction support**: Add a `compaction_archive` store (SQLite or LanceDB table) that holds full session histories, searchable via the existing vector engine.
@@ -216,7 +216,7 @@ Contextia's architecture (LanceDB + rustworkx + tree-sitter + Model2Vec) is soun
 
 ### Experiment 5: Query-Log-Trained Reranker
 
-**Hypothesis:** A reranker trained on Contextia's own search logs will outperform generic FlashRank.
+**Hypothesis:** A reranker trained on Contextro's own search logs will outperform generic FlashRank.
 
 **Protocol:**
 1. Collect 1000+ search→retrieve pairs (query, clicked result, skipped results)
@@ -247,21 +247,21 @@ Contextia's architecture (LanceDB + rustworkx + tree-sitter + Model2Vec) is soun
 
 2. **Latency vs. quality**: Reranking adds latency. FlashRank adds ~2ms. A custom cross-encoder might add 5-10ms. Acceptable for search but not for autocomplete-speed tools.
 
-3. **Simplicity vs. intelligence**: Cursor and Windsurf invest heavily in custom models. Contextia's strength is being model-agnostic and local-first. Don't sacrifice this for marginal retrieval gains.
+3. **Simplicity vs. intelligence**: Cursor and Windsurf invest heavily in custom models. Contextro's strength is being model-agnostic and local-first. Don't sacrifice this for marginal retrieval gains.
 
-4. **Privacy vs. learning**: Agent-trace-trained embeddings require collecting usage data. Contextia is "no data leaves your machine." Any learning must happen locally.
+4. **Privacy vs. learning**: Agent-trace-trained embeddings require collecting usage data. Contextro is "no data leaves your machine." Any learning must happen locally.
 
 ### Open Questions
 
 1. **How much does embedding quality matter as models get smarter?** Cursor found 12.5% improvement from custom embeddings, but models are getting better at compensating for imperfect retrieval. Will this gap close?
 
-2. **Is LLM-based reranking (M-Query style) worth the latency for a local MCP server?** Windsurf does this server-side. For Contextia, it would require calling the host model, which adds a round-trip.
+2. **Is LLM-based reranking (M-Query style) worth the latency for a local MCP server?** Windsurf does this server-side. For Contextro, it would require calling the host model, which adds a round-trip.
 
-3. **What's the optimal compaction frequency?** Anthropic and Devin both do it at context limits. Should Contextia proactively suggest compaction earlier to maintain quality?
+3. **What's the optimal compaction frequency?** Anthropic and Devin both do it at context limits. Should Contextro proactively suggest compaction earlier to maintain quality?
 
 4. **Can graph-based retrieval (rustworkx) be used for relevance scoring?** Hypothesis: chunks connected to more callers/callees are more architecturally important and should rank higher. Untested.
 
-5. **Should Contextia offer a "project map" tool that's always called first?** OpenAI's harness engineering suggests yes. But this adds a mandatory round-trip. Tradeoff unclear.
+5. **Should Contextro offer a "project map" tool that's always called first?** OpenAI's harness engineering suggests yes. But this adds a mandatory round-trip. Tradeoff unclear.
 
 ---
 
@@ -277,7 +277,7 @@ Based on ROI (impact × confidence / effort × risk):
 - Cursor proved 46.9% token reduction with this pattern (A/B tested, statistically significant)
 - Anthropic's core principle: "smallest possible set of high-signal tokens"
 - OpenAI's principle: "give Codex a map, not a manual"
-- Contextia already has the sandbox infrastructure; this is about making it the default
+- Contextro already has the sandbox infrastructure; this is about making it the default
 
 **How:** Extend `response_policy.py` to apply progressive disclosure to `explain`, `find_callers`, `find_callees`, `impact`, `architecture`, and `analyze` (not just `search`).
 
@@ -307,7 +307,7 @@ Based on ROI (impact × confidence / effort × risk):
 
 **Why:**
 - Code-specific prompt compression paper (arxiv 2502.14925) validates this approach for coding RAG
-- Contextia's current snippets include full function bodies, which are often 80%+ implementation detail irrelevant to the query
+- Contextro's current snippets include full function bodies, which are often 80%+ implementation detail irrelevant to the query
 - Combined with progressive disclosure, this could achieve 60-70% total token reduction
 
 **How:** Extend the chunking pipeline to generate a `compressed_snippet` field alongside `code`. Use tree-sitter to identify function boundaries, extract signature + docstring, collapse body.
