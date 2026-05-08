@@ -232,7 +232,12 @@ class SearchExecutionEngine:
 
         return ranked_lists, engines_used
 
-    def _fuse_results(self, ranked_lists: dict[str, list[dict[str, Any]]], *, route: str) -> list[dict[str, Any]]:
+    def _fuse_results(
+        self,
+        ranked_lists: dict[str, list[dict[str, Any]]],
+        *,
+        route: str,
+    ) -> list[dict[str, Any]]:
         if len(ranked_lists) > 1:
             fusion = ReciprocalRankFusion(
                 weights=self._fusion_weights(route)
@@ -277,7 +282,16 @@ class SearchExecutionEngine:
 
         try:
             reranker = self._get_reranker()
-            reranked = reranker.rerank(options.query, results[:50], limit=limit)
+            candidate_limit = max(
+                limit,
+                int(getattr(self.settings, "search_rerank_max_candidates", 50)),
+            )
+            reranked = reranker.rerank(
+                options.query,
+                results[:candidate_limit],
+                limit=limit,
+                max_passage_chars=self._rerank_passage_chars(options),
+            )
             reranked_results = [dict(result) for result in reranked if isinstance(result, dict)]
             return reranked_results or results[:limit]
         except Exception as exc:
@@ -286,8 +300,22 @@ class SearchExecutionEngine:
 
     def _get_reranker(self) -> FlashReranker:
         if not hasattr(self.state, "_reranker") or self.state._reranker is None:
-            self.state._reranker = FlashReranker(model_name=self.settings.reranker_model)
+            max_passage_chars = int(getattr(self.settings, "search_rerank_max_passage_chars", 0))
+            self.state._reranker = FlashReranker(
+                model_name=self.settings.reranker_model,
+                max_passage_chars=max_passage_chars if max_passage_chars > 0 else None,
+            )
         return self.state._reranker
+
+    def _rerank_passage_chars(self, options: SearchExecutionOptions) -> int | None:
+        default_chars = int(getattr(self.settings, "search_rerank_max_passage_chars", 0))
+        if options.mode == "vector":
+            return default_chars if default_chars > 0 else None
+
+        non_vector_chars = int(getattr(self.settings, "search_rerank_non_vector_passage_chars", 0))
+        if non_vector_chars > 0:
+            return non_vector_chars
+        return default_chars if default_chars > 0 else None
 
     def _filter_relevance(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if len(results) <= 1:
