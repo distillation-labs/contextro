@@ -1,4 +1,4 @@
-"""Shared test fixtures and helpers for Contextia tests."""
+"""Shared test fixtures and helpers for Contextro tests."""
 
 import json
 import sys
@@ -11,14 +11,15 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import contextia_mcp.server as server_module  # noqa: E402
-from contextia_mcp.state import reset_state  # noqa: E402
+import contextro_mcp.server as server_module  # noqa: E402
+from contextro_mcp.state import reset_state  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def clean_state():
     """Reset global state before each test."""
     import os
+
     reset_state()
     server_module._pipeline = None
     server_module._index_job = {}
@@ -28,7 +29,8 @@ def clean_state():
     server_module._index_job = {}
     # Clean up CTX_STORAGE_DIR set by _setup_indexed
     os.environ.pop("CTX_STORAGE_DIR", None)
-    from contextia_mcp.config import reset_settings
+    from contextro_mcp.config import reset_settings
+
     reset_settings()
 
 
@@ -37,12 +39,8 @@ def mini_codebase(tmp_path):
     """Create a small Python codebase."""
     src = tmp_path / "src"
     src.mkdir()
-    (src / "main.py").write_text(
-        'def hello():\n    """Say hello."""\n    print("hello")\n'
-    )
-    (src / "utils.py").write_text(
-        'def helper():\n    """A helper."""\n    return 42\n'
-    )
+    (src / "main.py").write_text('def hello():\n    """Say hello."""\n    print("hello")\n')
+    (src / "utils.py").write_text('def helper():\n    """A helper."""\n    return 42\n')
     return tmp_path
 
 
@@ -54,9 +52,7 @@ def mini_codebase_with_calls(tmp_path):
     (src / "main.py").write_text(
         'from utils import helper\n\n\ndef hello():\n    """Say hello."""\n    helper()\n'
     )
-    (src / "utils.py").write_text(
-        'def helper():\n    """A helper."""\n    return 42\n'
-    )
+    (src / "utils.py").write_text('def helper():\n    """A helper."""\n    return 42\n')
     (src / "app.py").write_text(
         "from main import hello\nfrom utils import helper\n\n\n"
         "def orchestrate():\n"
@@ -68,14 +64,17 @@ def mini_codebase_with_calls(tmp_path):
 
 
 def _mock_embedding_service():
-    from contextia_mcp.config import get_settings
-    from contextia_mcp.indexing.embedding_service import EMBEDDING_MODELS
+    from contextro_mcp.config import get_settings
+    from contextro_mcp.indexing.embedding_service import EMBEDDING_MODELS
+
     settings = get_settings()
     dims = EMBEDDING_MODELS.get(settings.embedding_model, {}).get("dimensions", 384)
     svc = MagicMock()
     svc.embed.return_value = [0.1] * dims
+
     def dynamic_batch(texts, **kwargs):
         return [[0.1] * dims for _ in texts]
+
     svc.embed_batch.side_effect = dynamic_batch
     return svc
 
@@ -106,10 +105,11 @@ async def _setup_indexed(codebase_path, storage_dir):
     # Set storage dir permanently so subsequent index calls in the same test use it
     os.environ["CTX_STORAGE_DIR"] = str(storage_dir)
 
-    from contextia_mcp.config import reset_settings
+    from contextro_mcp.config import reset_settings
+
     reset_settings()
 
-    with patch("contextia_mcp.indexing.pipeline.get_embedding_service") as mock_get:
+    with patch("contextro_mcp.indexing.pipeline.get_embedding_service") as mock_get:
         mock_svc = _mock_embedding_service()
         mock_get.return_value = mock_svc
 
@@ -144,7 +144,8 @@ async def _setup_indexed(codebase_path, storage_dir):
                     result = job_result
 
         # Patch vector engine's embedding service for search
-        from contextia_mcp.state import get_state
+        from contextro_mcp.state import get_state
+
         state = get_state()
         if state.vector_engine:
             state.vector_engine._embedding_service = mock_svc
