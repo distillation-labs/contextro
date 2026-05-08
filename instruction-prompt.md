@@ -1,4 +1,4 @@
-# Contextia MCP — Setup Prompt
+# Contextroontextro MCP — Setup Prompt
 
 Copy and paste the following prompt to your coding agent. It will install and configure everything end-to-end.
 
@@ -7,7 +7,7 @@ Copy and paste the following prompt to your coding agent. It will install and co
 ## The Prompt
 
 ```
-Set up Contextia MCP on this machine end-to-end so it's ready to use. Follow these steps exactly:
+Set up Contextroontextro MCP on this machine end-to-end so it's ready to use. Follow these steps exactly:
 
 ---
 
@@ -22,28 +22,28 @@ Check what's available:
 
 ---
 
-STEP 2 — INSTALL CONTEXTIA
+STEP 2 — INSTALL CONTEXTRO
 
 Choose the right method based on what's available:
 
 Option A — pip (preferred for local use):
-  pip install contextia
+  pip install contextroontextro
   pip install model2vec
-  pip install contextia[reranker]
+  pip install contextroontextro[reranker]
 
-  Verify: contextia --help
+  Verify: contextroontextro --help
 
 Option B — Docker (preferred for team/remote use):
   Pull the published image:
-  - docker pull ghcr.io/jassskalkat/contextia-mcp:latest
+  - docker pull ghcr.io/jassskalkat/contextroontextro-mcp:latest
 
   Then run it:
   docker run -d \
-    --name contextia \
+    --name contextroontextro \
     -p 8000:8000 \
-    -v contextia-data:/data \
+    -v contextroontextro-data:/data \
     -v "$(pwd):/repos/codebase:ro" \
-    -e CTX_STORAGE_DIR=/data/.contextia \
+    -e CTX_STORAGE_DIR=/data/.contextroontextro \
     -e CTX_CODEBASE_HOST_PATH="$(pwd)" \
     -e CTX_CODEBASE_MOUNT_PATH=/repos/codebase \
     -e CTX_PATH_PREFIX_MAP="${CTX_PATH_PREFIX_MAP:-}" \
@@ -52,7 +52,7 @@ Option B — Docker (preferred for team/remote use):
     -e CTX_HTTP_PORT=8000 \
     -e CTX_AUTO_WARM_START=true \
     -e CTX_COMMIT_HISTORY_ENABLED=true \
-    ghcr.io/jassskalkat/contextia-mcp:latest
+    ghcr.io/jassskalkat/contextroontextro-mcp:latest
 
   Wait 5 seconds, then verify: curl http://localhost:8000/health
 
@@ -63,8 +63,8 @@ STEP 3 — CONNECT TO YOUR MCP CLIENT
 Detect which MCP client is being used and configure it:
 
 If Claude Code is installed (claude --version works):
-  Run: claude mcp add contextia -- contextia
-  (If using Docker instead: claude mcp add contextia -e CTX_TRANSPORT=http -- contextia --host localhost --port 8000)
+  Run: claude mcp add contextroontextro -- contextroontextro
+  (If using Docker instead: claude mcp add contextroontextro -e CTX_TRANSPORT=http -- contextroontextro --host localhost --port 8000)
 
 If Claude Desktop is installed:
   Find the config file:
@@ -75,8 +75,8 @@ If Claude Desktop is installed:
   Add this to the mcpServers section (create the file if it doesn't exist):
   {
     "mcpServers": {
-      "contextia": {
-        "command": "contextia"
+      "contextroontextro": {
+        "command": "contextroontextro"
       }
     }
   }
@@ -84,7 +84,7 @@ If Claude Desktop is installed:
   If using Docker, add this instead:
   {
     "mcpServers": {
-      "contextia": {
+      "contextroontextro": {
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-http-proxy", "http://localhost:8000/mcp"]
       }
@@ -93,16 +93,16 @@ If Claude Desktop is installed:
 
 If Cursor is installed:
   Open Cursor Settings > MCP > Add Server
-  Name: contextia
-  Command: contextia
+  Name: contextroontextro
+  Command: contextroontextro
   (or URL: http://localhost:8000/mcp if using Docker)
 
 If Windsurf is installed:
   Edit ~/.codeium/windsurf/mcp_config.json and add:
   {
     "mcpServers": {
-      "contextia": {
-        "command": "contextia",
+      "contextroontextro": {
+        "command": "contextroontextro",
         "transport": "stdio"
       }
     }
@@ -116,7 +116,7 @@ If Kiro is installed:
 
 STEP 4 — INSTALL THE SKILL
 
-The Contextia skill teaches your agent how to use the MCP tools correctly.
+The Contextroontextro skill teaches your agent how to use the MCP tools correctly.
 
 Find the skill directory:
   - Kiro:        ~/.kiro/skills/
@@ -126,23 +126,23 @@ Find the skill directory:
 Install the skill:
 
   Method A — Clone from the repo:
-    git clone https://github.com/jassskalkat/Contextia-MCP.git /tmp/contextia-mcp
+    git clone https://github.com/jassskalkat/Contextroontextro-MCP.git /tmp/contextroontextro-mcp
     
     For Kiro:
-      cp -r /tmp/contextia-mcp/.kiro/skills/dev-contextia-mcp ~/.kiro/skills/
+      cp -r /tmp/contextroontextro-mcp/.kiro/skills/dev-contextroontextro-mcp ~/.kiro/skills/
     
     For Claude Code:
-      cp -r /tmp/contextia-mcp/.kiro/skills/dev-contextia-mcp ~/.claude/skills/
+      cp -r /tmp/contextroontextro-mcp/.kiro/skills/dev-contextroontextro-mcp ~/.claude/skills/
 
   Method B — Create the skill manually:
-    Create the directory: mkdir -p ~/.kiro/skills/dev-contextia-mcp
+    Create the directory: mkdir -p ~/.kiro/skills/dev-contextroontextro-mcp
     
     Download the skill file:
-    curl -o ~/.kiro/skills/dev-contextia-mcp/SKILL.md \
-      https://raw.githubusercontent.com/jassskalkat/Contextia-MCP/main/.kiro/skills/dev-contextia-mcp/SKILL.md
+    curl -o ~/.kiro/skills/dev-contextroontextro-mcp/SKILL.md \
+      https://raw.githubusercontent.com/jassskalkat/Contextroontextro-MCP/main/.kiro/skills/dev-contextroontextro-mcp/SKILL.md
 
   Verify the skill is installed:
-    ls ~/.kiro/skills/dev-contextia-mcp/SKILL.md
+    ls ~/.kiro/skills/dev-contextroontextro-mcp/SKILL.md
     (or the equivalent path for your client)
 
 ---
@@ -152,7 +152,7 @@ STEP 5 — VERIFY EVERYTHING WORKS
 Run these checks:
 
 1. Check the server is running:
-   - pip install: contextia --help (should show usage)
+   - pip install: contextroontextro --help (should show usage)
    - Docker: curl http://localhost:8000/health (should return {"status":"healthy"})
 
 2. Test the MCP connection by calling the status tool:
@@ -173,7 +173,7 @@ If any step fails, report the exact error message and which step failed.
 
 STEP 6 — DONE
 
-Once status() returns indexed: true, Contextia is ready. Your agent now has:
+Once status() returns indexed: true, Contextroontextro is ready. Your agent now has:
 - Semantic search across your entire codebase
 - Call graph traversal (find_callers, find_callees, impact)
 - Git history search (commit_search)
@@ -192,12 +192,12 @@ The skill is installed and will automatically guide the agent to use the right t
 |---|---|
 | Local dev, single machine | pip install |
 | Team sharing one index | Docker |
-| Published stable image | `ghcr.io/jassskalkat/contextia-mcp:latest` |
-| Hosted alpha image | `ghcr.io/jassskalkat/contextia-mcp:alpha` |
+| Published stable image | `ghcr.io/jassskalkat/contextroontextro-mcp:latest` |
+| Hosted alpha image | `ghcr.io/jassskalkat/contextroontextro-mcp:alpha` |
 
 ## Troubleshooting
 
-**"contextia: command not found"** — Python's bin directory isn't in PATH. Try: `python3 -m contextia_mcp.server`
+**"contextroontextro: command not found"** — Python's bin directory isn't in PATH. Try: `python3 -m contextro_mcpontextro.server`
 
 **Docker "port already in use"** — Change `-p 8000:8000` to `-p 8001:8000` and update the URL accordingly.
 
