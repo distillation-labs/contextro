@@ -1,197 +1,182 @@
 {
-  "skill_name": "dev-contextia-mcp",
-  "version": "3.1.0",
-  "eval_set": "new-tools-e2e",
+  "skill_name": "dev-contextro-mcp",
+  "version": "4.0.0",
+  "eval_set": "new-tools-and-e2e",
+  "description": "Extended eval coverage for Contextro-specific tools and end-to-end problem-first tasks. Focuses on lesser-used tools, archive and memory distinctions, cross-repo flows, and retrieval of sandboxed large outputs.",
+  "categories": {
+    "new_tools": "Contextro-specific tools are invoked correctly",
+    "e2e": "Real user requests complete with the expected Contextro workflow",
+    "distinctions": "The agent distinguishes nearby tools with different purposes"
+  },
   "evals": [
     {
       "id": 401,
-      "name": "new-tool-retrieve-sandbox",
-      "category": "new_tools",
-      "prompt": "The last search returned sandbox_ref sx_abc12345. Get the full results.",
-      "expected_behavior": "Agent calls retrieve('sx_abc12345').",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "retrieve() is called with the ref_id",
-          "type": "tool_selection",
-          "passing_condition": "retrieve called with ref_id='sx_abc12345'"
-        }
-      ]
-    },
-    {
-      "id": 402,
       "name": "new-tool-retrieve-with-filter",
       "category": "new_tools",
       "prompt": "From the sandboxed results sx_def67890, show me only the authentication-related ones.",
-      "expected_behavior": "Agent calls retrieve('sx_def67890', query='authentication') to filter the sandbox.",
+      "expected_behavior": "Agent calls retrieve with the ref id and a filter query.",
       "assertions": [
         {
           "id": "a1",
-          "text": "retrieve() is called with ref_id and query filter",
+          "text": "retrieve is called with ref id and filter",
           "type": "tool_selection",
           "passing_condition": "retrieve called with ref_id='sx_def67890' and query='authentication'"
         }
       ]
     },
     {
-      "id": 403,
-      "name": "new-tool-repo-add",
-      "category": "new_tools",
-      "prompt": "Add the frontend repo at /Users/alice/frontend so I can search across both codebases.",
-      "expected_behavior": "Agent calls repo_add('/Users/alice/frontend'). Then optionally repo_status() to confirm.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "repo_add() is called with the path",
-          "type": "tool_selection",
-          "passing_condition": "repo_add called with path='/Users/alice/frontend'"
-        }
-      ]
-    },
-    {
-      "id": 404,
+      "id": 402,
       "name": "new-tool-repo-status",
       "category": "new_tools",
       "prompt": "What repos are currently registered for cross-repo search?",
-      "expected_behavior": "Agent calls repo_status().",
+      "expected_behavior": "Agent calls repo_status.",
       "assertions": [
         {
           "id": "a1",
-          "text": "repo_status() is called",
+          "text": "repo_status is called",
           "type": "tool_selection",
           "passing_condition": "repo_status() called"
         }
       ]
     },
     {
-      "id": 405,
+      "id": 403,
       "name": "new-tool-repo-remove",
       "category": "new_tools",
       "prompt": "Remove the old-backend repo from cross-repo search.",
-      "expected_behavior": "Agent calls repo_remove(name='old-backend') or repo_remove(path='...').",
+      "expected_behavior": "Agent calls repo_remove.",
       "assertions": [
         {
           "id": "a1",
-          "text": "repo_remove() is called",
+          "text": "repo_remove is called",
           "type": "tool_selection",
           "passing_condition": "repo_remove called with name or path identifying old-backend"
         }
       ]
     },
     {
-      "id": 406,
-      "name": "new-tool-forget-memories",
+      "id": 404,
+      "name": "new-tool-forget",
       "category": "new_tools",
-      "prompt": "Delete all memories tagged 'outdated'.",
-      "expected_behavior": "Agent calls forget(tags='outdated').",
+      "prompt": "Delete all memories tagged outdated.",
+      "expected_behavior": "Agent calls forget with the tag filter.",
       "assertions": [
         {
           "id": "a1",
-          "text": "forget() is called with tags='outdated'",
+          "text": "forget is called with tag filter",
           "type": "tool_selection",
           "passing_condition": "forget called with tags='outdated'"
         }
       ]
     },
     {
-      "id": 407,
-      "name": "new-tool-knowledge-add-search",
+      "id": 405,
+      "name": "new-tool-knowledge-add",
       "category": "new_tools",
       "prompt": "Index the API documentation at /docs/api/ so I can search it later.",
-      "expected_behavior": "Agent calls knowledge(command='add', name='API docs', value='/docs/api/').",
+      "expected_behavior": "Agent calls knowledge add.",
       "assertions": [
         {
           "id": "a1",
-          "text": "knowledge() with add command is called",
+          "text": "knowledge add is called",
           "type": "tool_selection",
           "passing_condition": "knowledge called with command='add' and value='/docs/api/'"
         }
       ]
     },
     {
-      "id": 408,
+      "id": 406,
       "name": "new-tool-knowledge-search",
       "category": "new_tools",
       "prompt": "Search my indexed documentation for how to handle rate limiting headers.",
-      "expected_behavior": "Agent calls knowledge(command='search', query='rate limiting headers').",
+      "expected_behavior": "Agent calls knowledge search.",
       "assertions": [
         {
           "id": "a1",
-          "text": "knowledge() with search command is called",
+          "text": "knowledge search is called",
           "type": "tool_selection",
           "passing_condition": "knowledge called with command='search' and rate limiting query"
         }
       ]
     },
     {
-      "id": 409,
+      "id": 407,
       "name": "new-tool-introspect",
       "category": "new_tools",
-      "prompt": "What tools does Contextia provide and when should I use each one?",
-      "expected_behavior": "Agent calls introspect(query='what tools are available').",
+      "prompt": "What tools does Contextro provide and when should I use each one?",
+      "expected_behavior": "Agent calls introspect.",
       "assertions": [
         {
           "id": "a1",
-          "text": "introspect() is called",
+          "text": "introspect is called",
           "type": "tool_selection",
           "passing_condition": "introspect called"
         }
       ]
     },
     {
-      "id": 410,
-      "name": "new-tool-code-get-document-symbols",
+      "id": 408,
+      "name": "new-tool-get-document-symbols",
       "category": "new_tools",
-      "prompt": "List all the functions and classes defined in src/contextia_mcp/server.py.",
-      "expected_behavior": "Agent calls code(operation='get_document_symbols', file_path='src/contextia_mcp/server.py') — NOT readFile.",
+      "prompt": "List all the functions and classes defined in src/contextro_mcp/server.py.",
+      "expected_behavior": "Agent uses get_document_symbols instead of direct file reading first.",
       "assertions": [
         {
           "id": "a1",
-          "text": "code(get_document_symbols) is called",
+          "text": "get_document_symbols is called",
           "type": "tool_selection",
           "passing_condition": "code called with operation='get_document_symbols' and file_path containing server.py"
         },
         {
           "id": "a2",
-          "text": "readFile is not called before code(get_document_symbols)",
+          "text": "direct file reading is not the first move",
           "type": "anti_pattern",
           "passing_condition": "No readFile on server.py before code(get_document_symbols)"
         }
       ]
     },
     {
-      "id": 411,
-      "name": "new-tool-code-pattern-search",
+      "id": 409,
+      "name": "new-tool-pattern-search",
       "category": "new_tools",
-      "prompt": "Find all Python methods that take 'self' as the first argument in the src directory.",
-      "expected_behavior": "Agent calls code(operation='pattern_search', pattern='def $F(self, $$$):', language='python').",
+      "prompt": "Find all Python methods that take self as the first argument in the src directory.",
+      "expected_behavior": "Agent uses AST pattern search.",
       "assertions": [
         {
           "id": "a1",
-          "text": "code(pattern_search) is called with a self pattern",
+          "text": "pattern_search is called with a self pattern",
           "type": "tool_selection",
           "passing_condition": "code called with operation='pattern_search' and pattern including 'self'"
         }
       ]
     },
     {
-      "id": 412,
-      "name": "new-tool-code-lookup-symbols-batch",
-      "category": "new_tools",
-      "prompt": "Show me the source code for IndexingPipeline, EmbeddingService, and RustworkxCodeGraph.",
-      "expected_behavior": "Agent calls code(operation='lookup_symbols', symbols='IndexingPipeline,EmbeddingService,RustworkxCodeGraph', include_source=True) — one call.",
+      "id": 410,
+      "name": "distinction-remember-vs-compact",
+      "category": "distinctions",
+      "prompt": "We decided to use RS256 for JWT signing. Store this decision.",
+      "expected_behavior": "Agent uses remember with decision memory, not compact.",
       "assertions": [
         {
           "id": "a1",
-          "text": "code(lookup_symbols) is called with all three symbols",
+          "text": "remember is used for durable decisions",
           "type": "tool_selection",
-          "passing_condition": "code called with operation='lookup_symbols' and all three names"
-        },
+          "passing_condition": "remember called with memory_type='decision', not compact"
+        }
+      ]
+    },
+    {
+      "id": 411,
+      "name": "distinction-archive-recall-vs-regular-recall",
+      "category": "distinctions",
+      "prompt": "I had a session earlier where I investigated the auth flow. Search the compaction archive for what I found.",
+      "expected_behavior": "Agent uses recall with memory_type archive.",
+      "assertions": [
         {
-          "id": "a2",
-          "text": "include_source=True is set",
+          "id": "a1",
+          "text": "archive recall is used explicitly",
           "type": "tool_selection",
-          "passing_condition": "include_source=True passed"
+          "passing_condition": "recall called with query about auth flow and memory_type='archive'"
         }
       ]
     },
@@ -200,312 +185,122 @@
       "name": "e2e-unfamiliar-codebase",
       "category": "e2e",
       "prompt": "I just joined this project. Give me a complete orientation: what it does, how it's structured, the main entry points, and the most important classes.",
-      "expected_behavior": "Agent: overview() → architecture() → explain on top hub symbols. Does NOT read multiple files manually.",
+      "expected_behavior": "Agent uses overview, architecture, and explain-driven orientation instead of many direct file reads.",
       "assertions": [
         {
           "id": "a1",
-          "text": "overview() is called",
+          "text": "overview is called",
           "type": "tool_selection",
           "passing_condition": "overview() called"
         },
         {
           "id": "a2",
-          "text": "architecture() is called",
+          "text": "architecture is called",
           "type": "tool_selection",
           "passing_condition": "architecture() called"
         },
         {
           "id": "a3",
-          "text": "explain() is called on at least one key symbol",
+          "text": "key symbols are explained",
           "type": "tool_selection",
-          "passing_condition": "explain called on at least one symbol from architecture/overview output"
-        },
-        {
-          "id": "a4",
-          "text": "Fewer than 3 readFile calls total",
-          "type": "anti_pattern",
-          "passing_condition": "Fewer than 3 readFile calls during orientation"
+          "passing_condition": "explain called on at least one symbol from architecture or overview output"
         }
       ]
     },
     {
       "id": 502,
-      "name": "e2e-add-feature-safely",
-      "category": "e2e",
-      "prompt": "I need to add a new 'export' parameter to the search() function. Walk me through what I need to check first.",
-      "expected_behavior": "Agent: find_symbol('search') → impact('search') → find_callers('search') → explain('search'). Complete picture before suggesting the change.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "impact() is called on the search function",
-          "type": "tool_selection",
-          "passing_condition": "impact('search') called"
-        },
-        {
-          "id": "a2",
-          "text": "find_callers() is called",
-          "type": "tool_selection",
-          "passing_condition": "find_callers('search') called"
-        },
-        {
-          "id": "a3",
-          "text": "Response explains what would be affected",
-          "type": "output_quality",
-          "passing_condition": "Response lists specific callers or files that would need updating"
-        }
-      ]
-    },
-    {
-      "id": 503,
-      "name": "e2e-debug-production-issue",
-      "category": "e2e",
-      "prompt": "Production is throwing 'Table already exists' errors in the memory store. Find the root cause and check if it was recently introduced.",
-      "expected_behavior": "Agent: search('Table already exists') → explain on MemoryStore → commit_search('memory store table exists'). No full file reads.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "search() is called with the error message",
-          "type": "tool_selection",
-          "passing_condition": "search('Table already exists') or similar called"
-        },
-        {
-          "id": "a2",
-          "text": "explain() or find_symbol() is called on MemoryStore",
-          "type": "tool_selection",
-          "passing_condition": "explain or find_symbol called on MemoryStore or memory_store"
-        },
-        {
-          "id": "a3",
-          "text": "commit_search() is called to check recent changes",
-          "type": "tool_selection",
-          "passing_condition": "commit_search called with query about memory store or table creation"
-        }
-      ]
-    },
-    {
-      "id": 504,
-      "name": "e2e-store-and-recall-decision",
-      "category": "e2e",
-      "prompt": "We've decided to use potion-code-16m as our embedding model permanently. Store this decision so future sessions know about it, then verify it was stored.",
-      "expected_behavior": "Agent: remember(content='...', memory_type='decision') → recall('embedding model') to verify.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "remember() is called with memory_type='decision'",
-          "type": "tool_selection",
-          "passing_condition": "remember called with memory_type='decision' and content about potion-code-16m"
-        },
-        {
-          "id": "a2",
-          "text": "recall() is called to verify",
-          "type": "tool_selection",
-          "passing_condition": "recall called with query about embedding model"
-        }
-      ]
-    },
-    {
-      "id": 505,
-      "name": "e2e-commit-history-investigation",
-      "category": "e2e",
-      "prompt": "The search function started timing out last week. What changed in the search pipeline recently?",
-      "expected_behavior": "Agent: commit_search('search timeout pipeline') → commit_history(limit=10). No git log shell commands.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "commit_search() is called",
-          "type": "tool_selection",
-          "passing_condition": "commit_search called with search/timeout/pipeline query"
-        },
-        {
-          "id": "a2",
-          "text": "No git log shell command",
-          "type": "anti_pattern",
-          "passing_condition": "No git log shell command before commit_search"
-        },
-        {
-          "id": "a3",
-          "text": "Response includes commit metadata",
-          "type": "output_quality",
-          "passing_condition": "Response includes commit hashes, authors, or dates from commit_search output"
-        }
-      ]
-    },
-    {
-      "id": 506,
       "name": "e2e-cross-repo-search",
       "category": "e2e",
       "prompt": "Add the backend repo at /Users/alice/backend, then search across both repos for authentication logic.",
-      "expected_behavior": "Agent: repo_add('/Users/alice/backend') → repo_status() to confirm → search('authentication logic'). Search now covers both repos.",
+      "expected_behavior": "Agent adds the repo, optionally confirms with repo_status, then searches.",
       "assertions": [
         {
           "id": "a1",
-          "text": "repo_add() is called",
+          "text": "repo_add is called",
           "type": "tool_selection",
           "passing_condition": "repo_add called with '/Users/alice/backend'"
         },
         {
           "id": "a2",
-          "text": "search() is called after repo is added",
-          "type": "tool_selection",
+          "text": "search follows repo add",
+          "type": "workflow",
           "passing_condition": "search called after repo_add"
         }
       ]
     },
     {
-      "id": 507,
-      "name": "e2e-large-result-retrieve-flow",
+      "id": 503,
+      "name": "e2e-store-and-verify-decision",
       "category": "e2e",
-      "prompt": "Find every place the word 'deprecated' appears in the codebase.",
-      "expected_behavior": "Agent: search('deprecated', mode='bm25'). If response is sandboxed (sandbox_ref present), agent calls retrieve(sandbox_ref) for the full set.",
+      "prompt": "We've decided to use potion-code-16m as our embedding model permanently. Store this decision so future sessions know it, then verify it was stored.",
+      "expected_behavior": "Agent remembers the decision and recalls it to verify.",
       "assertions": [
         {
           "id": "a1",
-          "text": "search() is called with bm25 mode",
+          "text": "remember is called with decision memory",
+          "type": "tool_selection",
+          "passing_condition": "remember called with memory_type='decision' and content about potion-code-16m"
+        },
+        {
+          "id": "a2",
+          "text": "recall is used to verify",
+          "type": "workflow",
+          "passing_condition": "recall called with query about embedding model"
+        }
+      ]
+    },
+    {
+      "id": 504,
+      "name": "e2e-large-result-retrieve-flow",
+      "category": "e2e",
+      "prompt": "Find every place the word deprecated appears in the codebase.",
+      "expected_behavior": "Agent uses bm25 search and retrieves the full set if the result is sandboxed.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "bm25 search is used",
           "type": "tool_selection",
           "passing_condition": "search called with mode='bm25'"
         },
         {
           "id": "a2",
-          "text": "retrieve() is called if sandbox_ref present",
+          "text": "retrieve is called if sandboxed",
           "type": "workflow",
           "passing_condition": "retrieve called with sandbox_ref if search response is sandboxed"
         }
       ]
     },
     {
-      "id": 508,
-      "name": "new-tool-compact-before-compaction",
-      "category": "new_tools",
-      "prompt": "My context window is almost full. Archive the key findings from this session before compaction happens.",
-      "expected_behavior": "Agent calls compact(content) with a summary of key findings, decisions, and code changes from the session.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "compact() is called with session content",
-          "type": "tool_selection",
-          "passing_condition": "compact called with content summarizing session findings"
-        },
-        {
-          "id": "a2",
-          "text": "Agent does NOT use remember() for pre-compaction archival",
-          "type": "anti_pattern",
-          "passing_condition": "Agent uses compact, not remember, for archiving pre-compaction context"
-        }
-      ]
-    },
-    {
-      "id": 509,
-      "name": "new-tool-recall-archive",
-      "category": "new_tools",
-      "prompt": "I had a session earlier where I investigated the auth flow. Search the compaction archive for what I found.",
-      "expected_behavior": "Agent calls recall('auth flow', memory_type='archive') to search the compaction archive.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "recall() is called with memory_type='archive'",
-          "type": "tool_selection",
-          "passing_condition": "recall called with query about auth flow and memory_type='archive'"
-        },
-        {
-          "id": "a2",
-          "text": "Agent does NOT use regular recall without memory_type='archive'",
-          "type": "tool_selection",
-          "passing_condition": "memory_type='archive' is specified since user explicitly asks about compaction archive"
-        }
-      ]
-    },
-    {
-      "id": 510,
+      "id": 505,
       "name": "e2e-full-compaction-recovery",
       "category": "e2e",
       "prompt": "Context was just compacted. I was refactoring the search engine earlier. Recover what I was doing.",
-      "expected_behavior": "Agent: session_snapshot() → recall('search engine refactoring', memory_type='archive') → recall('search engine refactoring'). Uses both archive and regular memory to recover full context.",
+      "expected_behavior": "Agent uses session_snapshot, archive recall, and regular recall rather than restarting discovery from scratch.",
       "assertions": [
         {
           "id": "a1",
-          "text": "session_snapshot() is called first",
+          "text": "session_snapshot is called first",
           "type": "workflow",
           "passing_condition": "session_snapshot() is the first tool called"
         },
         {
           "id": "a2",
-          "text": "recall() with memory_type='archive' is called",
+          "text": "archive recall is used",
           "type": "tool_selection",
           "passing_condition": "recall called with memory_type='archive' and search-related query"
         },
         {
           "id": "a3",
-          "text": "Agent does not re-index or start from scratch",
+          "text": "agent does not restart indexing",
           "type": "anti_pattern",
           "passing_condition": "No index() call; agent uses recovery tools instead of starting over"
         }
       ]
-    },
-    {
-      "id": 511,
-      "name": "e2e-progressive-disclosure-awareness",
-      "category": "e2e",
-      "prompt": "Run impact analysis on the SearchEngine class. The response says 'sandbox_ref: sx_xyz789' with a preview showing 5 of 34 impacted symbols. I need the full list.",
-      "expected_behavior": "Agent calls retrieve('sx_xyz789') to get the full impact analysis with all 34 impacted symbols.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "retrieve() is called with the sandbox_ref",
-          "type": "tool_selection",
-          "passing_condition": "retrieve called with ref_id='sx_xyz789'"
-        },
-        {
-          "id": "a2",
-          "text": "Agent does NOT re-run impact() to get the full results",
-          "type": "anti_pattern",
-          "passing_condition": "Agent uses retrieve, not a second impact() call, to get full results"
-        }
-      ]
-    },
-    {
-      "id": 512,
-      "name": "routing-compact-vs-remember",
-      "category": "routing",
-      "prompt": "We decided to use RS256 for JWT signing. Store this decision.",
-      "expected_behavior": "Agent calls remember(content='Use RS256 for JWT signing', memory_type='decision') — NOT compact(). compact is for pre-compaction archival, remember is for persistent decisions.",
-      "assertions": [
-        {
-          "id": "a1",
-          "text": "remember() is called, not compact()",
-          "type": "tool_selection",
-          "passing_condition": "remember called with memory_type='decision', not compact"
-        },
-        {
-          "id": "a2",
-          "text": "Agent distinguishes compact (pre-compaction archive) from remember (persistent memory)",
-          "type": "routing",
-          "passing_condition": "Agent uses remember for a persistent decision, not compact"
-        }
-      ]
     }
   ],
-  "performance_benchmarks": {
-    "description": "Baseline comparison: with vs without Contextia skill",
-    "without_skill": {
-      "orientation_task": {"tool_calls": 15, "readFile_calls": 8, "tokens_consumed": 18060},
-      "refactor_safety_check": {"tool_calls": 12, "grep_commands": 5, "tokens_consumed": 12000, "missed_callers": "often"},
-      "bug_investigation": {"tool_calls": 10, "readFile_calls": 6, "tokens_consumed": 9000}
-    },
-    "with_skill": {
-      "orientation_task": {"tool_calls": 3, "readFile_calls": 0, "tokens_consumed": 200},
-      "refactor_safety_check": {"tool_calls": 3, "grep_commands": 0, "tokens_consumed": 600, "missed_callers": "never"},
-      "bug_investigation": {"tool_calls": 4, "readFile_calls": 0, "tokens_consumed": 1200}
-    },
-    "success_criteria": {
-      "trigger_rate_on_relevant_queries": ">=90%",
-      "no_trigger_on_unrelated_queries": "100%",
-      "impact_before_refactor": "100%",
-      "search_before_readfile": ">=95%",
-      "index_called_at_most_once": "100%",
-      "status_polled_after_index": ">=90%",
-      "retrieve_called_when_sandbox_ref_present": ">=90%",
-      "compact_used_for_archival_not_remember": ">=90%",
-      "archive_recall_used_for_compaction_recovery": ">=85%"
-    }
+  "targets": {
+    "new_tool_accuracy": 0.95,
+    "archive_vs_memory_distinction": 0.95,
+    "sandbox_retrieve_rate": 0.95
   }
 }
