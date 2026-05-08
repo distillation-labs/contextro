@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "contextia"
-version = "2.1.0"
-description = "Contextia — AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, progressive disclosure, AST compression"
+name = "contextro"
+version = "0.0.1"
+description = "Contextro — AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, progressive disclosure, AST compression"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10,<3.14"
@@ -18,7 +18,7 @@ keywords = [
     "code-graph", "code-analysis", "code-intelligence",
     "vector-search", "bm25", "ai-coding",
     "tree-sitter", "lancedb", "local-first",
-    "contextia", "commit-history", "cross-repo",
+    "contextro", "commit-history", "cross-repo",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -47,11 +47,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jassskalkat/Contextia-MCP"
-Repository = "https://github.com/jassskalkat/Contextia-MCP"
-Documentation = "https://github.com/jassskalkat/Contextia-MCP/blob/main/docs/USAGE_GUIDE.md"
-Issues = "https://github.com/jassskalkat/Contextia-MCP/issues"
-Changelog = "https://github.com/jassskalkat/Contextia-MCP/releases"
+Homepage = "https://github.com/jassskalkat/Contextro-MCP"
+Repository = "https://github.com/jassskalkat/Contextro-MCP"
+Documentation = "https://github.com/jassskalkat/Contextro-MCP/blob/main/docs/USAGE_GUIDE.md"
+Issues = "https://github.com/jassskalkat/Contextro-MCP/issues"
+Changelog = "https://github.com/jassskalkat/Contextro-MCP/releases"
 
 [project.optional-dependencies]
 dev = [
@@ -73,10 +73,10 @@ model2vec = [
 ]
 
 [project.scripts]
-contextia = "contextia_mcp.server:main"
+contextro = "contextro_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/contextia_mcp"]
+packages = ["src/contextro_mcp"]
 
 [tool.ruff]
 target-version = "py310"
@@ -89,9 +89,9 @@ select = ["E", "F", "W", "I"]
 "scripts/bench_final.py" = ["E501"]
 "scripts/benchmark_embeddings.py" = ["E501"]
 "scripts/benchmark_embeddings_full.py" = ["E501"]
-"src/contextia_mcp/formatting/response_builder.py" = ["E501"]
-"src/contextia_mcp/indexing/pipeline.py" = ["E501"]
-"src/contextia_mcp/server.py" = ["E501"]
+"src/contextro_mcp/formatting/response_builder.py" = ["E501"]
+"src/contextro_mcp/indexing/pipeline.py" = ["E501"]
+"src/contextro_mcp/server.py" = ["E501"]
 "tests/test_e2e.py" = ["E501"]
 
 [tool.pytest.ini_options]
