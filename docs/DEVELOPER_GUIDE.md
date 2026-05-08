@@ -4,8 +4,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/jassskalkat/Contextia.git
-cd Contextia
+git clone https://github.com/jassskalkat/Contextro.git
+cd Contextro
 
 # Create virtual environment
 python3.12 -m venv .venv
@@ -17,14 +17,14 @@ pip install -e ".[dev,reranker,model2vec]"
 # Verify installation
 pytest -v
 ruff check .
-contextia --help
+contextro --help
 ```
 
 ## Project Structure
 
 ```
-Contextia/
-├── src/contextia_mcp/      # Source code
+Contextro/
+├── src/contextro_mcp/      # Source code
 │   ├── server.py           # FastMCP server, tool registration, transport entry point
 │   ├── config.py           # Settings with CTX_ env prefix
 │   ├── state.py            # Session state singleton
@@ -58,7 +58,7 @@ pytest -v -m "not slow"
 pytest tests/test_security.py -v
 
 # Run with coverage (if pytest-cov installed)
-pytest --cov=contextia_mcp --cov-report=term-missing
+pytest --cov=contextro_mcp --cov-report=term-missing
 ```
 
 ### Test Categories
@@ -152,8 +152,8 @@ Pushes to the `alpha` branch run `.github/workflows/alpha.yml`:
 
 1. `ruff check .`
 2. `pytest -v -m "not slow"`
-3. build and push `ghcr.io/<owner>/contextia-mcp:alpha`
-4. build and push `ghcr.io/<owner>/contextia-mcp:alpha-<short-sha>`
+3. build and push `ghcr.io/<owner>/contextro-mcp:alpha`
+4. build and push `ghcr.io/<owner>/contextro-mcp:alpha-<short-sha>`
 5. optionally deploy the new alpha image to a remote host over SSH
 
 Remote alpha deploy assets live in `deploy/alpha/`.
@@ -237,12 +237,12 @@ If FlashRank isn't installed, reranking falls through to passthrough. If BM25 fa
 
 ### Enable Debug Logging
 ```bash
-CTX_LOG_LEVEL=DEBUG contextia
+CTX_LOG_LEVEL=DEBUG contextro
 ```
 
 ### JSON Logging (for structured log analysis)
 ```bash
-CTX_LOG_FORMAT=json contextia
+CTX_LOG_FORMAT=json contextro
 ```
 
 ### Check Index Health
@@ -256,23 +256,23 @@ Use the `status` tool to verify:
 ## Code Provenance
 
 
-- **Contextia** — Original author: . Licensed under MIT.
-- **Contextia** — Original author: [](https://github.com/).
+- **Contextro** — Original author: . Licensed under MIT.
+- **Contextro** — Original author: [](https://github.com/).
 
 | Component | Origin | Files |
 |-----------|--------|-------|
-| Core models (Symbol, ParsedFile, Memory) | Contextia | `core/models.py`, `core/interfaces.py`, `core/exceptions.py` |
-| tree-sitter parser | Contextia | `parsing/treesitter_parser.py` |
-| Embedding service (ONNX) | Contextia | `indexing/embedding_service.py` |
-| Parallel indexer | Contextia | `indexing/parallel_indexer.py` |
-| Graph models (UniversalNode) | Contextia | `core/graph_models.py` |
-| ast-grep parser | Contextia | `parsing/astgrep_parser.py` |
-| Graph engine (rustworkx) | Contextia | `engines/graph_engine.py` |
-| Code analyzer | Contextia | `analysis/code_analyzer.py` |
-| File watcher | Contextia | `parsing/file_watcher.py` |
+| Core models (Symbol, ParsedFile, Memory) | Contextro | `core/models.py`, `core/interfaces.py`, `core/exceptions.py` |
+| tree-sitter parser | Contextro | `parsing/treesitter_parser.py` |
+| Embedding service (ONNX) | Contextro | `indexing/embedding_service.py` |
+| Parallel indexer | Contextro | `indexing/parallel_indexer.py` |
+| Graph models (UniversalNode) | Contextro | `core/graph_models.py` |
+| ast-grep parser | Contextro | `parsing/astgrep_parser.py` |
+| Graph engine (rustworkx) | Contextro | `engines/graph_engine.py` |
+| Code analyzer | Contextro | `analysis/code_analyzer.py` |
+| File watcher | Contextro | `parsing/file_watcher.py` |
 | Language registry | Both (merged) | `parsing/language_registry.py` |
 
-Everything else (vector engine, BM25, fusion, reranker, memory store, pipeline, formatting, persistence, server, all hardening) was written fresh for Contextia.
+Everything else (vector engine, BM25, fusion, reranker, memory store, pipeline, formatting, persistence, server, all hardening) was written fresh for Contextro.
 
 ## Release Process
 
@@ -283,7 +283,7 @@ Stable release:
 3. Run linter: `ruff check .`
 4. Run Snyk scan
 5. Build: `python -m build`
-6. Test install: `pip install dist/contextia_mcp-*.whl` in a clean venv
+6. Test install: `pip install dist/contextro_mcp-*.whl` in a clean venv
 7. Create a non-prerelease GitHub Release to publish PyPI + `ghcr.io/...:latest`
 
 Alpha release:
