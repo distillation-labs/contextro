@@ -1,4 +1,4 @@
-"""Benchmark Contextia token efficiency against the browser-use codebase.
+"""Benchmark Contextro token efficiency against the browser-use codebase.
 
 This uses a real 65k-line Python project (179 files) to measure
 actual token output from realistic coding agent queries.
@@ -32,7 +32,7 @@ async def run_benchmark() -> dict:
     import tempfile
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="ctx_bench_bu_"))
-    storage_dir = tmp_dir / ".contextia"
+    storage_dir = tmp_dir / ".contextro"
     storage_dir.mkdir()
 
     metrics = {
@@ -51,14 +51,11 @@ async def run_benchmark() -> dict:
     }
 
     with benchmark_session(storage_dir, dims=384) as (mcp, mock_svc, _server_module):
-        from contextia_mcp.config import get_settings
-        from contextia_mcp.state import get_state
+        from contextro_mcp.config import get_settings
+        from contextro_mcp.state import get_state
 
         settings = get_settings()
-        print(
-            f"  DEBUG: storage={settings.storage_path}, "
-            f"exists={settings.storage_path.exists()}"
-        )
+        print(f"  DEBUG: storage={settings.storage_path}, exists={settings.storage_path.exists()}")
         assert str(storage_dir) in str(settings.lancedb_path), (
             f"Storage mismatch: {settings.lancedb_path}"
         )
@@ -153,14 +150,16 @@ async def run_benchmark() -> dict:
             metrics["cache_hit_rate"] = round(state._query_cache.hit_rate, 4)
 
     import shutil
+
     shutil.rmtree(tmp_dir, ignore_errors=True)
     return metrics
 
 
 def main():
     import asyncio
+
     print("=" * 60)
-    print("Contextia Token Benchmark — browser-use (65k LOC)")
+    print("Contextro Token Benchmark — browser-use (65k LOC)")
     print("=" * 60)
     metrics = asyncio.run(run_benchmark())
     print(f"\n{'Metric':<30} {'Value':>15}")
