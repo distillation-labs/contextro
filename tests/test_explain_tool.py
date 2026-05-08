@@ -13,16 +13,14 @@ def explain_codebase(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
     (src / "parser.py").write_text(
-        'def parse_tokens(text):\n'
-        '    """Parse text into tokens."""\n'
-        '    return text.split()\n'
+        'def parse_tokens(text):\n    """Parse text into tokens."""\n    return text.split()\n'
     )
     (src / "validator.py").write_text(
-        'from parser import parse_tokens\n\n\n'
-        'def validate_input(text):\n'
+        "from parser import parse_tokens\n\n\n"
+        "def validate_input(text):\n"
         '    """Validate user input."""\n'
-        '    tokens = parse_tokens(text)\n'
-        '    return len(tokens) > 0\n'
+        "    tokens = parse_tokens(text)\n"
+        "    return len(tokens) > 0\n"
     )
     return tmp_path
 
@@ -32,9 +30,13 @@ class TestExplainTool:
         async def _test():
             storage = tmp_path / "storage"
             mcp, _, _ = await _setup_indexed(explain_codebase, storage)
-            result = await _call_tool(mcp, "explain", {
-                "symbol_name": "parse_tokens",
-            })
+            result = await _call_tool(
+                mcp,
+                "explain",
+                {
+                    "symbol_name": "parse_tokens",
+                },
+            )
             assert "error" not in result
             assert "symbol" in result
 
@@ -44,20 +46,29 @@ class TestExplainTool:
         async def _test():
             storage = tmp_path / "storage"
             mcp, _, _ = await _setup_indexed(explain_codebase, storage)
-            result = await _call_tool(mcp, "explain", {
-                "symbol_name": "nonexistent_func",
-            })
+            result = await _call_tool(
+                mcp,
+                "explain",
+                {
+                    "symbol_name": "nonexistent_func",
+                },
+            )
             assert "error" in result
 
         asyncio.run(_test())
 
     def test_explain_before_index(self):
         async def _test():
-            import contextia_mcp.server as server_module
+            import contextro_mcp.server as server_module
+
             mcp = server_module.create_server()
-            result = await _call_tool(mcp, "explain", {
-                "symbol_name": "test",
-            })
+            result = await _call_tool(
+                mcp,
+                "explain",
+                {
+                    "symbol_name": "test",
+                },
+            )
             assert "error" in result
 
         asyncio.run(_test())
@@ -66,10 +77,14 @@ class TestExplainTool:
         async def _test():
             storage = tmp_path / "storage"
             mcp, _, _ = await _setup_indexed(explain_codebase, storage)
-            result = await _call_tool(mcp, "explain", {
-                "symbol_name": "parse_tokens",
-                "verbosity": "summary",
-            })
+            result = await _call_tool(
+                mcp,
+                "explain",
+                {
+                    "symbol_name": "parse_tokens",
+                    "verbosity": "summary",
+                },
+            )
             assert result.get("verbosity") == "summary"
 
         asyncio.run(_test())
@@ -79,9 +94,13 @@ class TestExplainTool:
             storage = tmp_path / "storage"
             mcp, _, _ = await _setup_indexed(explain_codebase, storage)
             # Use partial name that won't exact match
-            result = await _call_tool(mcp, "explain", {
-                "symbol_name": "parse",
-            })
+            result = await _call_tool(
+                mcp,
+                "explain",
+                {
+                    "symbol_name": "parse",
+                },
+            )
             # Should find via fuzzy match
             assert "symbol" in result or "error" in result
 
