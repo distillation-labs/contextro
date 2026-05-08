@@ -1,25 +1,25 @@
-# Project Progress: Contextia
+# Project Progress: Contextro
 
-[![jassskalkat/Contextia MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextia/badges/card.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextia)
-[![jassskalkat/Contextia MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextia/badges/score.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextia)
+[![jassskalkat/Contextro MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextro/badges/card.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextro)
+[![jassskalkat/Contextro MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextro/badges/score.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextro)
 
 ## Phase 1: Scaffold + Port Core Modules — COMPLETE
 - [x] Project structure created
 - [x] pyproject.toml with all dependencies
 - [x] AGENTS.md, CLAUDE.md, PROGRESS.md, .gitignore
 - [x] .claude/hooks.json, agents, rules
-- [x] Port core/models.py from Contextia
-- [x] Port core/interfaces.py from Contextia (+ IEngine)
-- [x] Port core/exceptions.py from Contextia
-- [x] Port core/graph_models.py from Contextia
-- [x] Port parsing/treesitter_parser.py from Contextia
+- [x] Port core/models.py from Contextro
+- [x] Port core/interfaces.py from Contextro (+ IEngine)
+- [x] Port core/exceptions.py from Contextro
+- [x] Port core/graph_models.py from Contextro
+- [x] Port parsing/treesitter_parser.py from Contextro
 - [x] Port parsing/language_registry.py (merged)
-- [x] Port engines/graph_engine.py from Contextia
-- [x] Port parsing/astgrep_parser.py from Contextia
-- [x] Port analysis/code_analyzer.py from Contextia
-- [x] Port parsing/file_watcher.py from Contextia
-- [x] Port indexing/embedding_service.py from Contextia
-- [x] Port indexing/parallel_indexer.py from Contextia
+- [x] Port engines/graph_engine.py from Contextro
+- [x] Port parsing/astgrep_parser.py from Contextro
+- [x] Port analysis/code_analyzer.py from Contextro
+- [x] Port parsing/file_watcher.py from Contextro
+- [x] Port indexing/embedding_service.py from Contextro
+- [x] Port indexing/parallel_indexer.py from Contextro
 - [x] Fresh stubs: config.py, server.py, state.py
 - [x] Tests for ported modules — 112 tests, all passing in 2.8s
 - [x] pip install + ruff clean
@@ -119,7 +119,7 @@
 ## Phase 7: Distribution & Launch — COMPLETE
 - [x] GitHub repository optimization — description, 20 topics, social preview image
 - [x] AI discoverability files — llms.txt, llms-full.txt, CITATION.cff, smithery.yaml
-- [x] PyPI publication — `pip install contextia` via GitHub Actions trusted publishing
+- [x] PyPI publication — `pip install contextro` via GitHub Actions trusted publishing
 - [x] GitHub Actions CI/CD — `.github/workflows/publish.yml` (auto-publish on release)
 - [x] GitHub release v1.0.1
 - [x] awesome-mcp-servers PR submitted (punkpeye/awesome-mcp-servers #3152)
