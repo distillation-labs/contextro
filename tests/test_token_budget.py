@@ -1,8 +1,7 @@
 """Tests for token budget management."""
 
 import pytest
-
-from contextia_mcp.formatting.token_budget import TokenBudget
+from contextro_mcp.formatting.token_budget import TokenBudget
 
 
 class TestEstimation:
