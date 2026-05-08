@@ -11,7 +11,7 @@ use std::path::Path;
 const DEFAULT_SKIP_DIRS: &[&str] = &[
     "node_modules",
     "__pycache__",
-    ".contextia",
+    ".contextro",
     "venv",
     ".venv",
     ".tox",
