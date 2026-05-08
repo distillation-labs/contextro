@@ -1,9 +1,8 @@
 """Tests for tool permission model (Phase 5b)."""
 
 import pytest
-
-from contextia_mcp.config import Settings, reset_settings
-from contextia_mcp.security.permissions import (
+from contextro_mcp.config import Settings, reset_settings
+from contextro_mcp.security.permissions import (
     DEFAULT_POLICY,
     FULL_ACCESS_POLICY,
     TOOL_PERMISSIONS,
@@ -28,13 +27,31 @@ def clean_state():
 def test_tool_categories_defined():
     """All tools should be registered."""
     expected_tools = {
-        "status", "search", "find_symbol", "find_callers", "find_callees",
-        "explain", "overview", "architecture", "recall", "health",
-        "index", "analyze", "impact", "code", "knowledge",
-        "remember", "forget",
-        "commit_history", "commit_search",
-        "repo_add", "repo_remove", "repo_status",
-        "session_snapshot", "retrieve", "introspect",
+        "status",
+        "search",
+        "find_symbol",
+        "find_callers",
+        "find_callees",
+        "explain",
+        "overview",
+        "architecture",
+        "recall",
+        "health",
+        "index",
+        "analyze",
+        "impact",
+        "code",
+        "knowledge",
+        "remember",
+        "forget",
+        "commit_history",
+        "commit_search",
+        "repo_add",
+        "repo_remove",
+        "repo_status",
+        "session_snapshot",
+        "retrieve",
+        "introspect",
     }
     assert set(TOOL_PERMISSIONS.keys()) == expected_tools
 
@@ -42,9 +59,19 @@ def test_tool_categories_defined():
 def test_read_tools_classified():
     """Read-only tools are classified as READ."""
     read_tools = [
-        "status", "search", "find_symbol", "find_callers",
-        "find_callees", "explain", "overview", "architecture",
-        "recall", "health", "session_snapshot", "retrieve", "introspect",
+        "status",
+        "search",
+        "find_symbol",
+        "find_callers",
+        "find_callees",
+        "explain",
+        "overview",
+        "architecture",
+        "recall",
+        "health",
+        "session_snapshot",
+        "retrieve",
+        "introspect",
     ]
     for tool in read_tools:
         assert TOOL_PERMISSIONS[tool] == ToolCategory.READ, f"{tool} should be READ"
