@@ -1,7 +1,7 @@
-# Contextia Installation Guide
+# Contextro Installation Guide
 
-[![jassskalkat/Contextia MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextia/badges/card.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextia)
-[![jassskalkat/Contextia MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextia/badges/score.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextia)
+[![jassskalkat/Contextro MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextro/badges/card.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextro)
+[![jassskalkat/Contextro MCP server](https://glama.ai/mcp/servers/jassskalkat/Contextro/badges/score.svg)](https://glama.ai/mcp/servers/jassskalkat/Contextro)
 
 ## Prerequisites
 
@@ -21,36 +21,36 @@ If you have multiple Python versions, ensure you use 3.10 or later.
 
 ## Install from PyPI (recommended)
 
-The simplest way to install Contextia:
+The simplest way to install Contextro:
 
 ```bash
-pip install contextia
+pip install contextro
 ```
 
 With optional extras:
 
 ```bash
 # With GPU (CUDA) support
-pip install contextia[gpu]
+pip install contextro[gpu]
 
 # With FlashRank reranker for better search quality
-pip install contextia[reranker]
+pip install contextro[reranker]
 
 # Both GPU and reranker
-pip install contextia[gpu,reranker]
+pip install contextro[gpu,reranker]
 ```
 
-After installing, the `contextia` command is available globally:
+After installing, the `contextro` command is available globally:
 
 ```bash
-contextia
+contextro
 ```
 
-> **Virtual environment recommended:** While `pip install contextia` works globally, using a virtual environment avoids dependency conflicts:
+> **Virtual environment recommended:** While `pip install contextro` works globally, using a virtual environment avoids dependency conflicts:
 > ```bash
-> python3 -m venv ~/.contextia-venv
-> source ~/.contextia-venv/bin/activate
-> pip install contextia
+> python3 -m venv ~/.contextro-venv
+> source ~/.contextro-venv/bin/activate
+> pip install contextro
 > ```
 
 ---
@@ -61,8 +61,8 @@ contextia
 
 ```bash
 # Clone the repository
-git clone https://github.com/jassskalkat/Contextia.git
-cd Contextia
+git clone https://github.com/jassskalkat/Contextro.git
+cd Contextro
 
 # Run setup script (creates venv, installs deps, verifies)
 ./setup.sh
@@ -97,8 +97,8 @@ source .venv/bin/activate
 ### Manual Install from Source
 
 ```bash
-git clone https://github.com/jassskalkat/Contextia.git
-cd Contextia
+git clone https://github.com/jassskalkat/Contextro.git
+cd Contextro
 
 # Option 1: Production only
 pip install -e .
@@ -119,10 +119,10 @@ pip install -e ".[gpu]"
 
 ```bash
 # Check the module imports correctly
-python3 -c "import contextia_mcp; print('OK')"
+python3 -c "import contextro_mcp; print('OK')"
 
 # Check the CLI is available
-contextia --help
+contextro --help
 
 # Run the self-test demo (exercises all 15 tools)
 python self_test/demo_mcp.py
@@ -137,33 +137,33 @@ python self_test/demo_mcp.py
 **If installed via pip (recommended):**
 
 ```bash
-# If contextia is on your PATH (pip install contextia)
-claude mcp add contextia -- contextia
+# If contextro is on your PATH (pip install contextro)
+claude mcp add contextro -- contextro
 
 # With environment variables
-claude mcp add contextia -e CTX_EMBEDDING_MODEL=bge-small-en -- contextia
+claude mcp add contextro -e CTX_EMBEDDING_MODEL=bge-small-en -- contextro
 ```
 
 **If installed in a virtual environment:**
 
 ```bash
 # Use the full venv path so the MCP client finds the right Python
-claude mcp add contextia -- /path/to/Contextia/.venv/bin/contextia
+claude mcp add contextro -- /path/to/Contextro/.venv/bin/contextro
 
 # If updating an existing registration, remove first
-claude mcp remove contextia
-claude mcp add contextia -- /path/to/Contextia/.venv/bin/contextia
+claude mcp remove contextro
+claude mcp add contextro -- /path/to/Contextro/.venv/bin/contextro
 ```
 
-> **Why use the full venv path?** MCP clients spawn the server as a subprocess. If you just use `contextia`, it resolves to whatever Python is on your system PATH — which may not have the required dependencies installed. Using the venv path ensures the server runs with the correct, isolated environment.
+> **Why use the full venv path?** MCP clients spawn the server as a subprocess. If you just use `contextro`, it resolves to whatever Python is on your system PATH — which may not have the required dependencies installed. Using the venv path ensures the server runs with the correct, isolated environment.
 
 **Manual config** — add to your settings (`~/.claude/settings.json`):
 
 ```json
 {
   "mcpServers": {
-    "contextia": {
-      "command": "contextia"
+    "contextro": {
+      "command": "contextro"
     }
   }
 }
@@ -194,8 +194,8 @@ Add to your Claude Desktop configuration:
 ```json
 {
   "mcpServers": {
-    "contextia": {
-      "command": "contextia",
+    "contextro": {
+      "command": "contextro",
       "args": []
     }
   }
@@ -215,8 +215,8 @@ Cursor supports MCP servers through its extension system:
 
 ```json
 {
-  "contextia": {
-    "command": "contextia",
+  "contextro": {
+    "command": "contextro",
     "transport": "stdio"
   }
 }
@@ -227,8 +227,8 @@ Or add to `.cursor/mcp.json` in your project:
 ```json
 {
   "servers": {
-    "contextia": {
-      "command": "contextia"
+    "contextro": {
+      "command": "contextro"
     }
   }
 }
@@ -246,8 +246,8 @@ Windsurf supports MCP through Cascade:
 
 ```json
 {
-  "contextia": {
-    "command": "contextia",
+  "contextro": {
+    "command": "contextro",
     "transport": "stdio"
   }
 }
@@ -266,8 +266,8 @@ Add to Cline's MCP settings in VS Code:
 ```json
 {
   "mcpServers": {
-    "contextia": {
-      "command": "contextia"
+    "contextro": {
+      "command": "contextro"
     }
   }
 }
@@ -283,8 +283,8 @@ Zed supports MCP through its assistant panel. Add to settings:
 {
   "assistant": {
     "mcp_servers": {
-      "contextia": {
-        "command": "contextia"
+      "contextro": {
+        "command": "contextro"
       }
     }
   }
@@ -301,8 +301,8 @@ Add to your Continue configuration (`~/.continue/config.json`):
 {
   "mcpServers": [
     {
-      "name": "contextia",
-      "command": "contextia"
+      "name": "contextro",
+      "command": "contextro"
     }
   ]
 }
@@ -316,7 +316,7 @@ For any MCP-compatible client, use stdio transport:
 
 ```bash
 # Command to run
-contextia
+contextro
 
 # Transport
 stdio (stdin/stdout)
@@ -333,7 +333,7 @@ All settings use the `CTX_` environment variable prefix:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CTX_STORAGE_DIR` | `.contextia` | Storage directory for indexes and graph DB |
+| `CTX_STORAGE_DIR` | `.contextro` | Storage directory for indexes and graph DB |
 | `CTX_EMBEDDING_MODEL` | `jina-code` | Embedding model: `jina-code`, `bge-small-en` |
 | `CTX_EMBEDDING_DEVICE` | `auto` | Device: `auto` (CUDA > MPS > CPU), `cuda`, `mps`, `cpu` |
 | `CTX_MAX_FILE_SIZE_MB` | `10` | Skip files larger than this |
@@ -350,7 +350,7 @@ All settings use the `CTX_` environment variable prefix:
 Example:
 
 ```bash
-CTX_LOG_LEVEL=DEBUG CTX_SEARCH_MODE=vector contextia
+CTX_LOG_LEVEL=DEBUG CTX_SEARCH_MODE=vector contextro
 ```
 
 ---
@@ -391,10 +391,10 @@ pip install "optimum[onnxruntime]>=1.19.0,<2.0" "transformers>=4.46,<5.0"
 **Alternative: use a model that doesn't need ONNX:**
 
 ```bash
-CTX_EMBEDDING_MODEL=bge-small-en contextia
+CTX_EMBEDDING_MODEL=bge-small-en contextro
 ```
 
-### `ModuleNotFoundError: No module named 'contextia_mcp'`
+### `ModuleNotFoundError: No module named 'contextro_mcp'`
 
 Ensure you installed with `pip install -e .` from the project root and are using the correct Python version (3.10+). If using a venv, make sure it's activated: `source .venv/bin/activate`.
 
@@ -408,7 +408,7 @@ The embedding model is loaded during indexing and unloaded after. Peak RSS may e
 
 ### `pip` resolves dependency conflicts
 
-If you see dependency conflict warnings from other installed packages, these are unrelated to Contextia and can be safely ignored as long as `import contextia_mcp` succeeds.
+If you see dependency conflict warnings from other installed packages, these are unrelated to Contextro and can be safely ignored as long as `import contextro_mcp` succeeds.
 
 ### Demo fails at indexing step
 
@@ -416,10 +416,10 @@ Ensure `tree-sitter==0.21.3` and `tree-sitter-languages>=1.10.0` are installed. 
 
 ### Server not found after install
 
-If `contextia` command is not found, ensure the install location is on your PATH. With a venv, activate it first. Without a venv, you may need `python3 -m contextia_mcp.server` as a fallback.
+If `contextro` command is not found, ensure the install location is on your PATH. With a venv, activate it first. Without a venv, you may need `python3 -m contextro_mcp.server` as a fallback.
 
 ### MCP client can't connect
 
-- Ensure `contextia` is on the PATH that the MCP client uses
-- If installed in a venv, use the full path: `/path/to/Contextia/.venv/bin/contextia`
+- Ensure `contextro` is on the PATH that the MCP client uses
+- If installed in a venv, use the full path: `/path/to/Contextro/.venv/bin/contextro`
 - Check the client's logs for connection errors
