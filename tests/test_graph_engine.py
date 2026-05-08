@@ -1,15 +1,14 @@
 """Tests for engines/graph_engine.py."""
 
 import pytest
-
-from contextia_mcp.core.graph_models import (
+from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,
     UniversalLocation,
     UniversalNode,
     UniversalRelationship,
 )
-from contextia_mcp.engines.graph_engine import RustworkxCodeGraph
+from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
 
 
 def _loc(fp="/test.py"):
