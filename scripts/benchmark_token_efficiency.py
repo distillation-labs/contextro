@@ -1,4 +1,4 @@
-"""Benchmark for measuring Contextia's token efficiency.
+"""Benchmark for measuring Contextro's token efficiency.
 
 Metrics:
 - tokens_per_search: Average tokens in search response output
@@ -226,7 +226,7 @@ async def run_benchmark() -> dict:
     import tempfile
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="ctx_bench_"))
-    storage_dir = tmp_dir / ".contextia"
+    storage_dir = tmp_dir / ".contextro"
     storage_dir.mkdir()
 
     codebase = create_test_codebase(tmp_dir)
@@ -247,7 +247,7 @@ async def run_benchmark() -> dict:
     }
 
     with benchmark_session(storage_dir, dims=384) as (mcp, mock_svc, _server_module):
-        from contextia_mcp.state import get_state
+        from contextro_mcp.state import get_state
 
         # 1. Index
         index_result = await index_codebase(mcp, _server_module, str(codebase / "src"))
@@ -339,9 +339,9 @@ async def run_benchmark() -> dict:
             metrics["workflow_tool_calls"] += 1
 
         # Check cache hit rate if available
-        if hasattr(state, '_query_cache'):
+        if hasattr(state, "_query_cache"):
             cache = state._query_cache
-            if hasattr(cache, 'hits') and hasattr(cache, 'misses'):
+            if hasattr(cache, "hits") and hasattr(cache, "misses"):
                 total = cache.hits + cache.misses
                 metrics["cache_hit_rate"] = cache.hits / total if total > 0 else 0.0
 
@@ -364,6 +364,7 @@ async def run_benchmark() -> dict:
 
     # Cleanup
     import shutil
+
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return metrics
@@ -374,7 +375,7 @@ def main():
     import asyncio
 
     print("=" * 60)
-    print("Contextia Token Efficiency Benchmark")
+    print("Contextro Token Efficiency Benchmark")
     print("=" * 60)
 
     metrics = asyncio.run(run_benchmark())
