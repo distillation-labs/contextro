@@ -2,16 +2,17 @@
 
 import asyncio
 
-import contextia_mcp.server as server_module
-from contextia_mcp.core.graph_models import (
+import contextro_mcp.server as server_module
+from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,
     UniversalLocation,
     UniversalNode,
     UniversalRelationship,
 )
-from contextia_mcp.engines.graph_engine import RustworkxCodeGraph
-from contextia_mcp.state import get_state
+from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
+from contextro_mcp.state import get_state
+
 from tests.conftest import _call_tool
 
 
@@ -41,12 +42,14 @@ def _setup_deep_call_chain(state, codebase_path):
 
     # b calls a, c calls b, d calls c, e calls a
     for src, tgt in [("b", "a"), ("c", "b"), ("d", "c"), ("e", "a")]:
-        graph.add_relationship(UniversalRelationship(
-            id=f"calls:{src}->{tgt}",
-            source_id=f"function:{src}",
-            target_id=f"function:{tgt}",
-            relationship_type=RelationshipType.CALLS,
-        ))
+        graph.add_relationship(
+            UniversalRelationship(
+                id=f"calls:{src}->{tgt}",
+                source_id=f"function:{src}",
+                target_id=f"function:{tgt}",
+                relationship_type=RelationshipType.CALLS,
+            )
+        )
 
     state.graph_engine = graph
     state.codebase_path = codebase_path
