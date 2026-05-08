@@ -1,6 +1,6 @@
 # Benchmark Results
 
-Validated against the Contextia MCP codebase (112 files, 1,431 symbols, 2,770 chunks).
+Validated against the Contextro MCP codebase (112 files, 1,431 symbols, 2,770 chunks).
 
 ## Tool Output Sizes (tokens = bytes ÷ 4)
 
