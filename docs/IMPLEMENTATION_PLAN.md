@@ -1,7 +1,7 @@
-# Contextia Implementation Plan
+# Contextro Implementation Plan
 
 ## Context
-Contextia consolidates Contextia + Contextia into **one single MCP server** with hybrid search, code graph analysis, and semantic memory. Target: <350MB RAM.
+Contextro consolidates Contextro + Contextro into **one single MCP server** with hybrid search, code graph analysis, and semantic memory. Target: <350MB RAM.
 
 **Key decisions:**
 - **Single MCP** — one process, one connection, 15 tools
@@ -9,7 +9,7 @@ Contextia consolidates Contextia + Contextia into **one single MCP server** with
 - **ONNX Runtime** — replaces PyTorch (~50MB vs ~500MB), 2.5x faster CPU inference
 - **jina-code default** — code-specific 768d embedding model; bge-small-en as alternative
 - **rustworkx code graph** — in-memory directed graph, not a knowledge graph DB
-- **Port from both repos** — `Contextia_mcp/` + `Contextia/` (already cloned in project)
+- **Port from both repos** — `Contextro_mcp/` + `Contextro/` (already cloned in project)
 - **Spec-driven** — tests first, then implement
 
 ---
@@ -27,19 +27,19 @@ Contextia consolidates Contextia + Contextia into **one single MCP server** with
 - `.claude/rules/test-standards.md`
 - Configure MCPs: Context7, Sequential Thinking
 
-### 1.2 Port from Contextia
+### 1.2 Port from Contextro
 | Source | Target | Action |
 |--------|--------|--------|
 | `core/models.py` | `core/models.py` | Direct port |
 | `core/interfaces.py` | `core/interfaces.py` | Port + add IEngine |
 | `core/exceptions.py` | `core/exceptions.py` | Direct port |
 | `parsers/treesitter_parser.py` | `parsing/treesitter_parser.py` | Direct port |
-| `parsers/language_configs.py` | `parsing/language_registry.py` | Merge with Contextia |
+| `parsers/language_configs.py` | `parsing/language_registry.py` | Merge with Contextro |
 | `indexing/embedding_service.py` | `indexing/embedding_service.py` | Port + add bge-small + ONNX |
 | `indexing/parallel_indexer.py` | `indexing/parallel_indexer.py` | Direct port |
 | `mcp/state.py` | `state.py` | Port + extend |
 
-### 1.3 Port from Contextia
+### 1.3 Port from Contextro
 | Source | Target | Action |
 |--------|--------|--------|
 | `universal_graph.py` | `core/graph_models.py` | Direct port |
@@ -84,13 +84,13 @@ Contextia consolidates Contextia + Contextia into **one single MCP server** with
 ### 2.2 Implement
 - **`config.py`** — embedding model selection, storage paths, memory limits
 - **`engines/vector_engine.py`** — LanceDB: connect, add, search, delete, upsert
-- **`indexing/chunker.py`** — port from Contextia `source_retriever.py` chunk logic
+- **`indexing/chunker.py`** — port from Contextro `source_retriever.py` chunk logic
 - **`indexing/pipeline.py`** — discover → parse (both parsers) → chunk → embed → store + build graph
 - **`server.py`** — 3 tools: `index`, `search`, `status`
 
 ### 2.3 Verification
 - 50+ tests pass
-- Smoke: index Contextia's own codebase, search "embedding", get relevant results
+- Smoke: index Contextro's own codebase, search "embedding", get relevant results
 - Memory: <300MB during indexing (check with `tracemalloc`)
 
 ### 2.4 Post-Phase Review
@@ -187,7 +187,7 @@ Contextia consolidates Contextia + Contextia into **one single MCP server** with
 - JSON structured logging (`CTX_LOG_FORMAT=json`)
 - Input validation (symbol name length, path containment)
 - Memory monitoring in `status` tool (RSS via `tracemalloc`)
-- PyPI packaging as `contextia`
+- PyPI packaging as `contextro`
 - Snyk security scan
 - Final README with tool docs
 
@@ -196,7 +196,7 @@ Contextia consolidates Contextia + Contextia into **one single MCP server** with
 - Performance benchmarks meet targets
 - Memory stays <350MB
 - `pip install .` from clean venv succeeds
-- `contextia` CLI runs
+- `contextro` CLI runs
 
 ### 5.4 Final Post-Phase Review
 - [ ] Run **code-reviewer agent** (full codebase review) + **docs-writer agent** (final README)
@@ -210,13 +210,13 @@ Contextia consolidates Contextia + Contextia into **one single MCP server** with
 ## Project Structure
 
 ```
-src/contextia_mcp/
+src/contextro_mcp/
 ├── server.py                  # FastMCP, 15 tools, single entry point
 ├── config.py                  # Settings, env vars, model selection
 ├── state.py                   # Session state singleton
 ├── core/
-│   ├── models.py              # Symbol, ParsedFile, Memory (from Contextia)
-│   ├── graph_models.py        # UniversalNode, Relationship (from Contextia)
+│   ├── models.py              # Symbol, ParsedFile, Memory (from Contextro)
+│   ├── graph_models.py        # UniversalNode, Relationship (from Contextro)
 │   ├── interfaces.py          # IParser, IEngine
 │   └── exceptions.py
 ├── parsing/
@@ -224,21 +224,21 @@ src/contextia_mcp/
 │   ├── astgrep_parser.py      # Structural analysis → graph
 │   ├── language_registry.py   # Merged language support (25+ langs)
 │   ├── file_discovery.py      # os.walk + .gitignore
-│   └── file_watcher.py        # Debounced watchdog (from Contextia)
+│   └── file_watcher.py        # Debounced watchdog (from Contextro)
 ├── engines/
 │   ├── vector_engine.py       # LanceDB vector search
-│   ├── graph_engine.py        # rustworkx PyDiGraph (from Contextia)
+│   ├── graph_engine.py        # rustworkx PyDiGraph (from Contextro)
 │   ├── bm25_engine.py         # LanceDB native FTS
 │   ├── fusion.py              # Reciprocal Rank Fusion
 │   └── reranker.py            # FlashRank
 ├── analysis/
-│   └── code_analyzer.py       # Complexity, smells, deps (from Contextia)
+│   └── code_analyzer.py       # Complexity, smells, deps (from Contextro)
 ├── memory/
 │   └── memory_store.py        # LanceDB-backed semantic memory
 ├── indexing/
 │   ├── pipeline.py            # Orchestrator: parse → chunk → embed → store
 │   ├── embedding_service.py   # ONNX Runtime + jina-code/bge-small-en
-│   ├── parallel_indexer.py    # ThreadPool (from Contextia)
+│   ├── parallel_indexer.py    # ThreadPool (from Contextro)
 │   └── chunker.py             # Symbol → CodeChunk
 ├── formatting/
 │   ├── token_budget.py        # Token estimation + truncation
@@ -307,7 +307,7 @@ src/contextia_mcp/
 ## MCP Integration
 
 ```bash
-# Configure alongside Contextia (from MCP_Integration_Plan.md)
+# Configure alongside Contextro (from MCP_Integration_Plan.md)
 claude mcp add context7 -- npx -y @upstash/context7-mcp
 claude mcp add --scope user sequential-thinking -- npx -y @modelcontextprotocol/server-sequential-thinking
 ```
