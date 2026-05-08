@@ -1,4 +1,4 @@
-"""Live end-to-end benchmark for Contextia on the platform repository.
+"""Live end-to-end benchmark for Contextro on the platform repository.
 
 This script uses the real server, real embedding path, and a fresh storage
 directory. It does not patch embeddings or mock tool behavior.
@@ -119,9 +119,9 @@ def _ensure_fresh_storage_dir(storage_dir: Path) -> None:
 
 
 def _reset_runtime() -> tuple[object, object]:
-    import contextia_mcp.server as server_module
-    from contextia_mcp.config import reset_settings
-    from contextia_mcp.state import reset_state
+    import contextro_mcp.server as server_module
+    from contextro_mcp.config import reset_settings
+    from contextro_mcp.state import reset_state
 
     reset_settings()
     reset_state()
@@ -134,8 +134,8 @@ async def run_benchmark(codebase_path: Path, storage_dir: Path, index_timeout: i
     _configure_environment(storage_dir)
     mcp, server_module = _reset_runtime()
 
-    from contextia_mcp.config import get_settings
-    from contextia_mcp.state import get_state
+    from contextro_mcp.config import get_settings
+    from contextro_mcp.state import get_state
 
     settings = get_settings()
     initial_embedding_backend = settings.embedding_model
@@ -183,9 +183,7 @@ async def run_benchmark(codebase_path: Path, storage_dir: Path, index_timeout: i
         ):
             svc = vector_engine._embedding_service
             metrics["environment"]["embedding_backend"] = (
-                "model2vec"
-                if getattr(svc, "_is_model2vec", False)
-                else "sentence-transformers"
+                "model2vec" if getattr(svc, "_is_model2vec", False) else "sentence-transformers"
             )
             metrics["environment"]["embedding_device"] = getattr(svc, "device", "unknown")
             metrics["environment"]["embedding_model_loaded"] = getattr(svc, "model_name", "unknown")
@@ -307,9 +305,7 @@ async def run_benchmark(codebase_path: Path, storage_dir: Path, index_timeout: i
             "hub_symbols": len(architecture_result.get("hub_symbols", [])),
         }
         metrics["tools"]["explain"] = {"keys": sorted(explain_result.keys())}
-        metrics["tools"]["impact"] = {
-            "total_impacted": impact_result.get("total_impacted", 0)
-        }
+        metrics["tools"]["impact"] = {"total_impacted": impact_result.get("total_impacted", 0)}
         metrics["tools"]["session_snapshot"] = {"keys": sorted(session_result.keys())}
         metrics["tools"]["introspect"] = {"keys": sorted(introspect_result.keys())}
 
@@ -340,13 +336,9 @@ async def run_benchmark(codebase_path: Path, storage_dir: Path, index_timeout: i
         metrics["latency_ms"]["code.get_document_symbols"] = {
             "avg_ms": round(document_symbols_ms, 2)
         }
-        metrics["tokens"]["code.generate_codebase_overview"] = {
-            "avg_tokens": code_overview_tokens
-        }
+        metrics["tokens"]["code.generate_codebase_overview"] = {"avg_tokens": code_overview_tokens}
         metrics["tokens"]["code.search_codebase_map"] = {"avg_tokens": code_map_tokens}
-        metrics["tokens"]["code.get_document_symbols"] = {
-            "avg_tokens": document_symbols_tokens
-        }
+        metrics["tokens"]["code.get_document_symbols"] = {"avg_tokens": document_symbols_tokens}
         metrics["tools"]["code.generate_codebase_overview"] = {
             "total_files": code_overview_result.get("total_files", 0),
             "total_symbols": code_overview_result.get("total_symbols", 0),
@@ -377,9 +369,7 @@ async def run_benchmark(codebase_path: Path, storage_dir: Path, index_timeout: i
             "total": commit_history_result.get("total", 0),
             "branch": commit_history_result.get("branch"),
         }
-        metrics["tools"]["commit_search"] = {
-            "total": commit_search_result.get("total", 0)
-        }
+        metrics["tools"]["commit_search"] = {"total": commit_search_result.get("total", 0)}
 
         remember_result, remember_ms, remember_tokens = await _timed_call(
             mcp,
@@ -448,9 +438,7 @@ async def run_benchmark(codebase_path: Path, storage_dir: Path, index_timeout: i
                 "context_id": knowledge_add_result.get("context_id", ""),
             },
         )
-        metrics["latency_ms"]["knowledge.status"] = {
-            "avg_ms": round(knowledge_status_ms, 2)
-        }
+        metrics["latency_ms"]["knowledge.status"] = {"avg_ms": round(knowledge_status_ms, 2)}
         metrics["latency_ms"]["knowledge.add"] = {"avg_ms": round(knowledge_add_ms, 2)}
         metrics["latency_ms"]["knowledge.search"] = {"avg_ms": round(knowledge_search_ms, 2)}
         metrics["latency_ms"]["knowledge.remove"] = {"avg_ms": round(knowledge_remove_ms, 2)}
@@ -470,9 +458,7 @@ async def run_benchmark(codebase_path: Path, storage_dir: Path, index_timeout: i
         )
         metrics["latency_ms"]["repo_status"] = {"avg_ms": round(repo_status_ms, 2)}
         metrics["tokens"]["repo_status"] = {"avg_tokens": repo_status_tokens}
-        metrics["tools"]["repo_status"] = {
-            "total_repos": repo_status_result.get("total_repos", 0)
-        }
+        metrics["tools"]["repo_status"] = {"total_repos": repo_status_result.get("total_repos", 0)}
 
         if sandbox_refs:
             retrieve_result, retrieve_ms, retrieve_tokens = await _timed_call(
