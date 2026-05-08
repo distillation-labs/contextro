@@ -3,8 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-
-from contextia_mcp.engines.vector_engine import LanceDBVectorEngine
+from contextro_mcp.engines.vector_engine import LanceDBVectorEngine
 
 VECTOR_DIMS = 4  # Small dims for fast tests
 
@@ -17,9 +16,14 @@ def _mock_embedding_service(dims=VECTOR_DIMS):
     return svc
 
 
-def _make_chunk(id_: str, text: str = "hello", filepath: str = "/a.py",
-                language: str = "python", symbol_type: str = "function",
-                vector=None):
+def _make_chunk(
+    id_: str,
+    text: str = "hello",
+    filepath: str = "/a.py",
+    language: str = "python",
+    symbol_type: str = "function",
+    vector=None,
+):
     """Create a chunk dict for testing."""
     return {
         "id": id_,
@@ -95,19 +99,23 @@ class TestSearch:
         assert "_distance" not in results[0]
 
     def test_search_language_filter(self, engine):
-        engine.add([
-            _make_chunk("py", language="python"),
-            _make_chunk("js", language="javascript"),
-        ])
+        engine.add(
+            [
+                _make_chunk("py", language="python"),
+                _make_chunk("js", language="javascript"),
+            ]
+        )
         results = engine.search("test", language="python")
         assert len(results) == 1
         assert results[0]["language"] == "python"
 
     def test_search_symbol_type_filter(self, engine):
-        engine.add([
-            _make_chunk("f", symbol_type="function"),
-            _make_chunk("c", symbol_type="class"),
-        ])
+        engine.add(
+            [
+                _make_chunk("f", symbol_type="function"),
+                _make_chunk("c", symbol_type="class"),
+            ]
+        )
         results = engine.search("test", symbol_type="class")
         assert len(results) == 1
         assert results[0]["symbol_type"] == "class"
@@ -125,11 +133,13 @@ class TestDelete:
         assert engine.count() == 1
 
     def test_delete_by_filepath(self, engine):
-        engine.add([
-            _make_chunk("a1", filepath="/file1.py"),
-            _make_chunk("a2", filepath="/file1.py"),
-            _make_chunk("b1", filepath="/file2.py"),
-        ])
+        engine.add(
+            [
+                _make_chunk("a1", filepath="/file1.py"),
+                _make_chunk("a2", filepath="/file1.py"),
+                _make_chunk("b1", filepath="/file2.py"),
+            ]
+        )
         engine.delete_by_filepath("/file1.py")
         assert engine.count() == 1
 
