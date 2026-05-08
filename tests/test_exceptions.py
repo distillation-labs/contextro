@@ -1,6 +1,7 @@
 """Tests for core/exceptions.py."""
 
 import pytest
+
 from contextro_mcp.core.exceptions import (
     ConfigurationError,
     ContextroException,

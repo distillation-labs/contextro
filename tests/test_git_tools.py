@@ -4,8 +4,9 @@ import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import contextro_mcp.server as server_module
 import pytest
+
+import contextro_mcp.server as server_module
 from contextro_mcp.state import reset_state
 
 

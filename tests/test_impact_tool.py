@@ -12,7 +12,6 @@ from contextro_mcp.core.graph_models import (
 )
 from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
 from contextro_mcp.state import get_state
-
 from tests.conftest import _call_tool
 
 

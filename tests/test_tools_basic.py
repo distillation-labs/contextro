@@ -2,10 +2,11 @@
 
 import asyncio
 import shutil
+from unittest.mock import patch
 
 import contextro_mcp.server as server_module
 from contextro_mcp import __version__
-
+from contextro_mcp.state import reset_state
 from tests.conftest import _call_tool, _mock_embedding_service, _setup_indexed
 
 
@@ -282,3 +283,68 @@ class TestSearch:
         assert search_result["full_total"] >= 1
         assert retrieve_result["ref_id"] == search_result["sandbox_ref"]
         assert '"query": "hello"' in retrieve_result["content"]
+
+    def test_compaction_archive_survives_server_restart(self, tmp_path, monkeypatch):
+        async def run():
+            storage = tmp_path / ".contextro"
+            monkeypatch.setenv("CTX_STORAGE_DIR", str(storage))
+            from contextro_mcp.config import reset_settings
+
+            reset_settings()
+            mock_svc = _mock_embedding_service()
+            with patch(
+                "contextro_mcp.indexing.embedding_service.get_embedding_service",
+                return_value=mock_svc,
+            ):
+                mcp = server_module.create_server()
+                first = await _call_tool(
+                    mcp,
+                    "compact",
+                    {"content": "JWT refresh flow with Redis-backed session archive"},
+                )
+
+                reset_state()
+                reset_settings()
+                server_module._pipeline = None
+                server_module._index_job = {}
+
+                mcp = server_module.create_server()
+                recall = await _call_tool(
+                    mcp,
+                    "recall",
+                    {"query": "Redis session archive", "memory_type": "archive"},
+                )
+            return first, recall
+
+        compact_result, recall_result = asyncio.run(run())
+
+        assert compact_result["archived"] is True
+        assert compact_result["archive_ref"].startswith("ca_")
+        assert recall_result["total"] >= 1
+        assert recall_result["results"][0]["archive_ref"] == compact_result["archive_ref"]
+
+    def test_code_tool_large_results_use_disclosure(
+        self, mini_codebase_with_calls, tmp_path, monkeypatch
+    ):
+        async def run():
+            monkeypatch.setenv("CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS", "1")
+            from contextro_mcp.config import reset_settings
+
+            reset_settings()
+            mcp, _, _ = await _setup_indexed(mini_codebase_with_calls, tmp_path / ".contextro")
+            return await _call_tool(
+                mcp,
+                "code",
+                {
+                    "operation": "lookup_symbols",
+                    "symbols": "hello,helper,orchestrate",
+                    "include_source": True,
+                },
+            )
+
+        result = asyncio.run(run())
+
+        assert result["sandboxed"] is True
+        assert result["operation"] == "lookup_symbols"
+        assert result["sandbox_ref"].startswith("sx_")
+        assert result["total"] == 3

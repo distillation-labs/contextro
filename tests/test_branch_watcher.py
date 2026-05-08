@@ -5,6 +5,7 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
+
 from contextro_mcp.git.branch_watcher import (
     BranchState,
     RealtimeIndexManager,

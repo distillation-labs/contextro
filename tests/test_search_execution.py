@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+
 from contextro_mcp.config import Settings
 from contextro_mcp.engines.output_sandbox import OutputSandbox
 from contextro_mcp.engines.query_cache import QueryCache
@@ -21,6 +22,16 @@ class _VectorBackend:
         self.calls: list[tuple[str, int, dict]] = []
         self._embedding_service = MagicMock()
         self._embedding_service.embed.return_value = [0.2, 0.4, 0.6]
+
+    def search(self, query: str, limit: int = 10, **kwargs):
+        self.calls.append((query, limit, kwargs))
+        return [dict(result) for result in self.results[:limit]]
+
+
+class _BM25Backend:
+    def __init__(self, results: list[dict]):
+        self.results = results
+        self.calls: list[tuple[str, int, dict]] = []
 
     def search(self, query: str, limit: int = 10, **kwargs):
         self.calls.append((query, limit, kwargs))
@@ -42,6 +53,8 @@ def _result(index: int, *, score: float = 0.9) -> dict:
 def _runtime(
     vector_backend: _VectorBackend,
     *,
+    bm25_backend=None,
+    graph_engine=None,
     codebase_path: Path | None = None,
     sandbox_threshold: int = 10_000,
     preview_results: int = 2,
@@ -64,8 +77,8 @@ def _runtime(
         codebase_path=codebase_path,
         codebase_paths=(codebase_path,) if codebase_path else (),
         vector_engine=vector_backend,
-        bm25_engine=None,
-        graph_engine=None,
+        bm25_engine=bm25_backend,
+        graph_engine=graph_engine,
         query_cache=QueryCache(similarity_threshold=0.95),
         output_sandbox=OutputSandbox(),
         session_tracker=tracker,
@@ -160,6 +173,35 @@ def test_execute_preview_preserves_bookended_high_signal_results():
         "symbol_1",
         "symbol_2",
     ]
+
+
+def test_execute_adaptively_trims_high_confidence_results():
+    backend = _VectorBackend(
+        [
+            _result(1, score=0.95),
+            _result(2, score=0.6),
+            _result(3, score=0.55),
+            _result(4, score=0.5),
+            _result(5, score=0.45),
+        ]
+    )
+    engine = SearchExecutionEngine(_runtime(backend, codebase_path=Path("/repo")))
+
+    response = engine.execute(
+        SearchExecutionOptions(query="AuthManager", mode="vector", rerank=False, limit=5)
+    )
+
+    assert response["confidence"] == "high"
+    assert response["sandboxed"] is True
+    assert response["adaptive_applied"] is True
+    assert response["adaptive_limit"] == 3
+    assert response["total"] == 2
+    assert response["full_total"] == 5
+    assert "adaptively trimmed" in response["hint"]
+
+    stored = engine.runtime.output_sandbox.retrieve(response["sandbox_ref"])
+    payload = json.loads(stored)
+    assert len(payload["results"]) == 5
 
 
 def test_execute_keeps_query_focal_lines_in_compressed_code():
@@ -270,6 +312,39 @@ def test_execute_auto_live_grep_for_single_token_queries(monkeypatch):
     assert calls == [("TokenBudget", 3)]
 
 
+def test_hybrid_natural_queries_keep_bm25_and_skip_graph(monkeypatch):
+    vector = _VectorBackend([_result(1)])
+    bm25 = _BM25Backend([_result(2, score=0.8)])
+    runtime = _runtime(
+        vector,
+        bm25_backend=bm25,
+        graph_engine=SimpleNamespace(),
+        codebase_path=Path("/repo"),
+    )
+    engine = SearchExecutionEngine(runtime)
+    graph_calls: list[tuple[str, int]] = []
+
+    def _graph_stub(graph_engine, query: str, limit: int = 10):
+        graph_calls.append((query, limit))
+        return [_result(3, score=0.7)]
+
+    monkeypatch.setattr("contextro_mcp.execution.search.graph_relevance_search", _graph_stub)
+
+    engine.execute(
+        SearchExecutionOptions(
+            query="discover source files respecting gitignore",
+            mode="hybrid",
+            rerank=False,
+            limit=3,
+        )
+    )
+
+    assert len(vector.calls) == 1
+    assert len(bm25.calls) >= 1
+    assert bm25.calls[0][:2] == ("discover source files respecting gitignore", 6)
+    assert graph_calls == []
+
+
 def test_build_search_runtime_uses_cache_and_sandbox_settings():
     settings = Settings()
     settings.search_cache_max_size = 7
@@ -295,6 +370,24 @@ def test_query_cache_prunes_expired_entries_before_lookup():
 
     assert cache.get("auth flow") is None
     assert cache.size == 0
+
+
+def test_query_cache_matches_camel_and_snake_case_variants():
+    cache = QueryCache(similarity_threshold=0.9)
+    embedding = [0.9, 0.1, 0.3]
+    cache.put("TokenBudgetCache", {"total": 1}, query_embedding=embedding)
+
+    assert cache.get("token_budget cache", query_embedding=embedding) == {"total": 1}
+
+
+def test_execute_skips_reranker_for_tiny_result_sets():
+    backend = _VectorBackend([_result(1)])
+    runtime = _runtime(backend, codebase_path=Path("/repo"))
+    engine = SearchExecutionEngine(runtime)
+
+    engine.execute(SearchExecutionOptions(query="symbol", mode="vector", rerank=True, limit=5))
+
+    runtime.state._reranker.rerank.assert_not_called()
 
 
 def test_output_sandbox_prunes_expired_entries_before_retrieve():

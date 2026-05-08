@@ -5,7 +5,6 @@ import resource
 import sys
 
 import contextro_mcp.server as server_module
-
 from tests.conftest import _call_tool, _setup_indexed
 
 

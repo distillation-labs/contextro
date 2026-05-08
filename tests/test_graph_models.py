@@ -1,6 +1,7 @@
 """Tests for core/graph_models.py."""
 
 import pytest
+
 from contextro_mcp.core.graph_models import (
     CacheConfig,
     NodeType,

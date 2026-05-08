@@ -1,6 +1,7 @@
 """Tests for smart context-aware chunking."""
 
 import pytest
+
 from contextro_mcp.core.models import Symbol, SymbolType
 from contextro_mcp.indexing.smart_chunker import (
     create_file_context_chunks,

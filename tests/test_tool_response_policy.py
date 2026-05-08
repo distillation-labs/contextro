@@ -4,6 +4,7 @@ import json
 
 from contextro_mcp.engines.output_sandbox import OutputSandbox
 from contextro_mcp.execution.response_policy import ToolResponsePolicy
+from contextro_mcp.memory.compaction_archive import CompactionArchive
 
 
 def _make_policy(threshold: int = 100) -> ToolResponsePolicy:
@@ -30,6 +31,7 @@ def test_large_response_gets_sandboxed():
     }
     result = policy.apply(data, tool_name="find_callers", preview_keys=["symbol", "total"])
     assert "sandbox_ref" in result
+    assert result["sandboxed"] is True
     assert result["sandbox_ref"].startswith("sx_")
     assert result["symbol"] == "BigClass"
     assert result["total"] == 25
@@ -89,9 +91,20 @@ def test_dict_fields_summarized_when_large():
     assert "complexity_summary" in result or "complexity" in result
 
 
-# --- Compaction Archive Tests ---
+def test_large_string_fields_are_truncated_in_preview():
+    """Large string fields keep a short inline preview plus original length."""
+    policy = _make_policy(threshold=30)
+    data = {"content": "x" * 1000}
 
-from contextro_mcp.memory.compaction_archive import CompactionArchive
+    result = policy.apply(data, tool_name="skill_prompt")
+
+    assert result["sandboxed"] is True
+    assert result["content"].endswith("…")
+    assert len(result["content"]) < len(data["content"])
+    assert result["content_chars"] == 1000
+
+
+# --- Compaction Archive Tests ---
 
 
 def test_archive_stores_and_retrieves():
@@ -131,3 +144,18 @@ def test_archive_lru_eviction():
     archive.archive("third entry")
     assert archive.size == 2
     assert archive.retrieve(ref1) is None  # Evicted
+
+
+def test_archive_persists_entries_to_disk(tmp_path):
+    """Archive entries survive process restarts when storage_path is configured."""
+    storage_path = tmp_path / "compaction-archive.json"
+
+    archive = CompactionArchive(max_entries=10, ttl=3600.0, storage_path=storage_path)
+    ref_id = archive.archive("Persisted context about JWT refresh tokens", metadata={"events": 4})
+
+    restored = CompactionArchive(max_entries=10, ttl=3600.0, storage_path=storage_path)
+
+    assert restored.retrieve(ref_id) == "Persisted context about JWT refresh tokens"
+    results = restored.search("refresh tokens")
+    assert len(results) == 1
+    assert results[0]["metadata"] == {"events": 4}

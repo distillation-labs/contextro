@@ -1,6 +1,7 @@
 """Tests for tool permission model (Phase 5b)."""
 
 import pytest
+
 from contextro_mcp.config import Settings, reset_settings
 from contextro_mcp.security.permissions import (
     DEFAULT_POLICY,
@@ -52,6 +53,16 @@ def test_tool_categories_defined():
         "session_snapshot",
         "retrieve",
         "introspect",
+        "focus",
+        "restore",
+        "audit",
+        "dead_code",
+        "circular_dependencies",
+        "test_coverage_map",
+        "sidecar_export",
+        "skill_prompt",
+        "docs_bundle",
+        "compact",
     }
     assert set(TOOL_PERMISSIONS.keys()) == expected_tools
 
@@ -72,6 +83,12 @@ def test_read_tools_classified():
         "session_snapshot",
         "retrieve",
         "introspect",
+        "focus",
+        "restore",
+        "audit",
+        "dead_code",
+        "circular_dependencies",
+        "test_coverage_map",
     ]
     for tool in read_tools:
         assert TOOL_PERMISSIONS[tool] == ToolCategory.READ, f"{tool} should be READ"
@@ -79,13 +96,22 @@ def test_read_tools_classified():
 
 def test_mutate_tools_classified():
     """Mutating tools are classified as MUTATE."""
-    for tool in ["index", "analyze", "impact", "code", "knowledge"]:
+    for tool in [
+        "index",
+        "analyze",
+        "impact",
+        "code",
+        "knowledge",
+        "sidecar_export",
+        "skill_prompt",
+        "docs_bundle",
+    ]:
         assert TOOL_PERMISSIONS[tool] == ToolCategory.MUTATE, f"{tool} should be MUTATE"
 
 
 def test_write_tools_classified():
     """Write tools are classified as WRITE."""
-    for tool in ["remember", "forget"]:
+    for tool in ["remember", "forget", "compact"]:
         assert TOOL_PERMISSIONS[tool] == ToolCategory.WRITE, f"{tool} should be WRITE"
 
 
@@ -110,6 +136,7 @@ def test_default_policy_denies_write():
     """DEFAULT_POLICY denies write tools."""
     assert check_permission("remember", DEFAULT_POLICY) is False
     assert check_permission("forget", DEFAULT_POLICY) is False
+    assert check_permission("compact", DEFAULT_POLICY) is False
 
 
 # --- FULL_ACCESS_POLICY ---
@@ -169,6 +196,8 @@ def test_get_tool_category():
     assert get_tool_category("search") == ToolCategory.READ
     assert get_tool_category("index") == ToolCategory.MUTATE
     assert get_tool_category("remember") == ToolCategory.WRITE
+    assert get_tool_category("focus") == ToolCategory.READ
+    assert get_tool_category("sidecar_export") == ToolCategory.MUTATE
     assert get_tool_category("nonexistent") is None
 
 
@@ -188,6 +217,12 @@ def test_policy_from_level_unknown_defaults_to_read():
     """Unknown level defaults to read-only."""
     policy = policy_from_level("unknown")
     assert policy == DEFAULT_POLICY
+
+
+def test_policy_from_level_is_case_insensitive():
+    """Permission levels are normalized before evaluation."""
+    policy = policy_from_level(" FULL ")
+    assert policy == FULL_ACCESS_POLICY
 
 
 # --- Config integration ---

@@ -11,7 +11,6 @@ from contextro_mcp.core.graph_models import (
     UniversalRelationship,
 )
 from contextro_mcp.state import get_state
-
 from tests.conftest import _call_tool, _setup_indexed
 
 # --- Helpers for direct graph manipulation ---

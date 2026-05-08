@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from contextro_mcp.config import Settings
 from contextro_mcp.indexing.pipeline import (
     IndexingPipeline,

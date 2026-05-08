@@ -1,6 +1,7 @@
 """Tests for engines/graph_engine.py."""
 
 import pytest
+
 from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,
@@ -11,13 +12,27 @@ from contextro_mcp.core.graph_models import (
 from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
 
 
-def _loc(fp="/test.py"):
-    return UniversalLocation(file_path=fp, start_line=1, end_line=10)
+def _loc(fp="/test.py", start_line=1, end_line=10):
+    return UniversalLocation(file_path=fp, start_line=start_line, end_line=end_line)
 
 
-def _node(id, name="func", node_type=NodeType.FUNCTION, language="python", **kw):
+def _node(
+    id,
+    name="func",
+    node_type=NodeType.FUNCTION,
+    language="python",
+    file_path="/test.py",
+    start_line=1,
+    end_line=10,
+    **kw,
+):
     return UniversalNode(
-        id=id, name=name, node_type=node_type, location=_loc(), language=language, **kw
+        id=id,
+        name=name,
+        node_type=node_type,
+        location=_loc(file_path, start_line, max(end_line, start_line)),
+        language=language,
+        **kw,
     )
 
 
@@ -75,6 +90,13 @@ def test_find_by_name(graph):
     graph.add_node(_node("n2", name="hello_world"))
     assert len(graph.find_nodes_by_name("hello", exact=True)) == 1
     assert len(graph.find_nodes_by_name("hello", exact=False)) == 2
+
+
+def test_find_by_name_uses_name_tokens(graph):
+    graph.add_node(_node("n1", name="TokenBudgetCache"))
+    graph.add_node(_node("n2", name="search_query_cache"))
+    matches = graph.find_nodes_by_name("cache", exact=False)
+    assert {node.id for node in matches} == {"n1", "n2"}
 
 
 def test_predecessors_successors(graph):
@@ -149,3 +171,62 @@ def test_remove_file_nodes(graph):
     removed = graph.remove_file_nodes("/test.py")
     assert removed == 1
     assert graph.get_node("n1") is None
+
+
+def test_file_helpers_and_reachability(graph):
+    graph.add_node(_node("late", file_path="/a.py", start_line=20))
+    graph.add_node(_node("a", file_path="/a.py", start_line=1))
+    graph.add_node(_node("b", file_path="/b.py", start_line=2))
+    graph.add_node(_node("c", file_path="/c.py", start_line=3))
+
+    graph.add_relationship(_rel("r1", "a", "b", RelationshipType.CALLS))
+    graph.add_relationship(_rel("r2", "b", "c", RelationshipType.CALLS))
+    graph.add_relationship(_rel("r3", "c", "b", RelationshipType.CALLS))
+
+    assert [node.id for node in graph.get_nodes_for_file("/a.py")] == ["a", "late"]
+    assert graph.get_related_files(
+        "/b.py",
+        relationship_types={RelationshipType.CALLS},
+    ) == ["/c.py"]
+    assert graph.get_related_files(
+        "/b.py",
+        relationship_types={RelationshipType.CALLS},
+        reverse=True,
+    ) == ["/a.py", "/c.py"]
+    assert [
+        node.id
+        for node in graph.get_reachable_nodes(
+            ["a"],
+            relationship_types={RelationshipType.CALLS},
+        )
+    ] == ["a", "b", "c"]
+    assert [
+        node.id
+        for node in graph.get_reachable_nodes(
+            ["a"],
+            relationship_types={RelationshipType.CALLS},
+            max_depth=1,
+        )
+    ] == ["a", "b"]
+    assert [
+        node.id
+        for node in graph.get_reachable_nodes(
+            ["c"],
+            relationship_types={RelationshipType.CALLS},
+            reverse=True,
+        )
+    ] == ["c", "b", "a"]
+
+
+def test_scc_includes_self_loops(graph):
+    graph.add_node(_node("b", file_path="/b.py"))
+    graph.add_node(_node("c", file_path="/c.py"))
+    graph.add_node(_node("self", file_path="/self.py"))
+
+    graph.add_relationship(_rel("r1", "b", "c", RelationshipType.CALLS))
+    graph.add_relationship(_rel("r2", "c", "b", RelationshipType.CALLS))
+    graph.add_relationship(_rel("r3", "self", "self", RelationshipType.CALLS))
+
+    components = graph.get_strongly_connected_components(RelationshipType.CALLS)
+    component_ids = {frozenset(node.id for node in component) for component in components}
+    assert component_ids == {frozenset({"b", "c"}), frozenset({"self"})}

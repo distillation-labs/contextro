@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+
 from contextro_mcp.state import get_state, reset_state
 
 
@@ -57,3 +58,32 @@ def test_reset_state():
     reset_state()
     state2 = get_state()
     assert not state2.is_indexed
+
+
+def test_capture_index_snapshot():
+    state = get_state()
+
+    class MockVectorEngine:
+        def count(self):
+            return 7
+
+    class MockBM25Engine:
+        _fts_index_created = True
+
+    class MockGraphEngine:
+        def get_statistics(self):
+            return {"total_nodes": 3, "total_relationships": 2}
+
+    state.vector_engine = MockVectorEngine()
+    state.bm25_engine = MockBM25Engine()
+    state.graph_engine = MockGraphEngine()
+
+    snapshot = state.capture_index_snapshot(commits_indexed=5)
+
+    assert snapshot == {
+        "vector_chunks": 7,
+        "bm25_fts_ready": True,
+        "graph": {"total_nodes": 3, "total_relationships": 2},
+        "commits_indexed": 5,
+    }
+    assert state.index_snapshot == snapshot

@@ -2,6 +2,7 @@ import shutil
 import subprocess
 
 import pytest
+
 from contextro_mcp.engines.live_grep import LiveGrepEngine
 
 

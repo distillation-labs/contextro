@@ -1,6 +1,7 @@
 """Tests for trust_remote_code mitigation."""
 
 import pytest
+
 from contextro_mcp.config import Settings, reset_settings
 from contextro_mcp.core.exceptions import ConfigurationError
 from contextro_mcp.indexing.embedding_service import (

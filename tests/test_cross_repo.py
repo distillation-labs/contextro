@@ -3,6 +3,7 @@
 import subprocess
 
 import pytest
+
 from contextro_mcp.git.cross_repo import CrossRepoManager, RepoContext
 
 

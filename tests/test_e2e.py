@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import contextro_mcp.server as server_module
 from contextro_mcp.state import get_state
-
 from tests.conftest import _call_tool, _setup_indexed
 
 

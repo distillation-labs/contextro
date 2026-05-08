@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
 from contextro_mcp.accelerator import (
     RUST_AVAILABLE,
     diff_mtimes_fast,

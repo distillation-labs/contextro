@@ -1,6 +1,7 @@
 """Tests for token budget management."""
 
 import pytest
+
 from contextro_mcp.formatting.token_budget import TokenBudget
 
 

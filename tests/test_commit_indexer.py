@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
 from contextro_mcp.git.commit_indexer import (
     CommitChunk,
     CommitHistoryIndexer,

@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+
 from contextro_mcp.engines.bm25_engine import LanceDBBM25Engine
 from contextro_mcp.engines.vector_engine import LanceDBVectorEngine
 

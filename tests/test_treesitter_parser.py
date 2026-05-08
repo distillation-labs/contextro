@@ -1,6 +1,7 @@
 """Tests for parsing/treesitter_parser.py."""
 
 import pytest
+
 from contextro_mcp.core.models import SymbolType
 from contextro_mcp.parsing.treesitter_parser import ThreadLocalParserFactory, TreeSitterParser
 

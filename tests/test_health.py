@@ -3,8 +3,9 @@
 import asyncio
 from pathlib import Path
 
-import contextro_mcp.server as server_module
 import pytest
+
+import contextro_mcp.server as server_module
 from contextro_mcp.config import reset_settings
 from contextro_mcp.core.exceptions import (
     AuthenticationError,
@@ -13,7 +14,6 @@ from contextro_mcp.core.exceptions import (
     RateLimitError,
 )
 from contextro_mcp.state import get_state, reset_state
-
 from tests.conftest import _call_tool
 
 

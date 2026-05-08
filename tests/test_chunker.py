@@ -1,6 +1,7 @@
 """Tests for Symbol-to-CodeChunk conversion."""
 
 import pytest
+
 from contextro_mcp.config import reset_settings
 from contextro_mcp.core.models import Symbol, SymbolType
 from contextro_mcp.indexing.chunker import (

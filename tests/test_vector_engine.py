@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+
 from contextro_mcp.engines.vector_engine import LanceDBVectorEngine
 
 VECTOR_DIMS = 4  # Small dims for fast tests

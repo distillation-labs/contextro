@@ -1,6 +1,7 @@
 """Tests for SQLite graph persistence."""
 
 import pytest
+
 from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,

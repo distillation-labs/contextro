@@ -1,6 +1,7 @@
 """Tests for Reciprocal Rank Fusion and graph relevance scoring."""
 
 import pytest
+
 from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,

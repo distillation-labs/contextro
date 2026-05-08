@@ -1,6 +1,8 @@
 """Tests for Pydantic v2 input/output schemas (Phase 5c)."""
 
 import pytest
+from pydantic import ValidationError
+
 from contextro_mcp.schemas.inputs import (
     ForgetInput,
     ImpactInput,
@@ -24,7 +26,6 @@ from contextro_mcp.schemas.responses import (
     SearchResponse,
     StatusResponse,
 )
-from pydantic import ValidationError
 
 # --- Input validation ---
 

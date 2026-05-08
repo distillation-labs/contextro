@@ -3,9 +3,9 @@
 import asyncio
 import time
 
-import contextro_mcp.server as server_module
 import pytest
 
+import contextro_mcp.server as server_module
 from tests.conftest import _call_tool, _setup_indexed
 
 pytestmark = pytest.mark.slow

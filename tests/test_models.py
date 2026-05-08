@@ -1,6 +1,7 @@
 """Tests for core/models.py — Symbol, ParsedFile, CodebaseIndex, Memory."""
 
 import pytest
+
 from contextro_mcp.core.models import (
     CodebaseIndex,
     Memory,
