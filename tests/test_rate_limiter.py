@@ -3,7 +3,7 @@
 import threading
 import time
 
-from contextia_mcp.security.rate_limiter import TOOL_RATE_OVERRIDES, TokenBucketRateLimiter
+from contextro_mcp.security.rate_limiter import TOOL_RATE_OVERRIDES, TokenBucketRateLimiter
 
 
 def test_allows_within_rate():
