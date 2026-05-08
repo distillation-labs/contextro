@@ -1,5 +1,6 @@
 """Tests for the Rust-accelerated operations module."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from contextro_mcp.accelerator import (
     git_head_hash_fast,
     git_is_repo_fast,
     hash_files_fast,
+    scan_file_stats_fast,
     scan_mtimes_fast,
 )
 
@@ -116,6 +118,30 @@ class TestScanMtimes:
         mtimes = scan_mtimes_fast(paths)
         assert str(tmp_path / "exists.py") in mtimes
         assert str(tmp_path / "missing.py") not in mtimes
+
+
+class TestScanFileStats:
+    """Tests for scan_file_stats_fast."""
+
+    def test_scans_existing_files(self, tmp_path):
+        path = tmp_path / "a.py"
+        path.write_text("x = 1\n")
+        stats = scan_file_stats_fast([str(path)])
+        assert str(path) in stats
+        assert isinstance(stats[str(path)], str)
+        assert stats[str(path)]
+
+    def test_detects_preserved_mtime_content_change(self, tmp_path):
+        path = tmp_path / "tracked.py"
+        path.write_text("value = 1\n")
+        original_mtime = path.stat().st_mtime
+        before = scan_file_stats_fast([str(path)])[str(path)]
+
+        path.write_text("value = 1000\n")
+        os.utime(path, (original_mtime, original_mtime))
+
+        after = scan_file_stats_fast([str(path)])[str(path)]
+        assert after != before
 
 
 class TestDiffMtimes:
