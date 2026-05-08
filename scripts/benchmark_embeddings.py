@@ -1,5 +1,5 @@
 """
-Embedding model benchmark for Contextia — autoresearch style.
+Embedding model benchmark for Contextro — autoresearch style.
 
 Measures three things that matter for code search:
   1. Indexing speed  — tokens/sec during batch embedding (lower = slower indexing)
@@ -56,6 +56,7 @@ EVAL_PAIRS: List[Tuple[str, str]] = [
     ("serialize graph to sqlite for warm start", "save"),
 ]
 
+
 # ---------------------------------------------------------------------------
 # Corpus: 50 representative code chunks from this codebase
 # Each chunk is (symbol_name, text_snippet)
@@ -63,7 +64,7 @@ EVAL_PAIRS: List[Tuple[str, str]] = [
 def build_corpus() -> List[Tuple[str, str]]:
     """Build a corpus of code chunks by parsing key source files."""
     corpus = []
-    src_root = Path(__file__).parent.parent / "src" / "contextia_mcp"
+    src_root = Path(__file__).parent.parent / "src" / "contextro_mcp"
 
     # We'll extract function/class docstrings + signatures from key files
     import ast
@@ -131,6 +132,7 @@ def build_corpus() -> List[Tuple[str, str]]:
 # Benchmark runner
 # ---------------------------------------------------------------------------
 
+
 def cosine_sim(a: List[float], b: List[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
     na = sum(x * x for x in a) ** 0.5
@@ -142,17 +144,17 @@ def cosine_sim(a: List[float], b: List[float]) -> float:
 
 def run_benchmark(model_key: str, corpus: List[Tuple[str, str]], quick: bool = False) -> Dict:
     """Run full benchmark for one model. Returns results dict."""
-    from contextia_mcp.indexing.embedding_service import EMBEDDING_MODELS, EmbeddingService
+    from contextro_mcp.indexing.embedding_service import EMBEDDING_MODELS, EmbeddingService
 
     if model_key not in EMBEDDING_MODELS:
         return {"error": f"Model '{model_key}' not in EMBEDDING_MODELS"}
 
     cfg = EMBEDDING_MODELS[model_key]
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Model: {model_key}")
     print(f"  HF:    {cfg['hf_name']}")
     print(f"  Dims:  {cfg['dimensions']}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     try:
         svc = EmbeddingService(model_key, device="cpu", batch_size=32)
@@ -161,8 +163,10 @@ def run_benchmark(model_key: str, corpus: List[Tuple[str, str]], quick: bool = F
         t_load = time.perf_counter()
         # Patch settings to allow trust_remote_code during benchmark
         import os
+
         os.environ["CTX_TRUST_REMOTE_CODE"] = "true"
-        from contextia_mcp.config import reset_settings
+        from contextro_mcp.config import reset_settings
+
         reset_settings()
         svc._load_model()
         load_time = time.perf_counter() - t_load
@@ -267,7 +271,9 @@ def print_summary(all_results: List[Dict]) -> None:
     print("\n" + "=" * 80)
     print("RESULTS SUMMARY")
     print("=" * 80)
-    print(f"{'Model':<28} {'Dims':>5} {'Load':>6} {'Idx(s)':>7} {'tok/s':>7} {'Q(ms)':>7} {'MRR@10':>7} {'H@1':>4} {'H@10':>5}")
+    print(
+        f"{'Model':<28} {'Dims':>5} {'Load':>6} {'Idx(s)':>7} {'tok/s':>7} {'Q(ms)':>7} {'MRR@10':>7} {'H@1':>4} {'H@10':>5}"
+    )
     print("-" * 80)
 
     for r in valid:
@@ -313,10 +319,12 @@ def print_summary(all_results: List[Dict]) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Contextia embedding model benchmark")
+    parser = argparse.ArgumentParser(description="Contextro embedding model benchmark")
     parser.add_argument(
-        "--models", nargs="+",
+        "--models",
+        nargs="+",
         default=["jina-code", "nomic-embed", "bge-small-en"],
         help="Models to benchmark",
     )
@@ -336,6 +344,7 @@ def main():
 
     # Save results
     import json
+
     out = Path(__file__).parent / "benchmark_results.json"
     out.write_text(json.dumps(all_results, indent=2))
     print(f"\nResults saved to {out}")
