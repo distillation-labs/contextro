@@ -9,27 +9,45 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build package
+  build-wheels:
+    name: Build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist
+          sccache: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/
+
+  build-sdist:
+    name: Build sdist
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Build source distribution
+        uses: PyO3/maturin-action@v1
         with:
-          python-version: "3.12"
-      - name: Install build
-        run: pip install build
-      - name: Build sdist and wheel
-        run: python -m build
+          command: sdist
+          args: --out dist
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: dist-sdist
           path: dist/
 
   publish:
     name: Publish to PyPI
     if: ${{ !github.event.release.prerelease }}
-    needs: build
+    needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -37,15 +55,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: dist-*
           path: dist/
+          merge-multiple: true
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
   docker:
     name: Build and publish Docker image
     if: ${{ !github.event.release.prerelease }}
-    needs: build
+    needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     permissions:
       contents: read
