@@ -72,7 +72,7 @@ def benchmark_progressive_disclosure():
                     f"src/models/m{i}.py": [f"model_{i}", f"validate_{i}"] for i in range(25)
                 },
                 "impacted_dirs": {
-                    f"src/models": [f"m{i}.py" for i in range(25)],
+                    "src/models": [f"m{i}.py" for i in range(25)],
                     "src/api": [f"endpoint_{i}.py" for i in range(15)],
                 },
             },
@@ -86,9 +86,6 @@ def benchmark_progressive_disclosure():
                 "file": "src/engines/search.py",
                 "line": 45,
                 "code": "class SearchEngine:\n"
-                + "    def method_{i}(self): pass\n".format(i=i) * 30
-                if False
-                else "class SearchEngine:\n"
                 + "\n".join(
                     [f"    def method_{i}(self, arg{i}): return self.data[{i}]" for i in range(30)]
                 ),
@@ -121,8 +118,10 @@ def benchmark_progressive_disclosure():
         total_original += original_tokens
         total_after += after_tokens
 
+        sandbox_label = "YES" if sandboxed else "no"
         print(
-            f"{case['name']:<25} {original_tokens:>10} {after_tokens:>10} {saved:>8} {'YES' if sandboxed else 'no'}"
+            f"{case['name']:<25} {original_tokens:>10} "
+            f"{after_tokens:>10} {saved:>8} {sandbox_label}"
         )
 
     total_saved = total_original - total_after
@@ -325,10 +324,15 @@ if __name__ == "__main__":
     print("SUMMARY")
     print("=" * 60)
     print(
-        f"Progressive Disclosure: {disclosure_results['saved_pct']}% token reduction on large responses"
+        "Progressive Disclosure: "
+        f"{disclosure_results['saved_pct']}% token reduction on large responses"
     )
     print(
-        f"AST Compression:        {ast_results['reduction_pct']}% character reduction on code snippets"
+        "AST Compression:        "
+        f"{ast_results['reduction_pct']}% character reduction on code snippets"
     )
-    print(f"Compaction Archive:     Searchable ({archive_results['archive_size']} chars archived)")
+    print(
+        "Compaction Archive:     "
+        f"Searchable ({archive_results['archive_size']} chars archived)"
+    )
     print()

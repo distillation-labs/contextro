@@ -1,16 +1,16 @@
 {
-  "timestamp": 1778199537.739609,
-  "tokens_per_search": 509,
-  "tokens_per_explain": 230,
+  "timestamp": 1778273483.468411,
+  "tokens_per_search": 378,
+  "tokens_per_explain": 229,
   "tokens_per_find_symbol": 66,
   "tokens_per_find_callers": 16,
-  "tokens_per_status": 144,
-  "total_output_tokens": 4240,
-  "search_results_count": 35,
-  "cache_hit_rate": 0.46153846153846156,
+  "tokens_per_status": 169,
+  "total_output_tokens": 3338,
+  "search_results_count": 22,
+  "cache_hit_rate": 0.16666666666666666,
   "workflow_tool_calls": 16,
-  "sandbox_rate": 0.0,
-  "preview_coverage": 1.0,
-  "total_output_tokens_toon": 3653,
-  "toon_reduction_pct": 13.8
+  "sandbox_rate": 0.8,
+  "preview_coverage": 0.6286,
+  "total_output_tokens_toon": 2879,
+  "toon_reduction_pct": 13.7
 }
