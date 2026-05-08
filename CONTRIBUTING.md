@@ -33,7 +33,7 @@ python scripts/bench_final.py    # Benchmark
 
 ```
 src/contextia_mcp/
-├── server.py              # All 25 MCP tools (the main entry point)
+├── server.py              # All 26 MCP tools (the main entry point)
 ├── config.py              # CTX_* env var configuration
 ├── state.py               # Singleton session state + warm-start
 ├── indexing/
@@ -47,7 +47,13 @@ src/contextia_mcp/
 │   ├── graph_engine.py    # rustworkx call graph
 │   ├── fusion.py          # RRF fusion (vector + BM25 + graph)
 │   ├── reranker.py        # FlashRank two-stage reranking
-│   └── query_cache.py     # LRU + semantic similarity cache
+│   ├── query_cache.py     # LRU + semantic similarity cache
+│   └── output_sandbox.py  # Deferred large-output storage (LRU + TTL)
+├── execution/
+│   ├── search.py          # Search execution engine (cache, sandbox, budget)
+│   ├── response_policy.py # Progressive disclosure + search response shaping
+│   ├── ast_compression.py # AST-aware snippet compression (tree-sitter)
+│   └── compaction.py      # Result compaction and truncation
 ├── parsing/
 │   ├── treesitter_parser.py   # Symbol extraction (25+ languages)
 │   └── astgrep_parser.py      # Call graph extraction
@@ -56,13 +62,16 @@ src/contextia_mcp/
 │   └── branch_watcher.py  # Real-time HEAD polling + auto-reindex
 ├── memory/
 │   ├── memory_store.py    # LanceDB-backed semantic memory
-│   └── session_tracker.py # Session event tracking for snapshots
+│   ├── session_tracker.py # Session event tracking for snapshots
+│   └── compaction_archive.py  # Searchable pre-compaction archive
 └── formatting/
     ├── response_builder.py  # Token-budget-aware response formatting
     └── token_budget.py      # Token estimation and budgeting
 tests/                     # 565+ pytest tests
 scripts/
 ├── bench_final.py         # Comprehensive benchmark harness
+├── benchmark_token_efficiency.py  # Token output measurement
+├── benchmark_disclosure.py        # Progressive disclosure + AST compression
 └── docker_healthcheck.py  # Docker health probe
 ```
 

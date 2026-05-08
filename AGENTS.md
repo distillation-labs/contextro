@@ -1,7 +1,7 @@
 # Contextia Agent Guidelines
 
 ## Architecture
-Single unified MCP server. 22 tools, <350MB RAM.
+Single unified MCP server. 26 tools, <350MB RAM.
 
 ## Stack
 - **LanceDB**: vectors + FTS (disk-backed, mmap)
@@ -45,6 +45,9 @@ Single unified MCP server. 22 tools, <350MB RAM.
 - Compact serialization (short keys, omit defaults/empty)
 - Session snapshot for context recovery after compaction
 - Output sandbox for deferred content retrieval
+- Universal progressive disclosure (~44% token savings on large responses)
+- AST-aware snippet compression (~73% reduction on code previews)
+- Searchable compaction archive for context recovery
 - Optional TOON encoding (CTX_OUTPUT_FORMAT=toon, +10% savings)
 
 ## Testing

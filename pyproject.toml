@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "contextia"
-version = "2.0.0"
-description = "Contextia — AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, real-time indexing"
+version = "2.1.0"
+description = "Contextia — AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, progressive disclosure, AST compression"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10,<3.14"
