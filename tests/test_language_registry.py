@@ -1,8 +1,7 @@
 """Tests for parsing/language_registry.py."""
 
 import pytest
-
-from contextia_mcp.parsing.language_registry import (
+from contextro_mcp.parsing.language_registry import (
     EXTENSION_MAP,
     LANGUAGE_CONFIGS,
     get_all_languages,
