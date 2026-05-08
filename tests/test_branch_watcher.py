@@ -5,8 +5,7 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
-
-from contextia_mcp.git.branch_watcher import (
+from contextro_mcp.git.branch_watcher import (
     BranchState,
     RealtimeIndexManager,
 )
@@ -18,25 +17,35 @@ def git_repo(tmp_path):
     repo = tmp_path / "test_repo"
     repo.mkdir()
     subprocess.run(
-        ["git", "init"], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "init"],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     (repo / "main.py").write_text("print('hello')\n")
     subprocess.run(
-        ["git", "add", "."], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     return repo
 
@@ -60,12 +69,16 @@ class TestBranchState:
         # Make a new commit
         (git_repo / "new.py").write_text("x = 1\n")
         subprocess.run(
-            ["git", "add", "."], cwd=str(git_repo),
-            capture_output=True, check=True,
+            ["git", "add", "."],
+            cwd=str(git_repo),
+            capture_output=True,
+            check=True,
         )
         subprocess.run(
             ["git", "commit", "-m", "New commit"],
-            cwd=str(git_repo), capture_output=True, check=True,
+            cwd=str(git_repo),
+            capture_output=True,
+            check=True,
         )
 
         assert state.has_changed() is True
@@ -79,7 +92,9 @@ class TestBranchState:
         # Create and switch to new branch
         subprocess.run(
             ["git", "checkout", "-b", "feature-branch"],
-            cwd=str(git_repo), capture_output=True, check=True,
+            cwd=str(git_repo),
+            capture_output=True,
+            check=True,
         )
 
         assert state.has_changed() is True
@@ -88,7 +103,9 @@ class TestBranchState:
         # Switch back
         subprocess.run(
             ["git", "checkout", old_branch],
-            cwd=str(git_repo), capture_output=True, check=True,
+            cwd=str(git_repo),
+            capture_output=True,
+            check=True,
         )
         assert state.has_changed() is True
         assert state.branch == old_branch
@@ -185,12 +202,16 @@ class TestRealtimeIndexManager:
         # Make a new commit
         (git_repo / "new.py").write_text("x = 1\n")
         subprocess.run(
-            ["git", "add", "."], cwd=str(git_repo),
-            capture_output=True, check=True,
+            ["git", "add", "."],
+            cwd=str(git_repo),
+            capture_output=True,
+            check=True,
         )
         subprocess.run(
             ["git", "commit", "-m", "Trigger reindex"],
-            cwd=str(git_repo), capture_output=True, check=True,
+            cwd=str(git_repo),
+            capture_output=True,
+            check=True,
         )
 
         # Wait for poll to detect
