@@ -2,8 +2,8 @@
 
 import json
 
-from contextia_mcp.engines.output_sandbox import OutputSandbox
-from contextia_mcp.execution.response_policy import ToolResponsePolicy
+from contextro_mcp.engines.output_sandbox import OutputSandbox
+from contextro_mcp.execution.response_policy import ToolResponsePolicy
 
 
 def _make_policy(threshold: int = 100) -> ToolResponsePolicy:
@@ -26,7 +26,7 @@ def test_large_response_gets_sandboxed():
     data = {
         "symbol": "BigClass",
         "total": 25,
-        "callers": [f"caller_{i} (src/mod{i}.py:{i*10})" for i in range(25)],
+        "callers": [f"caller_{i} (src/mod{i}.py:{i * 10})" for i in range(25)],
     }
     result = policy.apply(data, tool_name="find_callers", preview_keys=["symbol", "total"])
     assert "sandbox_ref" in result
@@ -91,7 +91,7 @@ def test_dict_fields_summarized_when_large():
 
 # --- Compaction Archive Tests ---
 
-from contextia_mcp.memory.compaction_archive import CompactionArchive
+from contextro_mcp.memory.compaction_archive import CompactionArchive
 
 
 def test_archive_stores_and_retrieves():
