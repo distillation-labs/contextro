@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from contextia_mcp.engines.reranker import FlashReranker
+from contextro_mcp.engines.reranker import FlashReranker
 
 
 def _make_result(id_: str, text: str = "test", score: float = 0.5):
@@ -67,10 +67,8 @@ class TestReranking:
 
             mock_ranker = MagicMock()
             mock_ranker.rerank.return_value = [
-                {"id": "b", "score": 0.95, "text": "t2",
-                 "meta": _make_result("b", score=0.3)},
-                {"id": "a", "score": 0.80, "text": "t1",
-                 "meta": _make_result("a", score=0.9)},
+                {"id": "b", "score": 0.95, "text": "t2", "meta": _make_result("b", score=0.3)},
+                {"id": "a", "score": 0.80, "text": "t1", "meta": _make_result("a", score=0.9)},
             ]
             reranker._ranker = mock_ranker
 
