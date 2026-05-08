@@ -4,10 +4,9 @@ import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
+import contextro_mcp.server as server_module
 import pytest
-
-import contextia_mcp.server as server_module
-from contextia_mcp.state import reset_state
+from contextro_mcp.state import reset_state
 
 
 @pytest.fixture(autouse=True)
@@ -28,54 +27,63 @@ def git_codebase(tmp_path):
 
     # Init git
     subprocess.run(
-        ["git", "init"], cwd=str(tmp_path),
-        capture_output=True, check=True,
+        ["git", "init"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "dev@test.com"],
-        cwd=str(tmp_path), capture_output=True, check=True,
+        cwd=str(tmp_path),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Developer"],
-        cwd=str(tmp_path), capture_output=True, check=True,
+        cwd=str(tmp_path),
+        capture_output=True,
+        check=True,
     )
 
     # First commit
-    (src / "main.py").write_text(
-        'def hello():\n    """Say hello."""\n    print("hello")\n'
-    )
+    (src / "main.py").write_text('def hello():\n    """Say hello."""\n    print("hello")\n')
     subprocess.run(
-        ["git", "add", "."], cwd=str(tmp_path),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(tmp_path),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "Initial: add hello function"],
-        cwd=str(tmp_path), capture_output=True, check=True,
+        cwd=str(tmp_path),
+        capture_output=True,
+        check=True,
     )
 
     # Second commit
-    (src / "utils.py").write_text(
-        'def helper():\n    """A helper."""\n    return 42\n'
-    )
+    (src / "utils.py").write_text('def helper():\n    """A helper."""\n    return 42\n')
     subprocess.run(
-        ["git", "add", "."], cwd=str(tmp_path),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(tmp_path),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "Add utility helper for processing"],
-        cwd=str(tmp_path), capture_output=True, check=True,
+        cwd=str(tmp_path),
+        capture_output=True,
+        check=True,
     )
 
     return tmp_path
 
 
 def _mock_embedding_service():
-    from contextia_mcp.config import get_settings
-    from contextia_mcp.indexing.embedding_service import EMBEDDING_MODELS
+    from contextro_mcp.config import get_settings
+    from contextro_mcp.indexing.embedding_service import EMBEDDING_MODELS
+
     settings = get_settings()
-    dims = EMBEDDING_MODELS.get(settings.embedding_model, {}).get(
-        "dimensions", 384
-    )
+    dims = EMBEDDING_MODELS.get(settings.embedding_model, {}).get("dimensions", 384)
     svc = MagicMock()
     svc.embed.return_value = [0.1] * dims
 
@@ -105,13 +113,18 @@ class TestCommitHistoryTool:
     async def test_commit_history_basic(self, git_codebase, tmp_path):
         storage = tmp_path / "storage"
         with patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
             mcp = server_module.create_server()
 
-            result = await _call_tool(mcp, "commit_history", {
-                "path": str(git_codebase),
-            })
+            result = await _call_tool(
+                mcp,
+                "commit_history",
+                {
+                    "path": str(git_codebase),
+                },
+            )
             reset_settings()
 
         assert "error" not in result
@@ -123,14 +136,19 @@ class TestCommitHistoryTool:
     async def test_commit_history_with_limit(self, git_codebase, tmp_path):
         storage = tmp_path / "storage"
         with patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
             mcp = server_module.create_server()
 
-            result = await _call_tool(mcp, "commit_history", {
-                "path": str(git_codebase),
-                "limit": 1,
-            })
+            result = await _call_tool(
+                mcp,
+                "commit_history",
+                {
+                    "path": str(git_codebase),
+                    "limit": 1,
+                },
+            )
             reset_settings()
 
         assert result["total"] == 1
@@ -141,13 +159,18 @@ class TestCommitHistoryTool:
         plain_dir.mkdir()
         storage = tmp_path / "storage"
         with patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
             mcp = server_module.create_server()
 
-            result = await _call_tool(mcp, "commit_history", {
-                "path": str(plain_dir),
-            })
+            result = await _call_tool(
+                mcp,
+                "commit_history",
+                {
+                    "path": str(plain_dir),
+                },
+            )
             reset_settings()
 
         assert "error" in result
@@ -160,12 +183,12 @@ class TestCommitSearchTool:
     async def test_commit_search_after_index(self, git_codebase, tmp_path):
         """Commit search works after indexing (which auto-indexes commits)."""
         storage = tmp_path / "storage"
-        with patch(
-            "contextia_mcp.indexing.pipeline.get_embedding_service"
-        ) as mock_get, patch.dict(
-            "os.environ", {"CTX_STORAGE_DIR": str(storage)}
+        with (
+            patch("contextro_mcp.indexing.pipeline.get_embedding_service") as mock_get,
+            patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}),
         ):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
 
             mock_svc = _mock_embedding_service()
@@ -174,12 +197,17 @@ class TestCommitSearchTool:
             mcp = server_module.create_server()
 
             # Index (which should also index commits)
-            await _call_tool(mcp, "index", {
-                "path": str(git_codebase),
-            })
+            await _call_tool(
+                mcp,
+                "index",
+                {
+                    "path": str(git_codebase),
+                },
+            )
 
             # Patch vector engine for search
-            from contextia_mcp.state import get_state
+            from contextro_mcp.state import get_state
+
             state = get_state()
             if state.vector_engine:
                 state.vector_engine._embedding_service = mock_svc
@@ -187,9 +215,13 @@ class TestCommitSearchTool:
             if state.commit_indexer:
                 state.commit_indexer._embedding_service = mock_svc
 
-            result = await _call_tool(mcp, "commit_search", {
-                "query": "helper utility",
-            })
+            result = await _call_tool(
+                mcp,
+                "commit_search",
+                {
+                    "query": "helper utility",
+                },
+            )
             reset_settings()
 
         assert "error" not in result
@@ -203,7 +235,8 @@ class TestRepoTools:
     async def test_repo_status_empty(self, tmp_path):
         storage = tmp_path / "storage"
         with patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
             mcp = server_module.create_server()
 
@@ -215,12 +248,12 @@ class TestRepoTools:
     @pytest.mark.asyncio
     async def test_repo_add_and_status(self, git_codebase, tmp_path):
         storage = tmp_path / "storage"
-        with patch(
-            "contextia_mcp.indexing.pipeline.get_embedding_service"
-        ) as mock_get, patch.dict(
-            "os.environ", {"CTX_STORAGE_DIR": str(storage)}
+        with (
+            patch("contextro_mcp.indexing.pipeline.get_embedding_service") as mock_get,
+            patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}),
         ):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
 
             mock_svc = _mock_embedding_service()
@@ -229,11 +262,15 @@ class TestRepoTools:
             mcp = server_module.create_server()
 
             # Add repo
-            add_result = await _call_tool(mcp, "repo_add", {
-                "path": str(git_codebase),
-                "name": "test-repo",
-                "index_now": False,
-            })
+            add_result = await _call_tool(
+                mcp,
+                "repo_add",
+                {
+                    "path": str(git_codebase),
+                    "name": "test-repo",
+                    "index_now": False,
+                },
+            )
             reset_settings()
 
         assert "error" not in add_result
@@ -244,18 +281,27 @@ class TestRepoTools:
     async def test_repo_remove(self, git_codebase, tmp_path):
         storage = tmp_path / "storage"
         with patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
             mcp = server_module.create_server()
 
             # Add then remove
-            await _call_tool(mcp, "repo_add", {
-                "path": str(git_codebase),
-                "index_now": False,
-            })
-            result = await _call_tool(mcp, "repo_remove", {
-                "path": str(git_codebase),
-            })
+            await _call_tool(
+                mcp,
+                "repo_add",
+                {
+                    "path": str(git_codebase),
+                    "index_now": False,
+                },
+            )
+            result = await _call_tool(
+                mcp,
+                "repo_remove",
+                {
+                    "path": str(git_codebase),
+                },
+            )
             reset_settings()
 
         assert result["removed"] is True
@@ -264,18 +310,27 @@ class TestRepoTools:
     async def test_repo_remove_by_name(self, git_codebase, tmp_path):
         storage = tmp_path / "storage"
         with patch.dict("os.environ", {"CTX_STORAGE_DIR": str(storage)}):
-            from contextia_mcp.config import reset_settings
+            from contextro_mcp.config import reset_settings
+
             reset_settings()
             mcp = server_module.create_server()
 
-            await _call_tool(mcp, "repo_add", {
-                "path": str(git_codebase),
-                "name": "my-repo",
-                "index_now": False,
-            })
-            result = await _call_tool(mcp, "repo_remove", {
-                "name": "my-repo",
-            })
+            await _call_tool(
+                mcp,
+                "repo_add",
+                {
+                    "path": str(git_codebase),
+                    "name": "my-repo",
+                    "index_now": False,
+                },
+            )
+            result = await _call_tool(
+                mcp,
+                "repo_remove",
+                {
+                    "name": "my-repo",
+                },
+            )
             reset_settings()
 
         assert result["removed"] is True
