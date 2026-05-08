@@ -3,23 +3,23 @@
 import asyncio
 from pathlib import Path
 
+import contextro_mcp.server as server_module
 import pytest
-
-import contextia_mcp.server as server_module
-from contextia_mcp.config import reset_settings
-from contextia_mcp.core.exceptions import (
+from contextro_mcp.config import reset_settings
+from contextro_mcp.core.exceptions import (
     AuthenticationError,
     AuthorizationError,
-    ContextiaException,
+    ContextroException,
     RateLimitError,
 )
-from contextia_mcp.state import get_state, reset_state
+from contextro_mcp.state import get_state, reset_state
+
 from tests.conftest import _call_tool
 
 
 @pytest.fixture(autouse=True)
 def clean_state(tmp_path, monkeypatch):
-    monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextia"))
+    monkeypatch.setenv("CTX_STORAGE_DIR", str(tmp_path / ".contextro"))
     reset_settings()
     reset_state()
     server_module._index_job = {}
@@ -123,13 +123,13 @@ def test_status_skips_expensive_stats_while_background_index_finalizes():
 # --- New exception types ---
 
 
-def test_authentication_error_is_contextia_exception():
-    assert issubclass(AuthenticationError, ContextiaException)
+def test_authentication_error_is_contextro_exception():
+    assert issubclass(AuthenticationError, ContextroException)
 
 
-def test_authorization_error_is_contextia_exception():
-    assert issubclass(AuthorizationError, ContextiaException)
+def test_authorization_error_is_contextro_exception():
+    assert issubclass(AuthorizationError, ContextroException)
 
 
-def test_rate_limit_error_is_contextia_exception():
-    assert issubclass(RateLimitError, ContextiaException)
+def test_rate_limit_error_is_contextro_exception():
+    assert issubclass(RateLimitError, ContextroException)
