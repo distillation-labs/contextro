@@ -11,9 +11,9 @@ import signal
 import sys
 from pathlib import Path
 
-from contextia_mcp.parsing.file_watcher import DebouncedFileWatcher
+from contextro_mcp.parsing.file_watcher import DebouncedFileWatcher
 
-logger = logging.getLogger("contextia.dev")
+logger = logging.getLogger("contextro.dev")
 
 WATCH_EXTENSIONS = {".py", ".toml"}
 WATCH_TOP_LEVEL_DIRS = {"scripts", "src"}
@@ -21,7 +21,7 @@ IGNORED_PARTS = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv",
 
 
 class DevServerSupervisor:
-    """Runs Contextia in a child process and restarts it on source changes."""
+    """Runs Contextro in a child process and restarts it on source changes."""
 
     def __init__(
         self,
@@ -71,8 +71,8 @@ class DevServerSupervisor:
         return any(part in IGNORED_PARTS for part in relative.parts)
 
     async def _start_child(self, *, reason: str) -> None:
-        command = [sys.executable, "-m", "contextia_mcp.server"]
-        logger.info("Starting Contextia dev server (%s)", reason)
+        command = [sys.executable, "-m", "contextro_mcp.server"]
+        logger.info("Starting Contextro dev server (%s)", reason)
         self._process = await asyncio.create_subprocess_exec(
             *command,
             cwd=str(self.project_root),
@@ -89,7 +89,7 @@ class DevServerSupervisor:
             if process is not self._process:
                 return
             self._process = None
-            logger.warning("Contextia dev server exited with code %s; restarting", returncode)
+            logger.warning("Contextro dev server exited with code %s; restarting", returncode)
             await asyncio.sleep(1.0)
             if not self._shutdown_event.is_set():
                 await self._start_child(reason="crash recovery")
@@ -100,12 +100,12 @@ class DevServerSupervisor:
         if process is None or process.returncode is not None:
             return
 
-        logger.info("Stopping Contextia dev server")
+        logger.info("Stopping Contextro dev server")
         process.terminate()
         try:
             await asyncio.wait_for(process.wait(), timeout=10.0)
         except asyncio.TimeoutError:
-            logger.warning("Contextia dev server did not stop in time; killing it")
+            logger.warning("Contextro dev server did not stop in time; killing it")
             process.kill()
             await process.wait()
 
@@ -114,7 +114,7 @@ class DevServerSupervisor:
             if self._shutdown_event.is_set():
                 return
 
-            logger.info("Source change detected; reloading Contextia dev server")
+            logger.info("Source change detected; reloading Contextro dev server")
             await self._stop_child()
             if not self._shutdown_event.is_set():
                 await self._start_child(reason="source reload")
@@ -158,12 +158,12 @@ def _env_float(name: str, default: float) -> float:
 
 
 async def _async_main() -> None:
-    project_root = Path(os.environ.get("CONTEXTIA_DEV_PROJECT_ROOT", _default_project_root()))
-    watch_root = Path(os.environ.get("CONTEXTIA_DEV_WATCH_ROOT", project_root))
+    project_root = Path(os.environ.get("CONTEXTRO_DEV_PROJECT_ROOT", _default_project_root()))
+    watch_root = Path(os.environ.get("CONTEXTRO_DEV_WATCH_ROOT", project_root))
     supervisor = DevServerSupervisor(
         project_root=project_root.resolve(),
         watch_root=watch_root.resolve(),
-        debounce_seconds=_env_float("CONTEXTIA_DEV_DEBOUNCE_SECONDS", 1.0),
+        debounce_seconds=_env_float("CONTEXTRO_DEV_DEBOUNCE_SECONDS", 1.0),
     )
     await supervisor.run()
 
@@ -171,7 +171,7 @@ async def _async_main() -> None:
 def main() -> None:
     log_level = getattr(
         logging,
-        os.environ.get("CONTEXTIA_DEV_LOG_LEVEL", "INFO").upper(),
+        os.environ.get("CONTEXTRO_DEV_LOG_LEVEL", "INFO").upper(),
         logging.INFO,
     )
     logging.basicConfig(
