@@ -6,37 +6,37 @@
 
 ```bash
 # Install from PyPI
-pip install contextia
+pip install contextro
 
 # Optional: with FlashRank reranker for better search quality
-pip install contextia[reranker]
+pip install contextro[reranker]
 
 # Optional: with GPU (CUDA) support
-pip install contextia[gpu]
+pip install contextro[gpu]
 ```
 
 Or install from source for development:
 
 ```bash
-git clone https://github.com/jassskalkat/Contextia.git
-cd Contextia
+git clone https://github.com/jassskalkat/Contextro.git
+cd Contextro
 pip install -e ".[dev]"
 ```
 
 ### Running the Server
 
 ```bash
-contextia
+contextro
 ```
 
-The server starts on stdio (the default MCP transport). Configure your MCP client to connect to `contextia`.
+The server starts on stdio (the default MCP transport). Configure your MCP client to connect to `contextro`.
 
 ### MCP Client Configuration
 
 **Claude Code:**
 
 ```bash
-claude mcp add contextia -- contextia
+claude mcp add contextro -- contextro
 ```
 
 **Claude Desktop** (add to `~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -44,8 +44,8 @@ claude mcp add contextia -- contextia
 ```json
 {
   "mcpServers": {
-    "contextia": {
-      "command": "contextia",
+    "contextro": {
+      "command": "contextro",
       "args": []
     }
   }
@@ -56,8 +56,8 @@ claude mcp add contextia -- contextia
 
 ```json
 {
-  "contextia": {
-    "command": "contextia",
+  "contextro": {
+    "command": "contextro",
     "transport": "stdio"
   }
 }
@@ -245,12 +245,12 @@ export CTX_LOG_LEVEL=INFO              # DEBUG, INFO, WARNING, ERROR
 export CTX_LOG_FORMAT=json             # text or json (json for production)
 
 # Storage
-export CTX_STORAGE_DIR=.contextia          # Where indexes are stored
+export CTX_STORAGE_DIR=.contextro          # Where indexes are stored
 ```
 
 ### Embedding Models
 
-Contextia supports two embedding models. Only registered model names are accepted; custom model names raise a `ConfigurationError`.
+Contextro supports two embedding models. Only registered model names are accepted; custom model names raise a `ConfigurationError`.
 
 | Model | HuggingFace ID | Dims | Code-specific? | Notes |
 |-------|---------------|------|:-:|---|
