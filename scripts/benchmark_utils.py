@@ -1,4 +1,4 @@
-"""Shared helpers for Contextia benchmark scripts."""
+"""Shared helpers for Contextro benchmark scripts."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def estimate_tokens(obj: object) -> int:
 
 def estimate_tokens_toon(obj: object) -> int:
     """Estimate token count using TOON encoding."""
-    from contextia_mcp.formatting.toon_encoder import toon_encode
+    from contextro_mcp.formatting.toon_encoder import toon_encode
 
     return len(toon_encode(obj)) // CHARS_PER_TOKEN
 
@@ -31,9 +31,7 @@ def create_mock_embedding_service(dims: int = 384) -> MagicMock:
     """Create a deterministic mock embedding service for benchmarks."""
     svc = MagicMock()
     svc.embed.return_value = [0.1] * dims
-    svc.embed_batch.side_effect = lambda texts, **kwargs: [
-        [0.1] * dims for _ in texts
-    ]
+    svc.embed_batch.side_effect = lambda texts, **kwargs: [[0.1] * dims for _ in texts]
     return svc
 
 
@@ -89,10 +87,10 @@ def benchmark_session(
 ):
     """Create a patched MCP session suitable for lightweight benchmarks."""
 
-    import contextia_mcp.indexing.pipeline as pipeline_module
-    import contextia_mcp.server as server_module
-    from contextia_mcp.config import reset_settings
-    from contextia_mcp.state import get_state, reset_state
+    import contextro_mcp.indexing.pipeline as pipeline_module
+    import contextro_mcp.server as server_module
+    from contextro_mcp.config import reset_settings
+    from contextro_mcp.state import get_state, reset_state
 
     storage_dir.mkdir(parents=True, exist_ok=True)
     mock_svc = create_mock_embedding_service(dims)
@@ -103,10 +101,13 @@ def benchmark_session(
     if env_overrides:
         env.update(env_overrides)
 
-    with patch.object(pipeline_module, "get_embedding_service", return_value=mock_svc), patch.dict(
-        os.environ,
-        env,
-        clear=False,
+    with (
+        patch.object(pipeline_module, "get_embedding_service", return_value=mock_svc),
+        patch.dict(
+            os.environ,
+            env,
+            clear=False,
+        ),
     ):
         reset_settings()
         reset_state()
