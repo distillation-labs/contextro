@@ -1,4 +1,10 @@
-"""Search response assembly and sandbox policy helpers."""
+"""Response assembly and sandbox policy helpers.
+
+Provides progressive disclosure for all tools: compact summaries inline,
+full content available on demand via retrieve(). Inspired by Cursor's
+"dynamic context discovery" pattern (46.9% token reduction in A/B test)
+and Anthropic's principle of "smallest possible set of high-signal tokens".
+"""
 
 from __future__ import annotations
 
@@ -9,8 +15,104 @@ from typing import Any
 from contextia_mcp.engines.output_sandbox import OutputSandbox
 
 
-def _estimate_tokens(payload: dict[str, Any]) -> int:
+def _estimate_tokens(payload: dict[str, Any] | list | str) -> int:
+    if isinstance(payload, str):
+        return len(payload) // 4
     return len(json.dumps(payload, default=str)) // 4
+
+
+# ---------------------------------------------------------------------------
+# Universal progressive disclosure for all tools
+# ---------------------------------------------------------------------------
+
+
+class ToolResponsePolicy:
+    """Applies progressive disclosure to any tool response.
+
+    If the response exceeds the token threshold, stores the full response
+    in the sandbox and returns a compact preview with a sandbox_ref.
+    """
+
+    def __init__(
+        self,
+        *,
+        output_sandbox: OutputSandbox,
+        threshold_tokens: int = 1200,
+    ):
+        self._sandbox = output_sandbox
+        self._threshold = threshold_tokens
+
+    def apply(
+        self,
+        response: dict[str, Any],
+        *,
+        tool_name: str = "",
+        preview_keys: list[str] | None = None,
+        max_list_items: int = 5,
+    ) -> dict[str, Any]:
+        """Apply progressive disclosure if response exceeds threshold.
+
+        Args:
+            response: The full tool response dict.
+            tool_name: Name of the tool (for metadata).
+            preview_keys: Keys to always include in preview. If None, uses
+                heuristics to pick summary-level keys.
+            max_list_items: Max items to keep in list-valued preview fields.
+
+        Returns:
+            Either the original response (if small enough) or a compact
+            preview with sandbox_ref for full retrieval.
+        """
+        tokens = _estimate_tokens(response)
+        if tokens <= self._threshold:
+            return response
+
+        # Store full response in sandbox
+        payload = json.dumps(response, indent=2, default=str)
+        ref_id = self._sandbox.store(payload, metadata={"tool": tool_name})
+
+        # Build compact preview
+        preview = self._build_preview(response, preview_keys, max_list_items)
+        preview["sandbox_ref"] = ref_id
+        preview["full_tokens"] = tokens
+        preview["hint"] = "Call retrieve() with sandbox_ref for full details."
+        return preview
+
+    def _build_preview(
+        self,
+        response: dict[str, Any],
+        preview_keys: list[str] | None,
+        max_list_items: int,
+    ) -> dict[str, Any]:
+        """Extract a compact preview from the full response."""
+        preview: dict[str, Any] = {}
+
+        # Always keep scalar/small fields and error fields
+        always_keep = {"error", "symbol", "total", "total_impacted", "confidence",
+                       "query", "max_depth", "name", "file", "line", "type"}
+        if preview_keys:
+            always_keep.update(preview_keys)
+
+        for key, value in response.items():
+            if key in always_keep:
+                preview[key] = value
+            elif isinstance(value, list):
+                # Truncate lists to max_list_items
+                if len(value) <= max_list_items:
+                    preview[key] = value
+                else:
+                    preview[key] = value[:max_list_items]
+                    preview[f"{key}_total"] = len(value)
+            elif isinstance(value, dict):
+                # Keep dicts only if small
+                if _estimate_tokens(value) <= 200:
+                    preview[key] = value
+                else:
+                    preview[f"{key}_summary"] = f"{len(value)} entries"
+            else:
+                preview[key] = value
+
+        return preview
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +275,16 @@ class SearchResponsePolicy:
             entry = dict(result)
             if index > 0 and entry.get("code"):
                 code = entry["code"]
+                # Try AST-aware compression for preview snippets
+                if len(code) > code_chars and len(code) > 300:
+                    try:
+                        from contextia_mcp.execution.ast_compression import compress_snippet
+                        lang = entry.get("language", "python")
+                        compressed = compress_snippet(code, lang)
+                        if len(compressed) < len(code) * 0.8:
+                            code = compressed
+                    except Exception:
+                        pass
                 entry["code"] = code[:code_chars] + ("…" if len(code) > code_chars else "")
             preview.append(entry)
 
