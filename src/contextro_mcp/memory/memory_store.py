@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import lancedb
 import pyarrow as pa
+
 from contextro_mcp.core.models import Memory, MemoryType
 from contextro_mcp.indexing.embedding_service import EmbeddingService
 

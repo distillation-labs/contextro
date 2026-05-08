@@ -95,14 +95,16 @@ class SearchExecutionEngine:
                 return cached
 
         filters = self._search_filters(options)
+        route = classify_query(options.query) if options.mode == "hybrid" else "hybrid"
         ranked_lists, engines_used = self._collect_ranked_lists(
             options,
             limit=limit,
             filters=filters,
             query_embedding=query_embedding,
+            route=route,
         )
 
-        results = self._fuse_results(ranked_lists)
+        results = self._fuse_results(ranked_lists, route=route)
         self._annotate_match_sources(results)
         results = self._rerank_results(options, results, limit)
         results = self._filter_relevance(results)
@@ -114,11 +116,18 @@ class SearchExecutionEngine:
         results = self._apply_bookend_ordering(results)
 
         confidence = self._calculate_confidence(results)
+        display_results, adaptive_applied = self._apply_adaptive_result_count(
+            options,
+            results,
+            confidence,
+        )
         response = self._response_policy.build(
             query=options.query,
-            results=results,
+            results=display_results,
+            full_results=results,
             confidence=confidence,
             context_budget=options.context_budget,
+            adaptive_applied=adaptive_applied,
         )
 
         self.runtime.query_cache.put(
@@ -127,7 +136,10 @@ class SearchExecutionEngine:
             query_embedding=query_embedding,
             namespace=cache_namespace,
         )
-        self.runtime.session_tracker.track_search(options.query, response["total"])
+        self.runtime.session_tracker.track_search(
+            options.query,
+            response.get("full_total", response["total"]),
+        )
         return response
 
     @staticmethod
@@ -164,16 +176,18 @@ class SearchExecutionEngine:
         limit: int,
         filters: dict[str, str],
         query_embedding: list[float] | None,
+        route: str,
     ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
         ranked_lists: dict[str, list[dict[str, Any]]] = {}
         engines_used: list[str] = []
         overfetch = limit * 2
 
-        # Route query to skip unnecessary retrievers
-        route = classify_query(options.query) if options.mode == "hybrid" else "hybrid"
+        # Route query to skip unnecessary retrievers.
+        # Natural-language queries still benefit from keyword retrieval, but
+        # graph-centrality matches tend to add noise for prose-like searches.
         use_vector = options.mode in ("hybrid", "vector") and route != "symbol"
-        use_bm25 = options.mode in ("hybrid", "bm25") and route != "natural"
-        use_graph = options.mode == "hybrid"
+        use_bm25 = options.mode in ("hybrid", "bm25")
+        use_graph = options.mode == "hybrid" and route != "natural"
 
         if use_vector and self.runtime.vector_engine:
             try:
@@ -218,14 +232,10 @@ class SearchExecutionEngine:
 
         return ranked_lists, engines_used
 
-    def _fuse_results(self, ranked_lists: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    def _fuse_results(self, ranked_lists: dict[str, list[dict[str, Any]]], *, route: str) -> list[dict[str, Any]]:
         if len(ranked_lists) > 1:
             fusion = ReciprocalRankFusion(
-                weights={
-                    "vector": self.settings.fusion_weight_vector,
-                    "bm25": self.settings.fusion_weight_bm25,
-                    "graph": self.settings.fusion_weight_graph,
-                }
+                weights=self._fusion_weights(route)
             )
             return fusion.fuse(ranked_lists)
 
@@ -233,6 +243,19 @@ class SearchExecutionEngine:
             return list(ranked_lists.values())[0]
 
         return []
+
+    def _fusion_weights(self, route: str) -> dict[str, float]:
+        weights = {
+            "vector": self.settings.fusion_weight_vector,
+            "bm25": self.settings.fusion_weight_bm25,
+            "graph": self.settings.fusion_weight_graph,
+        }
+        if route == "natural":
+            weights.update({"vector": 0.35, "bm25": 0.65, "graph": 0.0})
+        elif route == "symbol":
+            weights.update({"vector": 0.0, "bm25": 0.7, "graph": 0.3})
+        total = sum(weights.values()) or 1.0
+        return {engine: weight / total for engine, weight in weights.items()}
 
     @staticmethod
     def _annotate_match_sources(results: list[dict[str, Any]]) -> None:
@@ -249,7 +272,7 @@ class SearchExecutionEngine:
         results: list[dict[str, Any]],
         limit: int,
     ) -> list[dict[str, Any]]:
-        if not options.rerank or not results:
+        if not options.rerank or not results or len(results) <= min(limit, 2):
             return results[:limit]
 
         try:
@@ -444,3 +467,33 @@ class SearchExecutionEngine:
         if top >= 0.5 or len(results) >= 3:
             return "medium"
         return "low"
+
+    def _apply_adaptive_result_count(
+        self,
+        options: SearchExecutionOptions,
+        results: list[dict[str, Any]],
+        confidence: str,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        if (
+            not getattr(self.settings, "search_adaptive_result_count_enabled", True)
+            or not results
+            or len(results) <= 1
+        ):
+            return results, False
+
+        adaptive_limit = options.limit
+        if confidence == "high":
+            adaptive_limit = min(
+                adaptive_limit,
+                max(1, int(getattr(self.settings, "search_adaptive_high_confidence_limit", 3))),
+            )
+        elif confidence == "medium":
+            adaptive_limit = min(
+                adaptive_limit,
+                max(2, int(getattr(self.settings, "search_adaptive_medium_confidence_limit", 6))),
+            )
+
+        if adaptive_limit >= len(results):
+            return results, False
+
+        return results[:adaptive_limit], True

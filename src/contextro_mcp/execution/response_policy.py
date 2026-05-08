@@ -15,10 +15,29 @@ from typing import Any
 from contextro_mcp.engines.output_sandbox import OutputSandbox
 
 
-def _estimate_tokens(payload: dict[str, Any] | list | str) -> int:
+def _serialize_payload(payload: dict[str, Any] | list | str, *, pretty: bool = False) -> str:
     if isinstance(payload, str):
-        return len(payload) // 4
-    return len(json.dumps(payload, default=str)) // 4
+        return payload
+    if pretty:
+        return json.dumps(payload, indent=2, default=str)
+    return json.dumps(payload, default=str, separators=(",", ":"))
+
+
+def _estimate_tokens(payload: dict[str, Any] | list | str) -> int:
+    return len(_serialize_payload(payload)) // 4
+
+
+_PREVIEW_STRING_CHARS = 280
+_PREVIEW_NESTED_DICT_ITEMS = 6
+_PREVIEW_NESTED_LIST_ITEMS = 3
+
+
+def _truncate_string(
+    value: str, *, max_chars: int = _PREVIEW_STRING_CHARS
+) -> tuple[str, int | None]:
+    if len(value) <= max_chars:
+        return value, None
+    return value[:max_chars] + "…", len(value)
 
 
 # ---------------------------------------------------------------------------
@@ -63,16 +82,20 @@ class ToolResponsePolicy:
             Either the original response (if small enough) or a compact
             preview with sandbox_ref for full retrieval.
         """
-        tokens = _estimate_tokens(response)
+        payload = _serialize_payload(response)
+        tokens = len(payload) // 4
         if tokens <= self._threshold:
             return response
 
         # Store full response in sandbox
-        payload = json.dumps(response, indent=2, default=str)
-        ref_id = self._sandbox.store(payload, metadata={"tool": tool_name})
+        ref_id = self._sandbox.store(
+            _serialize_payload(response, pretty=True),
+            metadata={"tool": tool_name},
+        )
 
         # Build compact preview
         preview = self._build_preview(response, preview_keys, max_list_items)
+        preview["sandboxed"] = True
         preview["sandbox_ref"] = ref_id
         preview["full_tokens"] = tokens
         preview["hint"] = "Call retrieve() with sandbox_ref for full details."
@@ -105,25 +128,75 @@ class ToolResponsePolicy:
             always_keep.update(preview_keys)
 
         for key, value in response.items():
-            if key in always_keep:
-                preview[key] = value
-            elif isinstance(value, list):
-                # Truncate lists to max_list_items
-                if len(value) <= max_list_items:
-                    preview[key] = value
-                else:
-                    preview[key] = value[:max_list_items]
-                    preview[f"{key}_total"] = len(value)
-            elif isinstance(value, dict):
-                # Keep dicts only if small
-                if _estimate_tokens(value) <= 200:
-                    preview[key] = value
-                else:
-                    preview[f"{key}_summary"] = f"{len(value)} entries"
-            else:
-                preview[key] = value
+            self._add_preview_field(
+                preview,
+                key,
+                value,
+                force_include=key in always_keep,
+                max_list_items=max_list_items,
+            )
 
         return preview
+
+    def _add_preview_field(
+        self,
+        preview: dict[str, Any],
+        key: str,
+        value: Any,
+        *,
+        force_include: bool,
+        max_list_items: int,
+    ) -> None:
+        if isinstance(value, list):
+            preview[key] = [
+                self._preview_value(item, max_list_items=max_list_items, depth=1)
+                for item in value[:max_list_items]
+            ]
+            if len(value) > max_list_items:
+                preview[f"{key}_total"] = len(value)
+            return
+
+        if isinstance(value, dict):
+            if force_include or _estimate_tokens(value) <= 200:
+                preview[key] = self._preview_value(value, max_list_items=max_list_items, depth=1)
+            else:
+                preview[f"{key}_summary"] = f"{len(value)} entries"
+            return
+
+        if isinstance(value, str):
+            preview[key], total_chars = _truncate_string(value)
+            if total_chars is not None:
+                preview[f"{key}_chars"] = total_chars
+            return
+
+        preview[key] = value
+
+    def _preview_value(self, value: Any, *, max_list_items: int, depth: int) -> Any:
+        if isinstance(value, str):
+            truncated, _ = _truncate_string(value)
+            return truncated
+
+        if isinstance(value, list):
+            nested_limit = max(1, min(max_list_items, _PREVIEW_NESTED_LIST_ITEMS))
+            return [
+                self._preview_value(item, max_list_items=max_list_items, depth=depth + 1)
+                for item in value[:nested_limit]
+            ]
+
+        if isinstance(value, dict):
+            if depth >= 2 and _estimate_tokens(value) > 120:
+                return f"{len(value)} entries"
+
+            items = list(value.items())
+            limit = len(items) if depth == 0 else min(len(items), _PREVIEW_NESTED_DICT_ITEMS)
+            return {
+                item_key: self._preview_value(
+                    item_value, max_list_items=max_list_items, depth=depth + 1
+                )
+                for item_key, item_value in items[:limit]
+            }
+
+        return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,10 +241,12 @@ class SearchResponsePolicy:
         *,
         query: str,
         results: list[dict[str, Any]],
+        full_results: list[dict[str, Any]] | None = None,
         confidence: str,
         context_budget: int,
+        adaptive_applied: bool = False,
     ) -> dict[str, Any]:
-        full_results = [dict(result) for result in results]
+        all_results = [dict(result) for result in (full_results or results)]
         response = {
             "query": query,
             "total": len(results),
@@ -184,8 +259,9 @@ class SearchResponsePolicy:
         return self._maybe_sandbox_response(
             query=query,
             response=response,
-            full_results=full_results,
+            full_results=all_results,
             budget_applied=budget_applied,
+            adaptive_applied=adaptive_applied,
         )
 
     @staticmethod
@@ -222,24 +298,24 @@ class SearchResponsePolicy:
         response: dict[str, Any],
         full_results: list[dict[str, Any]],
         budget_applied: bool,
+        adaptive_applied: bool,
     ) -> dict[str, Any]:
         if not full_results:
             return response
 
-        should_sandbox = budget_applied or (
+        should_sandbox = adaptive_applied or budget_applied or (
             response.get("tokens", 0) > self._settings.sandbox_threshold_tokens
         )
         if not should_sandbox:
             return response
 
-        payload = json.dumps(
+        payload = _serialize_payload(
             {
                 "query": query,
                 "confidence": response.get("confidence", "low"),
                 "results": full_results,
             },
-            indent=2,
-            default=str,
+            pretty=True,
         )
         sandbox_ref = self._output_sandbox.store(
             payload,
@@ -247,23 +323,44 @@ class SearchResponsePolicy:
         )
 
         preview_limit = len(response["results"]) if budget_applied else None
-        preview_results = self._preview_results(full_results, limit=preview_limit)
+        preview_source = (
+            response["results"] if (budget_applied or adaptive_applied) else full_results
+        )
+        preview_results = self._preview_results(preview_source, limit=preview_limit)
         preview = dict(response)
         preview["results"] = preview_results
         preview["total"] = len(preview_results)
         preview["full_total"] = len(full_results)
         preview["sandbox_ref"] = sandbox_ref
         preview["sandboxed"] = True
-        preview["hint"] = (
-            "Call retrieve() with sandbox_ref to inspect the full result set."
-            if not budget_applied
-            else (
-                "Inline results were budget-trimmed. "
-                "Call retrieve() with sandbox_ref for the full set."
-            )
+        if adaptive_applied:
+            preview["adaptive_limit"] = len(response["results"])
+            preview["adaptive_applied"] = True
+        preview["hint"] = self._sandbox_hint(
+            adaptive_applied=adaptive_applied,
+            budget_applied=budget_applied,
         )
         preview["tokens"] = _estimate_tokens(preview)
         return preview
+
+    @staticmethod
+    def _sandbox_hint(*, adaptive_applied: bool, budget_applied: bool) -> str:
+        if adaptive_applied and budget_applied:
+            return (
+                "Inline results were adaptively trimmed and budget-trimmed. "
+                "Call retrieve() with sandbox_ref for the full set."
+            )
+        if adaptive_applied:
+            return (
+                "Inline results were adaptively trimmed for a focused answer. "
+                "Call retrieve() with sandbox_ref for the full set."
+            )
+        if budget_applied:
+            return (
+                "Inline results were budget-trimmed. "
+                "Call retrieve() with sandbox_ref for the full set."
+            )
+        return "Call retrieve() with sandbox_ref to inspect the full result set."
 
     def _preview_results(
         self,

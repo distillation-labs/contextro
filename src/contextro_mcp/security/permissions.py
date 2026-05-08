@@ -1,9 +1,6 @@
-"""Tool permission model for Contextro.
+"""Tool permission model for Contextro."""
 
-Classifies tools into READ, MUTATE, WRITE categories and enforces
-access control based on the configured permission policy.
-"""
-
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -17,39 +14,82 @@ class ToolCategory(Enum):
     WRITE = "write"
 
 
-# Static registry mapping tool name → category
-TOOL_PERMISSIONS: dict[str, ToolCategory] = {
-    # Read-only tools (query, no side effects)
-    "status": ToolCategory.READ,
-    "search": ToolCategory.READ,
-    "find_symbol": ToolCategory.READ,
-    "find_callers": ToolCategory.READ,
-    "find_callees": ToolCategory.READ,
-    "explain": ToolCategory.READ,
-    "overview": ToolCategory.READ,
-    "architecture": ToolCategory.READ,
-    "recall": ToolCategory.READ,
-    "health": ToolCategory.READ,
-    "session_snapshot": ToolCategory.READ,
-    "retrieve": ToolCategory.READ,
-    "introspect": ToolCategory.READ,
-    # Mutating tools (triggers computation, disk writes)
-    "index": ToolCategory.MUTATE,
-    "analyze": ToolCategory.MUTATE,
-    "impact": ToolCategory.MUTATE,
-    "code": ToolCategory.MUTATE,
-    "knowledge": ToolCategory.MUTATE,
-    # Write tools (modifies memory store)
-    "remember": ToolCategory.WRITE,
-    "forget": ToolCategory.WRITE,
-    # Git / Commit History tools
-    "commit_history": ToolCategory.READ,
-    "commit_search": ToolCategory.READ,
-    # Cross-Repo tools
-    "repo_add": ToolCategory.MUTATE,
-    "repo_remove": ToolCategory.MUTATE,
-    "repo_status": ToolCategory.READ,
-}
+READ_TOOLS = frozenset(
+    {
+        "status",
+        "search",
+        "find_symbol",
+        "find_callers",
+        "find_callees",
+        "explain",
+        "overview",
+        "architecture",
+        "recall",
+        "health",
+        "session_snapshot",
+        "retrieve",
+        "introspect",
+        "focus",
+        "restore",
+        "audit",
+        "dead_code",
+        "circular_dependencies",
+        "test_coverage_map",
+        "commit_history",
+        "commit_search",
+        "repo_status",
+    }
+)
+
+MUTATE_TOOLS = frozenset(
+    {
+        "index",
+        "analyze",
+        "impact",
+        "code",
+        "knowledge",
+        "sidecar_export",
+        "skill_prompt",
+        "docs_bundle",
+        "repo_add",
+        "repo_remove",
+    }
+)
+
+WRITE_TOOLS = frozenset({"remember", "forget", "compact"})
+
+
+def register_tool_permission(
+    registry: dict[str, ToolCategory],
+    tool_name: str,
+    category: ToolCategory,
+) -> None:
+    """Register a single tool category and reject accidental duplicates."""
+    if tool_name in registry and registry[tool_name] != category:
+        raise ValueError(f"Tool '{tool_name}' already registered as {registry[tool_name].value}.")
+    registry[tool_name] = category
+
+
+def register_tool_permissions(
+    registry: dict[str, ToolCategory],
+    tool_names: Iterable[str],
+    category: ToolCategory,
+) -> dict[str, ToolCategory]:
+    """Register many tools in one category."""
+    for tool_name in sorted(tool_names):
+        register_tool_permission(registry, tool_name, category)
+    return registry
+
+
+def _build_tool_permissions() -> dict[str, ToolCategory]:
+    permissions: dict[str, ToolCategory] = {}
+    register_tool_permissions(permissions, READ_TOOLS, ToolCategory.READ)
+    register_tool_permissions(permissions, MUTATE_TOOLS, ToolCategory.MUTATE)
+    register_tool_permissions(permissions, WRITE_TOOLS, ToolCategory.WRITE)
+    return permissions
+
+
+TOOL_PERMISSIONS: dict[str, ToolCategory] = _build_tool_permissions()
 
 
 @dataclass(frozen=True)
@@ -101,6 +141,6 @@ def policy_from_level(level: str) -> PermissionPolicy:
     Args:
         level: "read" for read-only, "full" for all access.
     """
-    if level == "full":
+    if level.strip().lower() == "full":
         return FULL_ACCESS_POLICY
     return DEFAULT_POLICY

@@ -10,6 +10,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 import lancedb
+
 from contextro_mcp.core.interfaces import IEngine
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ class LanceDBBM25Engine(IEngine):
             List of result dicts with score field added.
         """
         table = self._get_table()
-        if table is None or table.count_rows() == 0:
+        if table is None:
             return []
 
         # Ensure FTS index exists before searching

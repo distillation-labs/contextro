@@ -206,6 +206,19 @@ class EmbeddingService:
 
             self._is_model2vec = False
 
+            # Check trust_remote_code gate BEFORE importing sentence-transformers
+            # so ConfigurationError is raised even when the package isn't installed.
+            if self.config.get("trust_remote_code"):
+                from contextro_mcp.config import get_settings
+                from contextro_mcp.core.exceptions import ConfigurationError
+
+                if not get_settings().trust_remote_code:
+                    raise ConfigurationError(
+                        f"Model '{self.model_name}' requires trust_remote_code=True, "
+                        f"which allows arbitrary code execution from HuggingFace. "
+                        f"Set CTX_TRUST_REMOTE_CODE=true to accept this risk."
+                    )
+
             try:
                 from sentence_transformers import SentenceTransformer
             except ImportError:
@@ -217,15 +230,6 @@ class EmbeddingService:
             if self.cache_dir:
                 kwargs["cache_folder"] = self.cache_dir
             if self.config.get("trust_remote_code"):
-                from contextro_mcp.config import get_settings
-                from contextro_mcp.core.exceptions import ConfigurationError
-
-                if not get_settings().trust_remote_code:
-                    raise ConfigurationError(
-                        f"Model '{self.model_name}' requires trust_remote_code=True, "
-                        f"which allows arbitrary code execution from HuggingFace. "
-                        f"Set CTX_TRUST_REMOTE_CODE=true to accept this risk."
-                    )
                 kwargs["trust_remote_code"] = True
 
             backend = self.config.get("backend")

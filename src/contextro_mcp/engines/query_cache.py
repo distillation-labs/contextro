@@ -9,9 +9,29 @@ Typical hit rate: 20-40% in interactive sessions where users refine queries.
 
 from __future__ import annotations
 
+import re
 import time
 from collections import OrderedDict
 from typing import Any
+
+TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+CAMEL_BOUNDARY_RE = re.compile(r"([a-z0-9])([A-Z])")
+STOPWORD_TOKENS = {
+    "a",
+    "an",
+    "and",
+    "for",
+    "from",
+    "how",
+    "into",
+    "of",
+    "or",
+    "overall",
+    "the",
+    "to",
+    "using",
+    "with",
+}
 
 
 class QueryCache:
@@ -81,13 +101,27 @@ class QueryCache:
         if query_embedding is not None:
             best_match = None
             best_sim = 0.0
+            query_norm = self._vector_norm(query_embedding)
+            query_bucket = self._semantic_bucket(query)
+            candidate_keys = []
 
             for key, entry in self._cache.items():
                 if entry.get("namespace", "") != namespace:
                     continue
                 if entry.get("embedding") is None:
                     continue
-                sim = self._cosine_similarity(query_embedding, entry["embedding"])
+                entry_bucket = entry.get("semantic_bucket") or frozenset()
+                if self._semantic_overlap(query_bucket, entry_bucket) >= 1.0:
+                    candidate_keys.append(key)
+
+            for key in candidate_keys:
+                entry = self._cache[key]
+                sim = self._cosine_similarity(
+                    query_embedding,
+                    entry["embedding"],
+                    norm_a=query_norm,
+                    norm_b=entry.get("embedding_norm"),
+                )
                 if sim > best_sim:
                     best_sim = sim
                     best_match = key
@@ -122,6 +156,8 @@ class QueryCache:
             self._cache[cache_key] = {
                 "result": result,
                 "embedding": query_embedding,
+                "embedding_norm": self._vector_norm(query_embedding) if query_embedding else None,
+                "semantic_bucket": self._semantic_bucket(query),
                 "namespace": namespace,
                 "timestamp": time.time(),
             }
@@ -131,6 +167,8 @@ class QueryCache:
             self._cache[cache_key] = {
                 "result": result,
                 "embedding": query_embedding,
+                "embedding_norm": self._vector_norm(query_embedding) if query_embedding else None,
+                "semantic_bucket": self._semantic_bucket(query),
                 "namespace": namespace,
                 "timestamp": time.time(),
             }
@@ -151,13 +189,50 @@ class QueryCache:
         return self.hits / total if total > 0 else 0.0
 
     @staticmethod
-    def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    def _cosine_similarity(
+        a: list[float],
+        b: list[float],
+        *,
+        norm_a: float | None = None,
+        norm_b: float | None = None,
+    ) -> float:
         """Compute cosine similarity between two vectors."""
         if len(a) != len(b):
             return 0.0
         dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
+        norm_a = norm_a if norm_a is not None else QueryCache._vector_norm(a)
+        norm_b = norm_b if norm_b is not None else QueryCache._vector_norm(b)
         if norm_a == 0 or norm_b == 0:
             return 0.0
         return dot / (norm_a * norm_b)
+
+    @staticmethod
+    def _vector_norm(vector: list[float] | None) -> float | None:
+        if vector is None:
+            return None
+        return sum(x * x for x in vector) ** 0.5
+
+    @staticmethod
+    def _semantic_bucket(query: str) -> frozenset[str]:
+        normalized = CAMEL_BOUNDARY_RE.sub(r"\1 \2", query.replace("_", " "))
+        ordered_tokens: list[str] = []
+        for token in TOKEN_RE.findall(normalized):
+            lowered = token.lower()
+            if (
+                len(lowered) <= 1
+                or lowered.isdigit()
+                or lowered in STOPWORD_TOKENS
+                or lowered in ordered_tokens
+            ):
+                continue
+            ordered_tokens.append(lowered)
+            if len(ordered_tokens) >= 4:
+                break
+        return frozenset(ordered_tokens)
+
+    @staticmethod
+    def _semantic_overlap(left: frozenset[str], right: frozenset[str]) -> float:
+        if not left or not right:
+            return 0.0
+        shared = len(left & right)
+        return shared / min(len(left), len(right))

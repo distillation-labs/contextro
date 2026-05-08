@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from tree_sitter_languages import get_parser
+
 from contextro_mcp.core.interfaces import IParser
 from contextro_mcp.core.models import ParsedFile, Symbol, SymbolType
 from contextro_mcp.parsing.language_registry import (
@@ -17,7 +19,6 @@ from contextro_mcp.parsing.language_registry import (
     get_language_for_file,
     get_treesitter_extensions,
 )
-from tree_sitter_languages import get_parser
 
 logger = logging.getLogger(__name__)
 

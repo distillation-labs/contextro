@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import lancedb
 import pyarrow as pa
+
 from contextro_mcp.core.interfaces import IEngine
 from contextro_mcp.indexing.embedding_service import EmbeddingService
 
@@ -105,8 +106,6 @@ class LanceDBVectorEngine(IEngine):
             List of result dicts with score field added.
         """
         table = self._get_or_create_table()
-        if table.count_rows() == 0:
-            return []
 
         # Reuse pre-computed embedding if provided (avoids double embedding)
         vector = kwargs.pop("query_vector", None)

@@ -15,13 +15,19 @@ FileStateValue = str | float
 
 # Try to import the Rust extension
 try:
-    import ctx_fast
+    from contextro_mcp import ctx_fast
 
     RUST_AVAILABLE = True
     logger.debug("ctx_fast Rust extension loaded")
 except ImportError:
-    RUST_AVAILABLE = False
-    logger.debug("ctx_fast not available, using Python fallback")
+    try:
+        import ctx_fast  # type: ignore[no-redef]
+
+        RUST_AVAILABLE = True
+        logger.debug("ctx_fast Rust extension loaded")
+    except ImportError:
+        RUST_AVAILABLE = False
+        logger.debug("ctx_fast not available, using Python fallback")
 
 
 def discover_files_fast(

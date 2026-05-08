@@ -36,6 +36,7 @@ class SessionState:
     _file_watcher: Any = None
     current_branch: Optional[str] = None
     current_head: Optional[str] = None
+    _index_snapshot: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_indexed(self) -> bool:
@@ -139,11 +140,13 @@ class SessionState:
             except Exception:
                 pass
 
-            # Pre-warm search: run a dummy query so first real search doesn't timeout
-            try:
-                vector_engine.search("warmup", limit=1)
-            except Exception:
-                pass  # Non-critical — search will still work, just slower on first call
+            if settings.search_prewarm_enabled:
+                try:
+                    vector_engine.search("warmup", limit=1)
+                except Exception:
+                    pass  # Non-critical — search will still work, just slower on first call
+
+            self.capture_index_snapshot()
 
             logger.info(
                 "Auto-warm-start: restored index for %s (%d chunks, %d graph nodes)",
@@ -223,6 +226,29 @@ class SessionState:
     @property
     def shutting_down(self) -> bool:
         return self._shutting_down
+
+    @property
+    def index_snapshot(self) -> dict[str, Any]:
+        return dict(self._index_snapshot)
+
+    def capture_index_snapshot(self, *, commits_indexed: Optional[int] = None) -> dict[str, Any]:
+        """Cache lightweight index stats so status() can avoid repeated storage reads."""
+        snapshot: dict[str, Any] = {}
+        try:
+            if self._vector_engine is not None:
+                snapshot["vector_chunks"] = self._vector_engine.count()
+            if self._bm25_engine is not None:
+                snapshot["bm25_fts_ready"] = bool(
+                    getattr(self._bm25_engine, "_fts_index_created", False)
+                )
+            if self._graph_engine is not None:
+                snapshot["graph"] = self._graph_engine.get_statistics()
+            if commits_indexed is not None:
+                snapshot["commits_indexed"] = commits_indexed
+        except Exception as exc:
+            logger.debug("Failed to capture index snapshot: %s", exc)
+        self._index_snapshot = snapshot
+        return dict(snapshot)
 
     def shutdown(self) -> None:
         """Gracefully shut down: persist graph state and clean up resources."""

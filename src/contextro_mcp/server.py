@@ -1,5 +1,6 @@
 """Contextro FastMCP server with index, search, status, and graph/analysis tools."""
 
+import argparse
 import json as _json
 import logging
 import os
@@ -35,6 +36,7 @@ _pipeline_lock = threading.Lock()
 
 # Memory store initialization can happen from concurrent tool calls.
 _memory_store_lock = threading.Lock()
+_compaction_archive_lock = threading.Lock()
 
 # Background indexing state
 _index_job: dict = {}  # {"status": "indexing"|"done"|"error", "result": ..., "error": ...}
@@ -43,10 +45,11 @@ _index_job_lock = threading.Lock()
 
 def create_server():
     """Create and configure the FastMCP server."""
-    from contextro_mcp.core.graph_models import UniversalNode, UniversalRelationship
     from fastmcp import FastMCP
     from fastmcp.tools.tool import ToolResult
     from mcp.types import TextContent
+
+    from contextro_mcp.core.graph_models import UniversalNode, UniversalRelationship
 
     mcp = FastMCP("Contextro")
 
@@ -259,6 +262,30 @@ def create_server():
             state._session_tracker = SessionTracker()
         return state._session_tracker
 
+    def _warm_search_pipeline(state, settings) -> None:
+        """Load search-critical components before the first user query."""
+        if not getattr(settings, "search_prewarm_enabled", True):
+            return
+
+        try:
+            if state.vector_engine:
+                state.vector_engine.search("warmup", limit=1)
+        except Exception as exc:
+            logger.debug("Vector pre-warm failed (non-critical): %s", exc)
+
+        if not getattr(settings, "search_prewarm_reranker", True):
+            return
+
+        try:
+            from contextro_mcp.engines.reranker import FlashReranker
+
+            if not hasattr(state, "_reranker") or state._reranker is None:
+                state._reranker = FlashReranker(model_name=settings.reranker_model)
+            if state._reranker.available:
+                state._reranker._load_ranker()
+        except Exception as exc:
+            logger.debug("Reranker pre-warm failed (non-critical): %s", exc)
+
     # --- Input validation helpers ---
 
     def _strip_trailing_sep(path: str) -> str:
@@ -443,7 +470,18 @@ def create_server():
             result["return_type"] = node.return_type
         if node.parameter_types:
             result["parameter_types"] = node.parameter_types
-        return result
+        return _apply_disclosure(
+            result,
+            tool_name="overview",
+            preview_keys=[
+                "project_path",
+                "total_files",
+                "total_symbols",
+                "total_relationships",
+                "vector_chunks",
+            ],
+            max_list_items=8,
+        )
 
     def _serialize_node_compact(node: UniversalNode, codebase_path: Optional[Path] = None) -> str:
         """Ultra-compact node serialization for list contexts (callers/callees).
@@ -541,13 +579,24 @@ def create_server():
             result["hint"] = "Index job completed but state not yet loaded. Call status() again."
 
         if indexed:
+            cached_index_stats = (
+                state.index_snapshot
+                if _status_settings.status_use_cached_index_stats and hasattr(state, "index_snapshot")
+                else {}
+            )
             if not is_background_indexing:
                 if state.vector_engine:
-                    result["vector_chunks"] = state.vector_engine.count()
+                    result["vector_chunks"] = cached_index_stats.get(
+                        "vector_chunks", state.vector_engine.count()
+                    )
                 if state.bm25_engine:
-                    result["bm25_fts_ready"] = state.bm25_engine._fts_index_created
+                    result["bm25_fts_ready"] = cached_index_stats.get(
+                        "bm25_fts_ready", state.bm25_engine._fts_index_created
+                    )
                 if state.graph_engine:
-                    result["graph"] = state.graph_engine.get_statistics()
+                    result["graph"] = cached_index_stats.get(
+                        "graph", state.graph_engine.get_statistics()
+                    )
             else:
                 result.setdefault(
                     "hint",
@@ -565,6 +614,8 @@ def create_server():
                 commit_count = job_result.get("commits_indexed")
                 if commit_count is not None:
                     result["commits_indexed"] = commit_count
+                elif cached_index_stats.get("commits_indexed") is not None:
+                    result["commits_indexed"] = cached_index_stats["commits_indexed"]
                 else:
                     try:
                         from contextro_mcp.config import get_settings as _gs
@@ -759,6 +810,10 @@ def create_server():
                             index_result["realtime_watching"] = True
                         except Exception as ew:
                             logger.warning("Branch watcher failed: %s", ew)
+                _warm_search_pipeline(state, settings)
+                state.capture_index_snapshot(
+                    commits_indexed=index_result.get("commits_indexed")
+                )
                 with _index_job_lock:
                     _index_job = {"status": "done", "result": index_result}
                 _get_tracker().track_index(str(codebase_path), index_result.get("total_chunks", 0))
@@ -851,22 +906,9 @@ def create_server():
                 for vpath in validated:
                     _do_git_integration(vpath, result, index_result)
 
-                # Pre-warm search pipeline so first search call doesn't timeout
-                # (loads embedding model + reranker model during background index)
-                try:
-                    if state.vector_engine:
-                        # Warm the embedding service with a dummy query
-                        state.vector_engine.search("warmup", limit=1)
-                    # Warm the reranker
-                    from contextro_mcp.engines.reranker import FlashReranker
-
-                    if not hasattr(state, "_reranker") or state._reranker is None:
-                        state._reranker = FlashReranker(model_name=settings.reranker_model)
-                    if state._reranker.available:
-                        state._reranker._load_ranker()
-                    logger.info("Search pipeline pre-warmed")
-                except Exception as ew:
-                    logger.debug("Pre-warm failed (non-critical): %s", ew)
+                _warm_search_pipeline(state, settings)
+                state.capture_index_snapshot(commits_indexed=index_result.get("commits_indexed"))
+                logger.info("Search pipeline pre-warmed")
 
                 elapsed = round(_time.time() - _index_job.get("started_at", _time.time()), 3)
                 index_result["time_seconds"] = elapsed
@@ -1474,7 +1516,18 @@ def create_server():
         if module_summaries:
             result["top_modules"] = module_summaries[:10]
 
-        return result
+        return _apply_disclosure(
+            result,
+            tool_name="overview",
+            preview_keys=[
+                "project_path",
+                "total_files",
+                "total_symbols",
+                "total_relationships",
+                "vector_chunks",
+            ],
+            max_list_items=8,
+        )
 
     @mcp.tool(annotations={"readOnlyHint": True})
     def architecture() -> dict[str, Any]:
@@ -1632,6 +1685,215 @@ def create_server():
             preview_keys=["total_files", "total_symbols", "total_relationships"],
         )
 
+    @mcp.tool(annotations={"readOnlyHint": True})
+    def focus(
+        path: Annotated[str, "Relative or absolute file path to focus on"],
+        include_code: Annotated[
+            bool, "Include a compressed code preview for the target file (default true)"
+        ] = True,
+    ) -> dict[str, Any]:
+        """Low-token context slice for a single file."""
+        guard_err = _guard("focus")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.reports.product import build_focus_report
+
+        try:
+            result = build_focus_report(state, path, include_code=include_code)
+        except ValueError as e:
+            return {"error": str(e)}
+
+        return _apply_disclosure(
+            result,
+            tool_name="focus",
+            preview_keys=["path", "role", "symbols", "imports", "nearby_tests", "blast_radius"],
+            max_list_items=8,
+        )
+
+    @mcp.tool(annotations={"readOnlyHint": True})
+    def restore() -> dict[str, Any]:
+        """Project restore/context-bomb summary for quick repo re-entry."""
+        guard_err = _guard("restore")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.reports.product import build_restore_report
+
+        return _apply_disclosure(
+            build_restore_report(state),
+            tool_name="restore",
+            preview_keys=["project", "entry_points", "layers", "risk_summary"],
+            max_list_items=8,
+        )
+
+    @mcp.tool(annotations={"readOnlyHint": True})
+    def audit() -> dict[str, Any]:
+        """Packaged audit report combining quality, graph risk, and static analyses."""
+        guard_err = _guard("audit")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.reports.product import build_audit_report
+
+        return _apply_disclosure(
+            build_audit_report(state),
+            tool_name="audit",
+            preview_keys=["summary", "recommendations"],
+            max_list_items=8,
+        )
+
+    @mcp.tool(annotations={"readOnlyHint": True})
+    def dead_code() -> dict[str, Any]:
+        """Dedicated dead-code analysis based on entry-point reachability."""
+        guard_err = _guard("dead_code")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.reports.product import get_static_analysis_bundle
+
+        return _apply_disclosure(
+            get_static_analysis_bundle(state)["dead_code"],
+            tool_name="dead_code",
+            preview_keys=["summary", "unused_files", "unused_symbols"],
+            max_list_items=8,
+        )
+
+    @mcp.tool(annotations={"readOnlyHint": True})
+    def circular_dependencies() -> dict[str, Any]:
+        """Dedicated circular dependency analysis using SCCs."""
+        guard_err = _guard("circular_dependencies")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.reports.product import get_static_analysis_bundle
+
+        return _apply_disclosure(
+            get_static_analysis_bundle(state)["circular_dependencies"],
+            tool_name="circular_dependencies",
+            preview_keys=["summary", "cycles"],
+            max_list_items=8,
+        )
+
+    @mcp.tool(annotations={"readOnlyHint": True})
+    def test_coverage_map() -> dict[str, Any]:
+        """Dedicated static test coverage map."""
+        guard_err = _guard("test_coverage_map")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.reports.product import get_static_analysis_bundle
+
+        return _apply_disclosure(
+            get_static_analysis_bundle(state)["test_coverage_map"],
+            tool_name="test_coverage_map",
+            preview_keys=["summary", "uncovered_files", "uncovered_symbols", "note"],
+            max_list_items=8,
+        )
+
+    @mcp.tool()
+    def sidecar_export(
+        path: Annotated[str, "Optional file or directory to export sidecars for"] = "",
+        include_code: Annotated[
+            bool, "Include compressed code previews in each sidecar (default false)"
+        ] = False,
+        clean: Annotated[bool, "Remove Contextro-managed sidecars instead of generating them"] = False,
+    ) -> dict[str, Any]:
+        """Generate or clean file-adjacent `.graph.*` sidecars."""
+        guard_err = _guard("sidecar_export")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.artifacts.sidecars import clean_sidecars, export_sidecars
+
+        try:
+            if clean:
+                result = clean_sidecars(state, target_path=path or None)
+            else:
+                result = export_sidecars(state, target_path=path or None, include_code=include_code)
+            return _apply_disclosure(
+                result,
+                tool_name="sidecar_export",
+                preview_keys=["count"],
+                max_list_items=8,
+            )
+        except ValueError as e:
+            return {"error": str(e)}
+
+    @mcp.tool()
+    def skill_prompt(
+        target_path: Annotated[
+            str, "Optional file to update (e.g. CLAUDE.md, AGENTS.md, .cursorrules)"
+        ] = "",
+    ) -> dict[str, Any]:
+        """Return or write the Contextro agent bootstrap block."""
+        guard_err = _guard("skill_prompt")
+        if guard_err:
+            return guard_err
+
+        from contextro_mcp.artifacts.bootstrap import build_bootstrap_block, write_bootstrap
+
+        if target_path:
+            try:
+                result = write_bootstrap(Path(target_path))
+            except ValueError as e:
+                return {"error": str(e)}
+            return _apply_disclosure(result, tool_name="skill_prompt", preview_keys=["path", "changed"])
+        return _apply_disclosure({"content": build_bootstrap_block()}, tool_name="skill_prompt")
+
+    @mcp.tool()
+    def docs_bundle(
+        output_dir: Annotated[str, "Directory to write the docs bundle into"] = "",
+    ) -> dict[str, Any]:
+        """Write a packaged local docs bundle."""
+        guard_err = _guard("docs_bundle")
+        if guard_err:
+            return guard_err
+
+        state, err = _require_indexed()
+        if err:
+            return err
+
+        from contextro_mcp.artifacts.docs_bundle import write_docs_bundle
+
+        try:
+            return _apply_disclosure(
+                write_docs_bundle(state, output_dir or None),
+                tool_name="docs_bundle",
+                preview_keys=["output_dir"],
+                max_list_items=8,
+            )
+        except ValueError as e:
+            return {"error": str(e)}
+
     # --- Memory helpers ---
 
     def _get_memory_store():
@@ -1656,6 +1918,35 @@ def create_server():
                         vector_dims=model_config.get("dimensions", 768),
                     )
         return state.memory_store
+
+    def _get_compaction_archive():
+        """Lazily initialize the durable compaction archive."""
+        from contextro_mcp.config import get_settings
+        from contextro_mcp.indexing.embedding_service import EMBEDDING_MODELS, get_embedding_service
+        from contextro_mcp.memory.compaction_archive import CompactionArchive
+        from contextro_mcp.memory.memory_store import MemoryStore
+        from contextro_mcp.state import get_state
+
+        state = get_state()
+        if not hasattr(state, "_compaction_archive") or state._compaction_archive is None:
+            with _compaction_archive_lock:
+                if not hasattr(state, "_compaction_archive") or state._compaction_archive is None:
+                    settings = get_settings()
+                    embedding_svc = get_embedding_service(settings.embedding_model)
+                    model_config = EMBEDDING_MODELS.get(settings.embedding_model, {})
+                    archive_store = MemoryStore(
+                        db_path=str(settings.lancedb_path),
+                        embedding_service=embedding_svc,
+                        table_name="compaction_archive",
+                        vector_dims=model_config.get("dimensions", 256),
+                    )
+                    state._compaction_archive = CompactionArchive(
+                        max_entries=20,
+                        ttl=86400.0,
+                        storage_path=settings.storage_path / "compaction_archive.json",
+                        memory_store=archive_store,
+                    )
+        return state._compaction_archive
 
     @mcp.tool()
     def remember(
@@ -1717,18 +2008,21 @@ def create_server():
 
         # Search compaction archive if memory_type is 'archive'
         if memory_type == "archive":
-            from contextro_mcp.state import get_state
-
-            state = get_state()
-            if not hasattr(state, "_compaction_archive") or state._compaction_archive is None:
+            archive = _get_compaction_archive()
+            if archive.size == 0:
                 return {
                     "query": query,
                     "total": 0,
                     "results": [],
                     "hint": "No compaction archive exists yet.",
                 }
-            results = state._compaction_archive.search(query, limit=limit)
-            return {"query": query, "source": "archive", "total": len(results), "results": results}
+            results = archive.search(query, limit=limit)
+            return _apply_disclosure(
+                {"query": query, "source": "archive", "total": len(results), "results": results},
+                tool_name="recall",
+                preview_keys=["query", "source", "total"],
+                max_list_items=4,
+            )
 
         store = _get_memory_store()
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
@@ -1740,11 +2034,16 @@ def create_server():
             tags=tag_list,
         )
 
-        return {
-            "query": query,
-            "total": len(memories),
-            "memories": [m.to_dict() for m in memories],
-        }
+        return _apply_disclosure(
+            {
+                "query": query,
+                "total": len(memories),
+                "memories": [m.to_dict() for m in memories],
+            },
+            tool_name="recall",
+            preview_keys=["query", "total"],
+            max_list_items=4,
+        )
 
     @mcp.tool()
     def forget(
@@ -1846,7 +2145,12 @@ def create_server():
 
         if command == "show":
             contexts = list(state._knowledge_contexts.values())
-            return {"contexts": contexts, "total": len(contexts)}
+            return _apply_disclosure(
+                {"contexts": contexts, "total": len(contexts)},
+                tool_name="knowledge",
+                preview_keys=["total"],
+                max_list_items=8,
+            )
 
         elif command == "add":
             if not name:
@@ -1972,7 +2276,12 @@ def create_server():
             elif sort_by == "name":
                 results.sort(key=lambda x: x.get("name", ""))
 
-            return {"query": query, "total": len(results), "results": results}
+            return _apply_disclosure(
+                {"query": query, "total": len(results), "results": results},
+                tool_name="knowledge",
+                preview_keys=["query", "total"],
+                max_list_items=6,
+            )
 
         elif command == "remove":
             target_id = context_id
@@ -2084,6 +2393,9 @@ def create_server():
                     state.vector_engine = _pipeline.vector_engine
                     state.bm25_engine = _pipeline.bm25_engine
                     state.graph_engine = _pipeline.graph_engine
+                    settings = _get_settings()
+                    _warm_search_pipeline(state, settings)
+                    state.capture_index_snapshot()
                     logger.info(
                         "Auto-reindex complete: %d files, %d symbols",
                         result.total_files,
@@ -2182,11 +2494,16 @@ def create_server():
                 entry["top_files"] = short_files
             compact_commits.append(entry)
 
-        return {
-            "total": len(compact_commits),
-            "branch": branch,
-            "commits": compact_commits,
-        }
+        return _apply_disclosure(
+            {
+                "total": len(compact_commits),
+                "branch": branch,
+                "commits": compact_commits,
+            },
+            tool_name="commit_history",
+            preview_keys=["total", "branch"],
+            max_list_items=6,
+        )
 
     @mcp.tool(annotations={"readOnlyHint": True})
     def commit_search(
@@ -2237,11 +2554,16 @@ def create_server():
             repo_path=repo_path,
         )
 
-        return {
-            "query": query,
-            "total": len(results),
-            "results": results,
-        }
+        return _apply_disclosure(
+            {
+                "query": query,
+                "total": len(results),
+                "results": results,
+            },
+            tool_name="commit_search",
+            preview_keys=["query", "total"],
+            max_list_items=6,
+        )
 
     # --- Cross-Repo Tools ---
 
@@ -2294,6 +2616,7 @@ def create_server():
                 state.vector_engine = _pipeline.vector_engine
                 state.bm25_engine = _pipeline.bm25_engine
                 state.graph_engine = _pipeline.graph_engine
+                _warm_search_pipeline(state, settings)
 
                 # Update repo stats
                 manager.update_repo_stats(
@@ -2323,6 +2646,8 @@ def create_server():
                             )
                         except Exception as e:
                             logger.warning("Commit indexing failed for %s: %s", resolved, e)
+
+                state.capture_index_snapshot()
 
                 # Start watching if enabled
                 if settings.realtime_indexing_enabled:
@@ -2402,7 +2727,21 @@ def create_server():
         if state.current_head:
             result["current_head"] = state.current_head[:12]
 
-        return result
+        return _apply_disclosure(
+            result,
+            tool_name="repo_status",
+            preview_keys=[
+                "total_repos",
+                "total_files",
+                "total_symbols",
+                "total_chunks",
+                "total_commits",
+                "current_branch",
+                "current_head",
+                "watcher",
+            ],
+            max_list_items=6,
+        )
 
     # --- Session Context Tool ---
 
@@ -2445,14 +2784,14 @@ def create_server():
         snapshot = state._session_tracker.get_snapshot(max_tokens=500)
 
         # Include archive availability hint
-        if hasattr(state, "_compaction_archive") and state._compaction_archive is not None:
-            archive_size = state._compaction_archive.size
-            if archive_size > 0:
-                snapshot["archive_entries"] = archive_size
-                snapshot["archive_hint"] = (
-                    "Previous session context archived. "
-                    "Use recall(query, source='archive') to search it."
-                )
+        archive = _get_compaction_archive()
+        archive_size = archive.size
+        if archive_size > 0:
+            snapshot["archive_entries"] = archive_size
+            snapshot["archive_hint"] = (
+                "Previous session context archived. "
+                "Use recall(query, memory_type='archive') to search it."
+            )
 
         return {**codebase_ctx, **snapshot}
 
@@ -2478,19 +2817,17 @@ def create_server():
         if not content or not content.strip():
             return {"error": "Content cannot be empty."}
 
-        from contextro_mcp.memory.compaction_archive import CompactionArchive
         from contextro_mcp.state import get_state
 
         state = get_state()
-        if not hasattr(state, "_compaction_archive") or state._compaction_archive is None:
-            state._compaction_archive = CompactionArchive(max_entries=20, ttl=86400.0)
+        archive = _get_compaction_archive()
 
         # Include session metadata
         metadata: dict[str, Any] = {}
         if hasattr(state, "_session_tracker") and state._session_tracker is not None:
             metadata["event_count"] = state._session_tracker.event_count
 
-        ref_id = state._compaction_archive.archive(content, metadata=metadata)
+        ref_id = archive.archive(content, metadata=metadata)
         return {
             "archived": True,
             "archive_ref": ref_id,
@@ -2584,7 +2921,16 @@ def create_server():
                 entry = _serialize_node(node, state.codebase_path)
                 entry.pop("id", None)
                 results.append(entry)
-            return {"total": total, "symbols": results}
+            return _apply_disclosure(
+                {
+                    "operation": "search_symbols",
+                    "total": total,
+                    "symbols": results,
+                },
+                tool_name="code",
+                preview_keys=["operation", "total"],
+                max_list_items=6,
+            )
 
         # --- lookup_symbols ---
         elif operation == "lookup_symbols":
@@ -2621,7 +2967,16 @@ def create_server():
                     results[name] = entry
                 else:
                     results[name] = None
-            return {"symbols": results}
+            return _apply_disclosure(
+                {
+                    "operation": "lookup_symbols",
+                    "total": len(results),
+                    "symbols": results,
+                },
+                tool_name="code",
+                preview_keys=["operation", "total"],
+                max_list_items=6,
+            )
 
         # --- get_document_symbols ---
         elif operation == "get_document_symbols":
@@ -2669,7 +3024,17 @@ def create_server():
                         entry["doc"] = s.docstring[:100]
                     results.append(entry)
 
-                return {"file": rel_path, "total": len(parsed.symbols), "symbols": results}
+                return _apply_disclosure(
+                    {
+                        "operation": "get_document_symbols",
+                        "file": rel_path,
+                        "total": len(parsed.symbols),
+                        "symbols": results,
+                    },
+                    tool_name="code",
+                    preview_keys=["operation", "file", "total"],
+                    max_list_items=8,
+                )
             except Exception as e:
                 return {"error": str(e)}
 
@@ -2753,12 +3118,18 @@ def create_server():
             except Exception as e:
                 return {"error": f"Pattern search failed: {e}"}
 
-            return {
-                "pattern": pattern,
-                "language": language,
-                "total": len(matches),
-                "matches": matches,
-            }
+            return _apply_disclosure(
+                {
+                    "operation": "pattern_search",
+                    "pattern": pattern,
+                    "language": language,
+                    "total": len(matches),
+                    "matches": matches,
+                },
+                tool_name="code",
+                preview_keys=["operation", "pattern", "language", "total"],
+                max_list_items=6,
+            )
 
         # --- pattern_rewrite ---
         elif operation == "pattern_rewrite":
@@ -2786,7 +3157,12 @@ def create_server():
                 node = root.root()
                 edits = node.find_all(pattern=pattern)
                 if not edits:
-                    return {"file": file_path, "changes": 0, "message": "No matches found"}
+                    return {
+                        "operation": "pattern_rewrite",
+                        "file": file_path,
+                        "changes": 0,
+                        "message": "No matches found",
+                    }
 
                 # Apply replacements
                 new_source = node.commit_edits([m.replace(replacement) for m in edits])
@@ -2801,16 +3177,26 @@ def create_server():
                         if old != new:
                             diff_lines.append(f"L{i + 1}: -{old}")
                             diff_lines.append(f"L{i + 1}: +{new}")
-                    return {
-                        "file": file_path,
-                        "changes": changes,
-                        "dry_run": True,
-                        "diff_preview": "\n".join(diff_lines[:40]),
-                        "hint": "Set dry_run=false to apply changes",
-                    }
+                    return _apply_disclosure(
+                        {
+                            "operation": "pattern_rewrite",
+                            "file": file_path,
+                            "changes": changes,
+                            "dry_run": True,
+                            "diff_preview": "\n".join(diff_lines[:40]),
+                            "hint": "Set dry_run=false to apply changes",
+                        },
+                        tool_name="code",
+                        preview_keys=["operation", "file", "changes", "dry_run"],
+                    )
                 else:
                     fp.write_text(new_source)
-                    return {"file": file_path, "changes": changes, "applied": True}
+                    return {
+                        "operation": "pattern_rewrite",
+                        "file": file_path,
+                        "changes": changes,
+                        "applied": True,
+                    }
             except Exception as e:
                 return {"error": f"Pattern rewrite failed: {e}"}
 
@@ -2840,14 +3226,20 @@ def create_server():
             hub_nodes.sort(key=lambda x: x["connections"], reverse=True)
 
             scope = path or str(state.codebase_path or "")
-            return {
-                "scope": scope,
-                "total_files": stats.get("total_files", 0),
-                "total_symbols": stats.get("total_nodes", 0),
-                "languages": langs,
-                "hub_symbols": hub_nodes[:10],
-                "symbols_by_type": stats.get("nodes_by_type", {}),
-            }
+            return _apply_disclosure(
+                {
+                    "operation": "generate_codebase_overview",
+                    "scope": scope,
+                    "total_files": stats.get("total_files", 0),
+                    "total_symbols": stats.get("total_nodes", 0),
+                    "languages": langs,
+                    "hub_symbols": hub_nodes[:10],
+                    "symbols_by_type": stats.get("nodes_by_type", {}),
+                },
+                tool_name="code",
+                preview_keys=["operation", "scope", "total_files", "total_symbols"],
+                max_list_items=8,
+            )
 
         # --- search_codebase_map ---
         elif operation == "search_codebase_map":
@@ -2878,10 +3270,17 @@ def create_server():
             except Exception as e:
                 return {"error": str(e)}
 
-            return {
-                "path": str(search_root),
-                "entries": entries[:limit],
-            }
+            return _apply_disclosure(
+                {
+                    "operation": "search_codebase_map",
+                    "path": str(search_root),
+                    "total": len(entries),
+                    "entries": entries[:limit],
+                },
+                tool_name="code",
+                preview_keys=["operation", "path", "total"],
+                max_list_items=8,
+            )
 
         else:
             return {
@@ -2954,6 +3353,15 @@ def create_server():
             "explain": "Full explanation of a symbol — definition + callers + callees + related code. PREFERRED over reading files.",
             "impact": "What breaks if I change this? Transitive caller analysis. MUST use before refactoring.",
             "analyze": "Complexity, code smells, quality metrics. Use analyze(path='src/auth') for scoped results.",
+            "focus": "One-file, low-token context slice: symbols, imports, blast radius, nearby tests, compressed preview.",
+            "restore": "One-shot repo restore/context-bomb summary with entry points, hubs, risks, and session hints.",
+            "audit": "Packaged audit report combining quality, dead code, cycles, hubs, and static coverage gaps.",
+            "dead_code": "Entry-point reachability report for unused files, private symbols, and unresolved local imports.",
+            "circular_dependencies": "SCC-based circular dependency report at file level.",
+            "test_coverage_map": "Static test reachability map; reports uncovered production files and symbols.",
+            "sidecar_export": "Generate or clean file-adjacent `.graph.*` sidecars for non-MCP agents.",
+            "skill_prompt": "Print or update a Contextro bootstrap block in CLAUDE.md, AGENTS.md, or .cursorrules.",
+            "docs_bundle": "Write a local docs bundle (index.md, architecture.md, audit.md, llms.txt).",
             "overview": "Project structure at a glance. PREFERRED over ls/glob.",
             "architecture": "Layers, entry points, dependency hubs.",
             "index": "Index a codebase. Runs in background. Poll status() until indexed: true.",
@@ -2992,17 +3400,30 @@ def create_server():
             "refactoring": "1. impact('symbol') → 2. explain('symbol') → 3. find_callers('symbol') → 4. make change",
             "bug_investigation": "1. search('error message') → 2. find_symbol('ErrorClass') → 3. find_callers → 4. commit_search('recent changes')",
             "context_recovery": "After compaction: session_snapshot() → restore awareness of what was done",
+            "productized_context": "restore() for repo-wide context → focus(path='...') for one-file context → audit() for risks → sidecar_export() for non-MCP sidecars",
             "token_efficiency": "search < find_symbol < explain < readFile. Use in that order. Only readFile when you need the full body.",
         }
 
         if doc_path:
             # Return specific section
             if "tool" in doc_path.lower():
-                return {"tools": tools_doc}
+                return _apply_disclosure(
+                    {"tools": tools_doc},
+                    tool_name="introspect",
+                    preview_keys=["tools"],
+                )
             elif "setting" in doc_path.lower() or "config" in doc_path.lower():
-                return {"settings": settings_doc}
+                return _apply_disclosure(
+                    {"settings": settings_doc},
+                    tool_name="introspect",
+                    preview_keys=["settings"],
+                )
             elif "workflow" in doc_path.lower():
-                return {"workflows": workflow_doc}
+                return _apply_disclosure(
+                    {"workflows": workflow_doc},
+                    tool_name="introspect",
+                    preview_keys=["workflows"],
+                )
 
         if query:
             q = query.lower()
@@ -3050,27 +3471,217 @@ def create_server():
                 # Return everything
                 result = {"tools": tools_doc, "settings": settings_doc, "workflows": workflow_doc}
 
-            return result
+            return _apply_disclosure(
+                result,
+                tool_name="introspect",
+                preview_keys=["tools", "settings", "workflows"],
+            )
 
         # Default: return tool list
-        return {
-            "tools": list(tools_doc.keys()),
-            "hint": "Use query='search tool' or doc_path='tools' for details",
-            "total_tools": len(tools_doc),
-        }
+        return _apply_disclosure(
+            {
+                "tools": list(tools_doc.keys()),
+                "hint": "Use query='search tool' or doc_path='tools' for details",
+                "total_tools": len(tools_doc),
+            },
+            tool_name="introspect",
+            preview_keys=["total_tools", "hint"],
+            max_list_items=8,
+        )
 
     return mcp
 
 
-def main():
+def main(argv: Optional[list[str]] = None):
     """Entry point for contextro CLI."""
+    from contextro_mcp import __version__
     from contextro_mcp.config import get_settings
     from contextro_mcp.state import get_state
+
+    def _print_report(data: dict[str, Any], output_format: str) -> None:
+        from contextro_mcp.reports.renderers import render_report
+
+        print(render_report(data, output_format))
+
+    def _run_cli_command(args) -> None:
+        from contextro_mcp.artifacts.bootstrap import build_bootstrap_block, write_bootstrap
+        from contextro_mcp.artifacts.docs_bundle import write_docs_bundle
+        from contextro_mcp.artifacts.sidecars import clean_sidecars, export_sidecars
+        from contextro_mcp.cli.runtime import ensure_indexed_state
+        from contextro_mcp.reports.product import (
+            build_audit_report,
+            build_focus_report,
+            build_restore_report,
+            get_static_analysis_bundle,
+        )
+
+        if args.command in {"skill", "bootstrap"}:
+            if getattr(args, "target", ""):
+                _print_report(write_bootstrap(Path(args.target)), "human")
+            else:
+                print(build_bootstrap_block())
+            return
+
+        state = ensure_indexed_state(getattr(args, "codebase", None))
+
+        if args.command == "focus":
+            _print_report(
+                build_focus_report(state, args.path, include_code=not args.no_code),
+                args.format,
+            )
+            return
+        if args.command == "restore":
+            _print_report(build_restore_report(state), args.format)
+            return
+        if args.command == "audit":
+            _print_report(build_audit_report(state), args.format)
+            return
+        if args.command == "dead-code":
+            _print_report(get_static_analysis_bundle(state)["dead_code"], args.format)
+            return
+        if args.command == "circular-deps":
+            _print_report(get_static_analysis_bundle(state)["circular_dependencies"], args.format)
+            return
+        if args.command == "test-coverage":
+            _print_report(get_static_analysis_bundle(state)["test_coverage_map"], args.format)
+            return
+        if args.command == "docs":
+            _print_report(write_docs_bundle(state, args.output_dir), args.format)
+            return
+        if args.command in {"sidecar", "sidecars"}:
+            if args.sidecar_command == "clean":
+                result = clean_sidecars(state, target_path=args.path)
+            else:
+                result = export_sidecars(
+                    state,
+                    target_path=args.path,
+                    include_code=args.include_code,
+                )
+            _print_report(result, args.format)
+            return
+
+    parser = argparse.ArgumentParser(
+        prog="contextro",
+        description="Run the Contextro MCP server locally over stdio or HTTP.",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "http"),
+        help="Override CTX_TRANSPORT for this process.",
+    )
+    parser.add_argument(
+        "--host",
+        help="HTTP host override when using --transport http.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        help="HTTP port override when using --transport http.",
+    )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Print the Contextro version and exit.",
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+    output_choices = ("human", "json", "markdown", "compact")
+
+    server_parser = subparsers.add_parser("server", help="Run the MCP server explicitly.")
+    server_parser.add_argument(
+        "--transport",
+        choices=("stdio", "http"),
+        help="Override CTX_TRANSPORT for this process.",
+    )
+    server_parser.add_argument("--host", help="HTTP host override when using --transport http.")
+    server_parser.add_argument("--port", type=int, help="HTTP port override when using --transport http.")
+
+    focus_parser = subparsers.add_parser("focus", help="Build a low-token one-file context slice.")
+    focus_parser.add_argument("path", help="File to focus.")
+    focus_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    focus_parser.add_argument("--no-code", action="store_true", help="Skip the code preview section.")
+    focus_parser.add_argument("--format", choices=output_choices, default="human")
+
+    restore_parser = subparsers.add_parser("restore", help="Build a repo restore/context summary.")
+    restore_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    restore_parser.add_argument("--format", choices=output_choices, default="human")
+
+    audit_parser = subparsers.add_parser("audit", help="Run the packaged audit report.")
+    audit_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    audit_parser.add_argument("--format", choices=output_choices, default="human")
+
+    dead_code_parser = subparsers.add_parser(
+        "dead-code", help="Run entry-point reachability based dead-code analysis."
+    )
+    dead_code_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    dead_code_parser.add_argument("--format", choices=output_choices, default="human")
+
+    cycles_parser = subparsers.add_parser(
+        "circular-deps", help="Run SCC-based circular dependency analysis."
+    )
+    cycles_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    cycles_parser.add_argument("--format", choices=output_choices, default="human")
+
+    coverage_parser = subparsers.add_parser(
+        "test-coverage", help="Run the static test coverage map."
+    )
+    coverage_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    coverage_parser.add_argument("--format", choices=output_choices, default="human")
+
+    docs_parser = subparsers.add_parser("docs", help="Write the packaged docs bundle.")
+    docs_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    docs_parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Directory to write the docs bundle into.",
+    )
+    docs_parser.add_argument("--format", choices=output_choices, default="human")
+
+    skill_parser = subparsers.add_parser(
+        "skill",
+        aliases=["bootstrap"],
+        help="Print or update the Contextro agent bootstrap block.",
+    )
+    skill_parser.add_argument("--target", help="Optional file to update in place.")
+
+    sidecar_parser = subparsers.add_parser(
+        "sidecar",
+        aliases=["sidecars"],
+        help="Generate or clean file-adjacent `.graph.*` sidecars.",
+    )
+    sidecar_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    sidecar_subparsers = sidecar_parser.add_subparsers(dest="sidecar_command", required=True)
+    sidecar_export_parser = sidecar_subparsers.add_parser("export", help="Export `.graph.*` sidecars.")
+    sidecar_export_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Optional file or directory to export sidecars for.",
+    )
+    sidecar_export_parser.add_argument(
+        "--include-code",
+        action="store_true",
+        help="Include compressed code previews in the generated sidecars.",
+    )
+    sidecar_export_parser.add_argument("--format", choices=output_choices, default="human")
+    sidecar_clean_parser = sidecar_subparsers.add_parser("clean", help="Remove generated sidecars.")
+    sidecar_clean_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Optional file or directory to clean sidecars for.",
+    )
+    sidecar_clean_parser.add_argument("--format", choices=output_choices, default="human")
+
+    args = parser.parse_args(argv)
+
+    if args.version:
+        print(__version__)
+        return
 
     settings = get_settings()
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
-    # Configure logging (JSON or text)
     if settings.log_format == "json":
         handler = logging.StreamHandler()
         handler.setFormatter(JsonFormatter())
@@ -3079,7 +3690,6 @@ def main():
     else:
         logging.basicConfig(level=log_level)
 
-    # Graceful shutdown handler — set flag only, let finally block do cleanup
     def _shutdown_handler(signum, frame):
         logger.info("Received signal %s, shutting down...", signum)
         raise SystemExit(0)
@@ -3087,21 +3697,25 @@ def main():
     signal.signal(signal.SIGTERM, _shutdown_handler)
     signal.signal(signal.SIGINT, _shutdown_handler)
 
-    server = create_server()
-
-    # Transport selection:
-    # - CTX_TRANSPORT=http  → HTTP/SSE server (for Docker/team hosting)
-    # - CTX_TRANSPORT=stdio → stdio (default, for local MCP clients)
-    transport = os.environ.get("CTX_TRANSPORT", "stdio").lower()
-
     try:
-        if transport == "http":
-            host = os.environ.get("CTX_HTTP_HOST", "0.0.0.0")
-            port = int(os.environ.get("CTX_HTTP_PORT", "8000"))
-            logger.info("Starting Contextro HTTP server on %s:%d", host, port)
-            server.run(transport="streamable-http", host=host, port=port, path="/mcp")
+        if args.command not in (None, "server"):
+            _run_cli_command(args)
         else:
-            server.run()
+            server = create_server()
+            transport_arg = args.transport if args.command is None else getattr(args, "transport", None)
+            host_arg = args.host if args.command is None else getattr(args, "host", None)
+            port_arg = args.port if args.command is None else getattr(args, "port", None)
+            transport = (transport_arg or os.environ.get("CTX_TRANSPORT", "stdio")).lower()
+
+            if transport == "http":
+                host = host_arg or os.environ.get("CTX_HTTP_HOST", "0.0.0.0")
+                port = port_arg or int(os.environ.get("CTX_HTTP_PORT", "8000"))
+                logger.info("Starting Contextro HTTP server on %s:%d", host, port)
+                server.run(transport="streamable-http", host=host, port=port, path="/mcp")
+            else:
+                server.run()
+    except ValueError as exc:
+        parser.exit(2, f"error: {exc}\n")
     finally:
         get_state().shutdown()
 
