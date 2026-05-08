@@ -2,7 +2,7 @@
 name = "ctx_fast"
 version = "0.1.0"
 edition = "2021"
-description = "Rust-accelerated core for Contextia: file scanning, hashing, git ops"
+description = "Rust-accelerated core for Contextro: file scanning, hashing, git ops"
 
 [lib]
 name = "ctx_fast"
