@@ -3,9 +3,8 @@
 from unittest.mock import MagicMock
 
 import pytest
-
-from contextia_mcp.engines.bm25_engine import LanceDBBM25Engine
-from contextia_mcp.engines.vector_engine import LanceDBVectorEngine
+from contextro_mcp.engines.bm25_engine import LanceDBBM25Engine
+from contextro_mcp.engines.vector_engine import LanceDBVectorEngine
 
 VECTOR_DIMS = 4
 
@@ -18,9 +17,14 @@ def _mock_embedding_service(dims=VECTOR_DIMS):
     return svc
 
 
-def _make_chunk(id_: str, text: str = "hello world", filepath: str = "/a.py",
-                language: str = "python", symbol_type: str = "function",
-                vector=None):
+def _make_chunk(
+    id_: str,
+    text: str = "hello world",
+    filepath: str = "/a.py",
+    language: str = "python",
+    symbol_type: str = "function",
+    vector=None,
+):
     """Create a chunk dict for testing."""
     return {
         "id": id_,
@@ -48,7 +52,9 @@ def vector_engine(db_path):
     """Create a vector engine that owns the chunks table."""
     svc = _mock_embedding_service()
     return LanceDBVectorEngine(
-        db_path=db_path, embedding_service=svc, vector_dims=VECTOR_DIMS,
+        db_path=db_path,
+        embedding_service=svc,
+        vector_dims=VECTOR_DIMS,
     )
 
 
@@ -65,8 +71,12 @@ def populated_engines(vector_engine, bm25_engine):
         _make_chunk("a", text="the quick brown fox jumps over the lazy dog"),
         _make_chunk("b", text="hello world python function example"),
         _make_chunk("c", text="rust memory safety borrow checker", language="rust"),
-        _make_chunk("d", text="javascript async await promise callback", language="javascript",
-                    symbol_type="class"),
+        _make_chunk(
+            "d",
+            text="javascript async await promise callback",
+            language="javascript",
+            symbol_type="class",
+        ),
     ]
     vector_engine.add(chunks)
     bm25_engine.ensure_fts_index()
@@ -176,10 +186,12 @@ class TestSharedTable:
 
     def test_bm25_reflects_vector_deletes(self, vector_engine, bm25_engine):
         """BM25 engine sees deletes made by vector engine."""
-        vector_engine.add([
-            _make_chunk("x", text="keep this one"),
-            _make_chunk("y", text="delete this one"),
-        ])
+        vector_engine.add(
+            [
+                _make_chunk("x", text="keep this one"),
+                _make_chunk("y", text="delete this one"),
+            ]
+        )
         bm25_engine.ensure_fts_index()
         vector_engine.delete(["y"])
         # Need to recreate FTS index after vector engine modifies table
