@@ -24,7 +24,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 VENV_DIR=".venv"
-MIN_PYTHON_VERSION="3.10"
+SUPPORTED_PYTHON_VERSIONS=("3.12" "3.11" "3.10")
 
 # Parse arguments
 CLEAN=false
@@ -50,6 +50,38 @@ print_usage() {
     echo "  ./setup.sh --prod                # Production-only install"
     echo "  ./setup.sh --reranker            # Dev install + FlashRank reranker"
     echo "  ./setup.sh --clean --prod        # Clean install, production only"
+}
+
+find_python() {
+    if [[ -n "${CONTEXTRO_PYTHON:-}" ]]; then
+        if [[ ! -x "${CONTEXTRO_PYTHON}" ]]; then
+            echo -e "${RED}✗ CONTEXTRO_PYTHON is set but not executable: ${CONTEXTRO_PYTHON}${NC}"
+            exit 1
+        fi
+        echo "${CONTEXTRO_PYTHON}"
+        return 0
+    fi
+
+    local candidates=()
+    for version in "${SUPPORTED_PYTHON_VERSIONS[@]}"; do
+        candidates+=("python${version}")
+    done
+    candidates+=("python3" "python")
+
+    for candidate in "${candidates[@]}"; do
+        if ! command -v "${candidate}" >/dev/null 2>&1; then
+            continue
+        fi
+
+        local version
+        version=$("${candidate}" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        for supported in "${SUPPORTED_PYTHON_VERSIONS[@]}"; do
+            if [[ "${version}" == "${supported}" ]]; then
+                echo "${candidate}"
+                return 0
+            fi
+        done
+    done
 }
 
 for arg in "$@"; do
@@ -91,12 +123,11 @@ echo -e "${NC}"
 # Step 1: Check Python version
 echo -e "${BLUE}[1/6]${NC} Checking Python version..."
 
-if command -v python3 &> /dev/null; then
-    PYTHON_CMD="python3"
-elif command -v python &> /dev/null; then
-    PYTHON_CMD="python"
-else
-    echo -e "${RED}✗ Python not found. Please install Python ${MIN_PYTHON_VERSION} or higher.${NC}"
+PYTHON_CMD=$(find_python)
+
+if [[ -z "${PYTHON_CMD}" ]]; then
+    supported_versions=$(IFS=", "; echo "${SUPPORTED_PYTHON_VERSIONS[*]}")
+    echo -e "${RED}✗ Python ${supported_versions} required. Install a supported version or set CONTEXTRO_PYTHON to its full path.${NC}"
     exit 1
 fi
 
@@ -104,8 +135,9 @@ PYTHON_VERSION=$($PYTHON_CMD -c "import sys; print(f'{sys.version_info.major}.{s
 PYTHON_MAJOR=$($PYTHON_CMD -c "import sys; print(sys.version_info.major)")
 PYTHON_MINOR=$($PYTHON_CMD -c "import sys; print(sys.version_info.minor)")
 
-if [[ $PYTHON_MAJOR -lt 3 ]] || [[ $PYTHON_MAJOR -eq 3 && $PYTHON_MINOR -lt 10 ]]; then
-    echo -e "${RED}✗ Python ${MIN_PYTHON_VERSION}+ required. Found: ${PYTHON_VERSION}${NC}"
+if [[ $PYTHON_MAJOR -ne 3 ]] || [[ $PYTHON_MINOR -lt 10 ]] || [[ $PYTHON_MINOR -gt 12 ]]; then
+    supported_versions=$(IFS=", "; echo "${SUPPORTED_PYTHON_VERSIONS[*]}")
+    echo -e "${RED}✗ Python ${supported_versions} required. Found: ${PYTHON_VERSION}${NC}"
     exit 1
 fi
 
@@ -140,8 +172,17 @@ source "$VENV_DIR/bin/activate"
 pip install --upgrade pip --quiet
 echo -e "${GREEN}✓ pip upgraded to $(pip --version | awk '{print $2}')${NC}"
 
-# Step 4: Install dependencies
-echo -e "${BLUE}[4/6]${NC} Installing dependencies..."
+# Step 4: Check Rust toolchain and install dependencies
+echo -e "${BLUE}[4/6]${NC} Checking Rust toolchain and installing dependencies..."
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo -e "${RED}✗ Rust toolchain not found (missing 'cargo').${NC}"
+    echo -e "${YELLOW}  Source installs compile the bundled ctx_fast extension.${NC}"
+    echo -e "${YELLOW}  Install Rust via https://rustup.rs/ and re-run setup.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Rust toolchain detected ($(cargo --version | awk '{print $2}'))${NC}"
 
 if [[ "$PROD_ONLY" = true ]]; then
     if [[ "$RERANKER" = true ]]; then
@@ -169,17 +210,24 @@ if [[ "$SKIP_VERIFY" = true ]]; then
 else
     echo -e "${BLUE}[5/6]${NC} Verifying installation..."
 
-    if command -v contextro &> /dev/null; then
+    if [[ -x "${VENV_DIR}/bin/contextro" ]]; then
         echo -e "${GREEN}  ✓ contextro CLI available${NC}"
     else
         echo -e "${RED}  ✗ contextro CLI not found${NC}"
         exit 1
     fi
 
-    if $PYTHON_CMD -c "import contextro_mcp; print('OK')" &> /dev/null; then
-        echo -e "${GREEN}  ✓ Core imports verified${NC}"
+    if python -c "import contextro_mcp; from contextro_mcp import ctx_fast; print('OK')" &> /dev/null; then
+        echo -e "${GREEN}  ✓ Core imports verified (including ctx_fast)${NC}"
     else
         echo -e "${RED}  ✗ Import verification failed${NC}"
+        exit 1
+    fi
+
+    if "${VENV_DIR}/bin/contextro" --version &> /dev/null; then
+        echo -e "${GREEN}  ✓ contextro CLI responds${NC}"
+    else
+        echo -e "${RED}  ✗ contextro CLI verification failed${NC}"
         exit 1
     fi
 fi
@@ -198,14 +246,15 @@ echo ""
 echo -e "To start the server:"
 echo -e "  ${CYAN}contextro${NC}"
 echo ""
-echo -e "To run the self-test demo:"
-echo -e "  ${CYAN}python self_test/demo_mcp.py${NC}"
+echo -e "To run a local HTTP smoke test:"
+echo -e "  ${CYAN}CTX_TRANSPORT=http contextro --port 8000${NC}"
+echo -e "  ${CYAN}python scripts/docker_healthcheck.py${NC}"
 echo ""
 echo -e "To add to Claude Code:"
-echo -e "  ${CYAN}claude mcp add contextro -- contextro${NC}"
+echo -e "  ${CYAN}claude mcp add contextro -- ${PWD}/${VENV_DIR}/bin/contextro${NC}"
 echo ""
 if [[ "$PROD_ONLY" = false ]]; then
     echo -e "To run tests:"
-    echo -e "  ${CYAN}pytest -v${NC}"
+    echo -e "  ${CYAN}pytest -v -m \"not slow\"${NC}"
     echo ""
 fi

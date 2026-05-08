@@ -9,14 +9,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN python -m venv "$VIRTUAL_ENV"
 
-# Build deps: compilers for native wheels, git for commit history, ripgrep for live grep fallback.
+# Build deps: compilers + cargo for the Rust extension, git for commit history,
+# ripgrep for live grep fallback.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates git gcc g++ ripgrep && \
+        ca-certificates git gcc g++ cargo ripgrep && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
+COPY rust ./rust
 COPY src ./src
 COPY scripts ./scripts
 
@@ -58,6 +60,7 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hf-cache /opt/hf-cache
 COPY pyproject.toml README.md ./
+COPY rust ./rust
 COPY src ./src
 COPY scripts ./scripts
 
