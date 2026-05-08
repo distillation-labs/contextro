@@ -3,8 +3,7 @@
 import subprocess
 
 import pytest
-
-from contextia_mcp.git.cross_repo import CrossRepoManager, RepoContext
+from contextro_mcp.git.cross_repo import CrossRepoManager, RepoContext
 
 
 @pytest.fixture
@@ -13,25 +12,35 @@ def git_repo(tmp_path):
     repo = tmp_path / "repo_a"
     repo.mkdir()
     subprocess.run(
-        ["git", "init"], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "init"],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     (repo / "main.py").write_text("print('a')\n")
     subprocess.run(
-        ["git", "add", "."], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "init"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     return repo
 
@@ -42,25 +51,35 @@ def second_repo(tmp_path):
     repo = tmp_path / "repo_b"
     repo.mkdir()
     subprocess.run(
-        ["git", "init"], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "init"],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     (repo / "api.py").write_text("print('b')\n")
     subprocess.run(
-        ["git", "add", "."], cwd=str(repo),
-        capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "init b"],
-        cwd=str(repo), capture_output=True, check=True,
+        cwd=str(repo),
+        capture_output=True,
+        check=True,
     )
     return repo
 
