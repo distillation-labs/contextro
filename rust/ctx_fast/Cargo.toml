@@ -1,6 +1,6 @@
 [package]
 name = "ctx_fast"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 description = "Rust-accelerated core for Contextro: file scanning, hashing, git ops"
 
