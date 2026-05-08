@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+## [0.0.2] - 2026-05-08
+
+### Added
 - **Universal progressive disclosure** — All tool responses >1200 tokens (configurable) are automatically sandboxed. Returns compact preview with `sandbox_ref` for on-demand retrieval. Achieves 43.9% token reduction on large responses (validated against Cursor's 46.9% A/B test).
 - **AST-aware snippet compression** — Search previews compress code snippets by keeping function/class signatures and collapsing bodies to first meaningful line + `...`. Achieves 73.3% character reduction on realistic code (86.3% on functions, 93.6% on JavaScript).
 - **Searchable compaction archive** — New `compact` tool archives pre-compaction session content. Extended `recall` with `memory_type='archive'` to search archived context. Enables recovery of key decisions and findings after context compaction.
