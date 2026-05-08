@@ -1,6 +1,6 @@
 # Tool Decision Tree
 
-Full routing table for Contextia MCP tools. Use this when the main SKILL.md table isn't enough.
+Full routing table for Contextro MCP tools. Use this when the main SKILL.md table isn't enough.
 
 ## By Task Type
 
@@ -56,9 +56,9 @@ Full routing table for Contextia MCP tools. Use this when the main SKILL.md tabl
 | Exact identifier | `bm25` | `search("TokenBudget", mode="bm25")` |
 | Semantic only | `vector` | `search("retry logic", mode="vector")` |
 
-## When NOT to Use Contextia
+## When NOT to Use Contextro
 
 - Single-file edit where you already know the exact file and line → `readFile` directly
 - Reading `package.json`, `pyproject.toml`, config files → `readFile` directly
-- Writing new code from scratch → no Contextia needed
-- Answering general programming questions → no Contextia needed
+- Writing new code from scratch → no Contextro needed
+- Answering general programming questions → no Contextro needed
