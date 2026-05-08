@@ -1,4 +1,4 @@
-# Smithery.ai marketplace configuration for Contextia
+# Smithery.ai marketplace configuration for Contextro
 # https://smithery.ai/docs/build/project-config/smithery-yaml
 
 runtime: "python"
@@ -10,8 +10,8 @@ startCommand:
     properties:
       storage_dir:
         type: "string"
-        description: "Storage directory for indexes (default: .contextia)"
-        default: ".contextia"
+        description: "Storage directory for indexes (default: .contextro)"
+        default: ".contextro"
       embedding_model:
         type: "string"
         description: "Embedding model: potion-code-16m (256d, 55k/sec)"
@@ -41,10 +41,10 @@ startCommand:
           - "ERROR"
   commandFunction: |-
     (config) => ({
-      command: 'contextia',
+      command: 'contextro',
       args: [],
       env: {
-        CTX_STORAGE_DIR: config.storage_dir || '.contextia',
+        CTX_STORAGE_DIR: config.storage_dir || '.contextro',
         CTX_EMBEDDING_MODEL: config.embedding_model || 'potion-code-16m',
         CTX_MAX_MEMORY_MB: String(config.max_memory_mb || 350),
         CTX_SEARCH_MODE: config.search_mode || 'hybrid',
