@@ -3,7 +3,7 @@
 import json
 import logging
 
-from contextia_mcp.middleware.audit import (
+from contextro_mcp.middleware.audit import (
     AuditLogger,
     AuditRecord,
     _sanitize_params,
@@ -67,7 +67,7 @@ def test_audit_record_to_json():
 def test_audit_logger_logs_invocation(caplog):
     """AuditLogger emits structured log records."""
     audit = AuditLogger(enabled=True)
-    with caplog.at_level(logging.INFO, logger="contextia.audit"):
+    with caplog.at_level(logging.INFO, logger="contextro.audit"):
         record = audit.log_invocation(
             tool_name="search",
             params={"query": "test"},
@@ -96,7 +96,7 @@ def test_audit_logger_disabled():
 def test_audit_logger_sanitizes_before_logging(caplog):
     """AuditLogger sanitizes params before logging."""
     audit = AuditLogger(enabled=True)
-    with caplog.at_level(logging.INFO, logger="contextia.audit"):
+    with caplog.at_level(logging.INFO, logger="contextro.audit"):
         record = audit.log_invocation(
             tool_name="search",
             params={"query": "test", "password": "secret123"},
@@ -111,7 +111,7 @@ def test_audit_logger_sanitizes_before_logging(caplog):
 def test_audit_logger_records_error_status(caplog):
     """AuditLogger correctly records error status."""
     audit = AuditLogger(enabled=True)
-    with caplog.at_level(logging.INFO, logger="contextia.audit"):
+    with caplog.at_level(logging.INFO, logger="contextro.audit"):
         record = audit.log_invocation(
             tool_name="index",
             params={"path": "/nonexistent"},
