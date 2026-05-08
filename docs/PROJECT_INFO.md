@@ -1,9 +1,9 @@
-# Contextia Project Information
+# Contextro Project Information
 
 ## Overview
-Contextia is a unified code intelligence MCP (Model Context Protocol) server that consolidates two existing servers:
-- **Contextia** — semantic vector search + memory layer
-- **Contextia** — structural AST analysis + call graphs
+Contextro is a unified code intelligence MCP (Model Context Protocol) server that consolidates two existing servers:
+- **Contextro** — semantic vector search + memory layer
+- **Contextro** — structural AST analysis + call graphs
 - **Live Grep** — 100% coverage fallback via ripgrep/grep
 
 Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for code search, navigation, analysis, and memory.
@@ -15,10 +15,10 @@ Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for co
 ### Current Pain Points
 1. **Two separate MCP servers** — double the memory, double the startup time, two connections to manage
 2. **High memory usage** — PyTorch + ChromaDB + large embedding models consumed 1-2GB+ RAM
-3. **No hybrid search** — Contextia only does vector search; Contextia only does structural analysis
+3. **No hybrid search** — Contextro only does vector search; Contextro only does structural analysis
 4. **No cross-engine intelligence** — can't combine "semantic meaning" with "who calls this function"
 
-### What Contextia Solves
+### What Contextro Solves
 - Single process, single MCP connection, 15 tools
 - <350MB RAM via ONNX Runtime + LanceDB mmap + lightweight models
 - Hybrid search combining vector + BM25 + graph signals + live-grep fallback
@@ -30,7 +30,7 @@ Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for co
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              Contextia Server (FastMCP, stdio)   │
+│              Contextro Server (FastMCP, stdio)   │
 ├─────────────────────────────────────────────────┤
 │  15 MCP Tools                                    │
 │  index | search | status | health | find_symbol  │
@@ -54,9 +54,9 @@ Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for co
 │  ast-grep → structure → relationships → graph    │
 ├─────────────────────────────────────────────────┤
 │  Storage Layer                                   │
-│  .contextia/lance/   → LanceDB (vectors + memories)  │
-│  .contextia/contextia.db → SQLite (graph persistence)    │
-│  .contextia/metadata.json → Index stats              │
+│  .contextro/lance/   → LanceDB (vectors + memories)  │
+│  .contextro/contextro.db → SQLite (graph persistence)    │
+│  .contextro/metadata.json → Index stats              │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -81,15 +81,15 @@ Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for co
 
 ## Source Repositories
 
-### Contextia (vector search + memory)
-- **GitHub:** https://github.com/jassskalkat/Contextia
-- **Local clone:** `Contextia_mcp/`
+### Contextro (vector search + memory)
+- **GitHub:** https://github.com/jassskalkat/Contextro
+- **Local clone:** `Contextro_mcp/`
 - **What we port:** models, tree-sitter parser, embedding service, parallel indexer, memory retriever, state management
 - **What we rewrite:** vector storage (ChromaDB → LanceDB), chunking pipeline
 
-### Contextia (graph analysis)
-- **GitHub:** https://github.com//Contextia
-- **Local clone:** `Contextia/`
+### Contextro (graph analysis)
+- **GitHub:** https://github.com//Contextro
+- **Local clone:** `Contextro/`
 - **What we port:** graph models, rustworkx graph engine, ast-grep parser, code analyzer, file watcher
 - **What we rewrite:** server layer (merge into single server)
 
@@ -159,11 +159,11 @@ Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for co
 ## Storage Structure
 
 ```
-.contextia/                          # Per-project, created by `index` tool
+.contextro/                          # Per-project, created by `index` tool
 ├── lance/                       # LanceDB tables
 │   ├── codebase.lance/         # Code chunks + embeddings
 │   └── memories.lance/         # Semantic memories
-├── contextia.db                    # SQLite (graph nodes + edges)
+├── contextro.db                    # SQLite (graph nodes + edges)
 └── metadata.json               # Index stats, config snapshot
 ```
 
@@ -176,7 +176,7 @@ All settings via environment variables with `CTX_` prefix:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CTX_EMBEDDING_MODEL` | `jina-code` | Embedding model (`jina-code`, `bge-small-en`) |
-| `CTX_STORAGE_DIR` | `.contextia` | Per-project storage directory |
+| `CTX_STORAGE_DIR` | `.contextro` | Per-project storage directory |
 | `CTX_MAX_FILE_SIZE` | `1048576` | Max file size in bytes (1MB) |
 | `CTX_LOG_FORMAT` | `text` | Logging format (`text` or `json`) |
 | `CTX_BATCH_SIZE` | `32` | Embedding batch size |
