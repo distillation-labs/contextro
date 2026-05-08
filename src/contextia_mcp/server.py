@@ -141,9 +141,9 @@ def create_server():
 
         Returns the original data if small, or a compact preview with sandbox_ref.
         """
-        from contextia_mcp.state import get_state
         from contextia_mcp.engines.output_sandbox import OutputSandbox
         from contextia_mcp.execution.response_policy import ToolResponsePolicy
+        from contextia_mcp.state import get_state
 
         state = get_state()
         if not hasattr(state, "_output_sandbox") or state._output_sandbox is None:
@@ -1656,6 +1656,17 @@ def create_server():
         if err:
             return err
 
+        # Search compaction archive if memory_type is 'archive'
+        if memory_type == "archive":
+            from contextia_mcp.state import get_state
+            state = get_state()
+            if not hasattr(state, '_compaction_archive') or state._compaction_archive is None:
+                return {"query": query, "total": 0, "results": [],
+                        "hint": "No compaction archive exists yet."}
+            results = state._compaction_archive.search(query, limit=limit)
+            return {"query": query, "source": "archive", "total": len(results),
+                    "results": results}
+
         store = _get_memory_store()
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
 
@@ -2359,7 +2370,58 @@ Content remains available across sessions for later use.
             return {**codebase_ctx, "events": 0, "hint": "No session activity tracked yet."}
 
         snapshot = state._session_tracker.get_snapshot(max_tokens=500)
+
+        # Include archive availability hint
+        if hasattr(state, '_compaction_archive') and state._compaction_archive is not None:
+            archive_size = state._compaction_archive.size
+            if archive_size > 0:
+                snapshot["archive_entries"] = archive_size
+                snapshot["archive_hint"] = (
+                    "Previous session context archived. "
+                    "Use recall(query, source='archive') to search it."
+                )
+
         return {**codebase_ctx, **snapshot}
+
+    @mcp.tool()
+    def compact(
+        content: Annotated[str, "The pre-compaction context to archive (message history or summary)"],
+    ) -> dict[str, Any]:
+        """Archive session context before compaction for later searchable recovery.
+
+        Call this before or during context compaction to preserve the full
+        session history. The archived content becomes searchable via
+        recall(query, memory_type='archive').
+
+        Returns:
+            Archive reference and confirmation.
+        """
+        guard_err = _guard("compact")
+        if guard_err:
+            return guard_err
+
+        if not content or not content.strip():
+            return {"error": "Content cannot be empty."}
+
+        from contextia_mcp.memory.compaction_archive import CompactionArchive
+        from contextia_mcp.state import get_state
+
+        state = get_state()
+        if not hasattr(state, '_compaction_archive') or state._compaction_archive is None:
+            state._compaction_archive = CompactionArchive(max_entries=20, ttl=86400.0)
+
+        # Include session metadata
+        metadata: dict[str, Any] = {}
+        if hasattr(state, '_session_tracker') and state._session_tracker is not None:
+            metadata["event_count"] = state._session_tracker.event_count
+
+        ref_id = state._compaction_archive.archive(content, metadata=metadata)
+        return {
+            "archived": True,
+            "archive_ref": ref_id,
+            "chars": len(content),
+            "hint": "Use recall(query, memory_type='archive') to search archived context.",
+        }
 
     @mcp.tool(annotations={"readOnlyHint": True})
     def code(
