@@ -6,15 +6,15 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from contextia_mcp.config import Settings
-from contextia_mcp.indexing.pipeline import (
+from contextro_mcp.config import Settings
+from contextro_mcp.indexing.pipeline import (
     IndexingPipeline,
     IndexResult,
     discover_files,
 )
 
 # --- Fixtures ---
+
 
 @pytest.fixture
 def mini_codebase(tmp_path):
@@ -35,7 +35,7 @@ def mini_codebase(tmp_path):
 @pytest.fixture
 def settings(tmp_path):
     """Create Settings pointing to tmp storage."""
-    return Settings(storage_dir=str(tmp_path / ".contextia"))
+    return Settings(storage_dir=str(tmp_path / ".contextro"))
 
 
 def _mock_embedding_service(dims=384):
@@ -48,22 +48,26 @@ def _mock_embedding_service(dims=384):
 
 def _make_pipeline(settings):
     """Create pipeline with mocked embedding service."""
-    from contextia_mcp.indexing.embedding_service import EMBEDDING_MODELS
+    from contextro_mcp.indexing.embedding_service import EMBEDDING_MODELS
+
     dims = EMBEDDING_MODELS.get(settings.embedding_model, {}).get("dimensions", 384)
-    with patch("contextia_mcp.indexing.pipeline.get_embedding_service") as mock_get:
+    with patch("contextro_mcp.indexing.pipeline.get_embedding_service") as mock_get:
         mock_svc = _mock_embedding_service(dims)
         mock_get.return_value = mock_svc
         pipeline = IndexingPipeline(settings)
         # Patch the embedding service on the vector engine too
         pipeline._vector_engine._embedding_service = mock_svc
+
         # Make embed_batch return correct number of vectors
         def dynamic_batch(texts, **kwargs):
             return [[0.1] * dims for _ in texts]
+
         mock_svc.embed_batch.side_effect = dynamic_batch
         return pipeline
 
 
 # --- discover_files tests ---
+
 
 class TestDiscoverFiles:
     def test_finds_python_files(self, mini_codebase, settings):
@@ -135,6 +139,7 @@ class TestDiscoverFiles:
 
 # --- IndexResult tests ---
 
+
 class TestIndexResult:
     def test_to_dict(self):
         result = IndexResult(total_files=5, total_symbols=10, total_chunks=8)
@@ -146,6 +151,7 @@ class TestIndexResult:
 
 
 # --- IndexingPipeline tests ---
+
 
 class TestIndexingPipeline:
     def test_index_populates_vector_engine(self, mini_codebase, settings):
@@ -200,9 +206,7 @@ class TestIndexingPipeline:
         pipeline.index(mini_codebase)
 
         # Add a new file
-        (mini_codebase / "src" / "new.py").write_text(
-            "def new_func():\n    pass\n"
-        )
+        (mini_codebase / "src" / "new.py").write_text("def new_func():\n    pass\n")
 
         result = pipeline.incremental_index(mini_codebase)
         assert result.files_added >= 1
