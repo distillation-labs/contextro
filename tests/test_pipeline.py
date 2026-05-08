@@ -182,9 +182,12 @@ class TestIndexingPipeline:
         assert data["metadata_version"] == 2
         assert data["change_detection"] == "content_hash"
         assert "fingerprints" in data
+        assert "stat_signatures" in data
         assert "mtimes" not in data
         assert len(data["fingerprints"]) >= 2
         assert all(isinstance(value, str) for value in data["fingerprints"].values())
+        assert len(data["stat_signatures"]) >= 2
+        assert all(isinstance(value, str) for value in data["stat_signatures"].values())
 
     def test_index_result_has_timing(self, mini_codebase, settings):
         pipeline = _make_pipeline(settings)
@@ -248,6 +251,18 @@ class TestIndexingPipeline:
         assert result.files_modified == 0
         assert result.files_deleted == 0
 
+    def test_incremental_no_changes_avoids_rehashing_all_files(self, mini_codebase, settings):
+        pipeline = _make_pipeline(settings)
+        pipeline.index(mini_codebase)
+
+        with patch.object(pipeline, "_compute_file_fingerprints") as mock_hash:
+            result = pipeline.incremental_index(mini_codebase)
+
+        assert result.files_added == 0
+        assert result.files_modified == 0
+        assert result.files_deleted == 0
+        mock_hash.assert_not_called()
+
     def test_incremental_falls_back_to_full(self, mini_codebase, settings):
         """If no metadata exists, incremental falls back to full index."""
         pipeline = _make_pipeline(settings)
@@ -282,6 +297,7 @@ class TestIndexingPipeline:
         assert data["metadata_version"] == 2
         assert data["change_detection"] == "content_hash"
         assert "fingerprints" in data
+        assert "stat_signatures" in data
         assert "mtimes" not in data
 
     def test_multi_index_builds_cross_root_call_edges_and_persists_graph(self, tmp_path, settings):
