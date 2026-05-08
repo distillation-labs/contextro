@@ -52,12 +52,13 @@ Breakthroughs come from:
 - Retrieval quality: `python scripts/benchmark_retrieval_quality.py --path src --query-limit 20`
 - Chunk profiles: `python scripts/benchmark_chunk_profiles.py --path src --query-limit 20`
 - Token efficiency: `python scripts/benchmark_token_efficiency.py`
+- Progressive disclosure & AST compression: `python scripts/benchmark_disclosure.py`
 - Embedding speed: `python scripts/benchmark_embeddings.py`
 - Full benchmark: `python scripts/bench_final.py`
 - History files: `scripts/results.tsv`, `scripts/results_indexing_speed.tsv`,
   `scripts/token_benchmark_results.json`, `scripts/benchmark_results.json`
 - Read-only: all benchmark scripts, tests, result files
-- Modifiable: `src/contextia_mcp/` — formatting, engines, indexing, config, parsing
+- Modifiable: `src/contextia_mcp/` — formatting, engines, indexing, config, parsing, execution
 
 ---
 

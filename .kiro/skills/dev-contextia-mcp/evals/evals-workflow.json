@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextia-mcp",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "eval_set": "workflow-antipattern-efficiency-output",
   "evals": [
     {
@@ -95,7 +95,7 @@
       "name": "workflow-session-recovery",
       "category": "workflow",
       "prompt": "Context was just compacted. I was working on the payment flow refactor. What was I doing?",
-      "expected_behavior": "Agent calls session_snapshot() FIRST, then recall('payment flow refactor').",
+      "expected_behavior": "Agent calls session_snapshot() FIRST, then recall('payment flow refactor') and/or recall('payment flow refactor', memory_type='archive').",
       "assertions": [
         {
           "id": "a1",
@@ -114,6 +114,12 @@
           "text": "Agent does not re-index or re-search from scratch",
           "type": "anti_pattern",
           "passing_condition": "No index() call and no broad search before session_snapshot"
+        },
+        {
+          "id": "a4",
+          "text": "Agent considers searching the compaction archive",
+          "type": "workflow",
+          "passing_condition": "recall called with memory_type='archive' or agent mentions archive as a recovery option"
         }
       ]
     },

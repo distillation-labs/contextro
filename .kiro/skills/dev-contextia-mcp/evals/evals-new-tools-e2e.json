@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextia-mcp",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "eval_set": "new-tools-e2e",
   "evals": [
     {
@@ -371,6 +371,117 @@
           "passing_condition": "retrieve called with sandbox_ref if search response is sandboxed"
         }
       ]
+    },
+    {
+      "id": 508,
+      "name": "new-tool-compact-before-compaction",
+      "category": "new_tools",
+      "prompt": "My context window is almost full. Archive the key findings from this session before compaction happens.",
+      "expected_behavior": "Agent calls compact(content) with a summary of key findings, decisions, and code changes from the session.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "compact() is called with session content",
+          "type": "tool_selection",
+          "passing_condition": "compact called with content summarizing session findings"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT use remember() for pre-compaction archival",
+          "type": "anti_pattern",
+          "passing_condition": "Agent uses compact, not remember, for archiving pre-compaction context"
+        }
+      ]
+    },
+    {
+      "id": 509,
+      "name": "new-tool-recall-archive",
+      "category": "new_tools",
+      "prompt": "I had a session earlier where I investigated the auth flow. Search the compaction archive for what I found.",
+      "expected_behavior": "Agent calls recall('auth flow', memory_type='archive') to search the compaction archive.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "recall() is called with memory_type='archive'",
+          "type": "tool_selection",
+          "passing_condition": "recall called with query about auth flow and memory_type='archive'"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT use regular recall without memory_type='archive'",
+          "type": "tool_selection",
+          "passing_condition": "memory_type='archive' is specified since user explicitly asks about compaction archive"
+        }
+      ]
+    },
+    {
+      "id": 510,
+      "name": "e2e-full-compaction-recovery",
+      "category": "e2e",
+      "prompt": "Context was just compacted. I was refactoring the search engine earlier. Recover what I was doing.",
+      "expected_behavior": "Agent: session_snapshot() → recall('search engine refactoring', memory_type='archive') → recall('search engine refactoring'). Uses both archive and regular memory to recover full context.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "session_snapshot() is called first",
+          "type": "workflow",
+          "passing_condition": "session_snapshot() is the first tool called"
+        },
+        {
+          "id": "a2",
+          "text": "recall() with memory_type='archive' is called",
+          "type": "tool_selection",
+          "passing_condition": "recall called with memory_type='archive' and search-related query"
+        },
+        {
+          "id": "a3",
+          "text": "Agent does not re-index or start from scratch",
+          "type": "anti_pattern",
+          "passing_condition": "No index() call; agent uses recovery tools instead of starting over"
+        }
+      ]
+    },
+    {
+      "id": 511,
+      "name": "e2e-progressive-disclosure-awareness",
+      "category": "e2e",
+      "prompt": "Run impact analysis on the SearchEngine class. The response says 'sandbox_ref: sx_xyz789' with a preview showing 5 of 34 impacted symbols. I need the full list.",
+      "expected_behavior": "Agent calls retrieve('sx_xyz789') to get the full impact analysis with all 34 impacted symbols.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "retrieve() is called with the sandbox_ref",
+          "type": "tool_selection",
+          "passing_condition": "retrieve called with ref_id='sx_xyz789'"
+        },
+        {
+          "id": "a2",
+          "text": "Agent does NOT re-run impact() to get the full results",
+          "type": "anti_pattern",
+          "passing_condition": "Agent uses retrieve, not a second impact() call, to get full results"
+        }
+      ]
+    },
+    {
+      "id": 512,
+      "name": "routing-compact-vs-remember",
+      "category": "routing",
+      "prompt": "We decided to use RS256 for JWT signing. Store this decision.",
+      "expected_behavior": "Agent calls remember(content='Use RS256 for JWT signing', memory_type='decision') — NOT compact(). compact is for pre-compaction archival, remember is for persistent decisions.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "remember() is called, not compact()",
+          "type": "tool_selection",
+          "passing_condition": "remember called with memory_type='decision', not compact"
+        },
+        {
+          "id": "a2",
+          "text": "Agent distinguishes compact (pre-compaction archive) from remember (persistent memory)",
+          "type": "routing",
+          "passing_condition": "Agent uses remember for a persistent decision, not compact"
+        }
+      ]
     }
   ],
   "performance_benchmarks": {
@@ -392,7 +503,9 @@
       "search_before_readfile": ">=95%",
       "index_called_at_most_once": "100%",
       "status_polled_after_index": ">=90%",
-      "retrieve_called_when_sandbox_ref_present": ">=90%"
+      "retrieve_called_when_sandbox_ref_present": ">=90%",
+      "compact_used_for_archival_not_remember": ">=90%",
+      "archive_recall_used_for_compaction_recovery": ">=85%"
     }
   }
 }

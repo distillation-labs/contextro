@@ -1,7 +1,7 @@
 {
   "skill_name": "dev-contextia-mcp",
-  "version": "3.0.0",
-  "description": "Comprehensive evals for Contextia MCP skill v3. Covers all 25 tools, current output format (human-readable text + structuredContent), sandbox_ref/retrieve flow, cross-repo tools, readOnlyHint annotations, and Anthropic best practices.",
+  "version": "3.1.0",
+  "description": "Comprehensive evals for Contextia MCP skill v3.1. Covers all 26 tools, current output format (human-readable text + structuredContent), sandbox_ref/retrieve flow, cross-repo tools, progressive disclosure, compaction archive, and Anthropic best practices.",
   "categories": {
     "triggering": "Skill loads on relevant queries, does NOT load on unrelated ones",
     "routing": "Correct tool selected for each task type",
@@ -129,6 +129,38 @@
           "text": "repo_add() is called with the path",
           "type": "tool_selection",
           "passing_condition": "repo_add called with path='/Users/alice/backend'"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "trigger-compact-archive",
+      "category": "triggering",
+      "prompt": "Archive this session's context before compaction happens.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls compact(content) with session context.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "compact() is called",
+          "type": "tool_selection",
+          "passing_condition": "compact called with content summarizing session"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "trigger-recall-archive",
+      "category": "triggering",
+      "prompt": "Search the compaction archive for what I found about the database schema.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls recall('database schema', memory_type='archive').",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "recall() is called with memory_type='archive'",
+          "type": "tool_selection",
+          "passing_condition": "recall called with memory_type='archive' and database schema query"
         }
       ]
     },
