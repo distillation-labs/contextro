@@ -1,16 +1,16 @@
 services:
-  contextia:
-    container_name: contextia-mcp
-    image: ${CONTEXTIA_IMAGE:-ghcr.io/jassskalkat/contextia-mcp:latest}
+  contextro:
+    container_name: contextro-mcp
+    image: ${CONTEXTRO_IMAGE:-ghcr.io/jassskalkat/contextro-mcp:latest}
     ports:
       - "8000:8000"
     volumes:
       # Persistent index storage — survives container restarts
-      - contextia-data:/data
+      - contextro-data:/data
       # Mount the codebase you want to index. Set CTX_CODEBASE_HOST_PATH first.
       - ${CTX_CODEBASE_HOST_PATH:?set CTX_CODEBASE_HOST_PATH to your repo path}:/repos/platform:ro
     environment:
-      CTX_STORAGE_DIR: /data/.contextia
+      CTX_STORAGE_DIR: /data/.contextro
       CTX_CODEBASE_HOST_PATH: ${CTX_CODEBASE_HOST_PATH:?set CTX_CODEBASE_HOST_PATH to your repo path}
       CTX_CODEBASE_MOUNT_PATH: /repos/platform
       # Map the host path your client sends to the mounted path inside the container.
@@ -39,5 +39,5 @@ services:
       start_period: 15s
 
 volumes:
-  contextia-data:
+  contextro-data:
     driver: local

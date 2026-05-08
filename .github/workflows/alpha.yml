@@ -12,7 +12,7 @@ on:
         type: boolean
 
 concurrency:
-  group: contextia-alpha
+  group: contextro-alpha
   cancel-in-progress: true
 
 permissions:
@@ -20,7 +20,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/contextia-mcp
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/contextro-mcp
 
 jobs:
   validate:
@@ -96,7 +96,7 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "port=${port:-22}" >> "$GITHUB_OUTPUT"
-          echo "remote_dir=${remote_dir:-/opt/contextia-alpha}" >> "$GITHUB_OUTPUT"
+          echo "remote_dir=${remote_dir:-/opt/contextro-alpha}" >> "$GITHUB_OUTPUT"
           echo "http_port=${http_port:-8000}" >> "$GITHUB_OUTPUT"
       - name: Configure SSH
         if: steps.deploy_check.outputs.enabled == 'true'
@@ -120,7 +120,7 @@ jobs:
         run: |
           ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" <<EOF
           cat > "${{ steps.deploy_check.outputs.remote_dir }}/.env" <<ENVVARS
-          CONTEXTIA_IMAGE=${{ needs.docker.outputs.image_ref }}
+          CONTEXTRO_IMAGE=${{ needs.docker.outputs.image_ref }}
           ALPHA_HTTP_PORT=${{ steps.deploy_check.outputs.http_port }}
           ENVVARS
           chmod +x "${{ steps.deploy_check.outputs.remote_dir }}/pull-and-restart.sh"
