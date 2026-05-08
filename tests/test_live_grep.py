@@ -2,8 +2,7 @@ import shutil
 import subprocess
 
 import pytest
-
-from contextia_mcp.engines.live_grep import LiveGrepEngine
+from contextro_mcp.engines.live_grep import LiveGrepEngine
 
 
 @pytest.fixture
@@ -12,6 +11,7 @@ def temp_workspace(tmp_path):
     (tmp_path / "file1.py").write_text("def hello_world():\n    print('hello')\n")
     (tmp_path / "file2.txt").write_text("This is a secret message.\nKeep it safe.\n")
     return tmp_path
+
 
 def test_live_grep_rg(temp_workspace):
     """Test ripgrep search if installed."""
@@ -25,6 +25,7 @@ def test_live_grep_rg(temp_workspace):
     assert any("file1.py" in r["absolute_path"] for r in results)
     assert any("hello_world" in r["code_snippet"] for r in results)
     assert results[0]["search_mode"] == "live_grep_rg"
+
 
 def test_live_grep_grep(temp_workspace):
     """Test grep search fallback."""
@@ -42,6 +43,7 @@ def test_live_grep_grep(temp_workspace):
     assert any("secret message" in r["code_snippet"] for r in results)
     assert results[0]["search_mode"] == "live_grep_grep"
 
+
 def test_live_grep_limit(temp_workspace):
     """Test search result limit."""
     (temp_workspace / "multi.py").write_text("\n".join([f"line {i}" for i in range(100)]))
@@ -50,6 +52,7 @@ def test_live_grep_limit(temp_workspace):
     results = engine.search("line", limit=5)
 
     assert len(results) == 5
+
 
 def test_live_grep_empty_query(temp_workspace):
     """Test empty query handling."""
