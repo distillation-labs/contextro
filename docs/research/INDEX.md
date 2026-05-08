@@ -1,6 +1,6 @@
 # Research Index
 
-Research notes for libraries and technologies used in Contextia. Check here before implementing with any external library.
+Research notes for libraries and technologies used in Contextro. Check here before implementing with any external library.
 
 | Library | Status | Notes |
 |---------|--------|-------|
@@ -11,9 +11,9 @@ Research notes for libraries and technologies used in Contextia. Check here befo
 | sentence-transformers | Used in Phase 1-2 | Model loading wrapper; lazy load + unload pattern in `embedding_service.py` |
 | FastMCP | Used in Phase 2+ | v3.1 API: `FastMCP(name)`, `@mcp.tool()`. Tools in `mcp._local_provider._components` (key: `tool:{name}`). `FunctionTool.fn` for raw function access. No `description` kwarg in v3 |
 | FlashRank | Needs research (Phase 4) | Re-ranking API, model loading |
-| tree-sitter | Built for Contextia | 9 languages, ThreadLocalParserFactory for parallel parsing |
-| ast-grep | Built for Contextia | 25+ languages, structural patterns. Sequential only (internal counters not thread-safe) |
-| watchdog | Built for Contextia | Debounced watcher with async support |
+| tree-sitter | Built for Contextro | 9 languages, ThreadLocalParserFactory for parallel parsing |
+| ast-grep | Built for Contextro | 25+ languages, structural patterns. Sequential only (internal counters not thread-safe) |
+| watchdog | Built for Contextro | Debounced watcher with async support |
 | pathspec | Used in Phase 2 | .gitignore matching; use `"gitignore"` pattern (not deprecated `"gitwildmatch"`) |
 | pyarrow | Used in Phase 2 | LanceDB schema definition; `pa.list_(pa.float32(), dims)` for vector columns |
 | rich | Optional (self_test) | Console tables, panels, colored output. Graceful fallback to plain print when not installed |
