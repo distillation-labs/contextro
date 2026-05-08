@@ -1,10 +1,8 @@
 """Tests for parsing/treesitter_parser.py."""
 
-
 import pytest
-
-from contextia_mcp.core.models import SymbolType
-from contextia_mcp.parsing.treesitter_parser import ThreadLocalParserFactory, TreeSitterParser
+from contextro_mcp.core.models import SymbolType
+from contextro_mcp.parsing.treesitter_parser import ThreadLocalParserFactory, TreeSitterParser
 
 
 @pytest.fixture
@@ -45,7 +43,7 @@ def standalone_function(x):
 
 @pytest.fixture
 def js_file(tmp_path):
-    code = '''
+    code = """
 const MAX_RETRIES = 3;
 
 function greet(name) {
@@ -61,7 +59,7 @@ class Animal {
         return this.name + " speaks";
     }
 }
-'''
+"""
     f = tmp_path / "app.js"
     f.write_text(code)
     return f
