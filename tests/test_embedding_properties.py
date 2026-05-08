@@ -14,12 +14,13 @@ from hypothesis import strategies as st
 
 try:
     import optimum  # noqa: F401
+
     _has_optimum = True
 except ImportError:
     _has_optimum = False
 
-from contextia_mcp.config import reset_settings
-from contextia_mcp.indexing.embedding_service import (
+from contextro_mcp.config import reset_settings
+from contextro_mcp.indexing.embedding_service import (
     DEFAULT_MODEL,
     EMBEDDING_MODELS,
     EmbeddingService,
@@ -175,7 +176,7 @@ def test_batch_size_clamped(model_name, batch_size):
 
 def test_unsupported_model_raises_error():
     """Unsupported model names raise ConfigurationError."""
-    from contextia_mcp.core.exceptions import ConfigurationError
+    from contextro_mcp.core.exceptions import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="Unsupported embedding model"):
         EmbeddingService(model_name="my-custom-model/v1")
@@ -216,7 +217,7 @@ def test_normalized_embeddings_unit_length(model_name):
     try:
         svc = get_embedding_service(model_name)
         vec = svc.embed("def hello(): return 42")
-        norm = sum(x ** 2 for x in vec) ** 0.5
+        norm = sum(x**2 for x in vec) ** 0.5
         assert abs(norm - 1.0) < 0.01, f"Expected unit norm, got {norm}"
     finally:
         reset_embedding_service()
@@ -258,7 +259,7 @@ def test_hypothesis_normalized_unit_length(text):
     """Property: any non-empty text produces a unit-norm embedding (using lightest model)."""
     svc = get_embedding_service("bge-small-en")
     vec = svc.embed(text)
-    norm = sum(x ** 2 for x in vec) ** 0.5
+    norm = sum(x**2 for x in vec) ** 0.5
     assert abs(norm - 1.0) < 0.01
 
 
