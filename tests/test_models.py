@@ -1,8 +1,7 @@
 """Tests for core/models.py — Symbol, ParsedFile, CodebaseIndex, Memory."""
 
 import pytest
-
-from contextia_mcp.core.models import (
+from contextro_mcp.core.models import (
     CodebaseIndex,
     Memory,
     MemoryType,
@@ -12,6 +11,7 @@ from contextia_mcp.core.models import (
 )
 
 # --- SymbolType ---
+
 
 def test_symbol_type_values():
     assert SymbolType.FUNCTION.value == "function"
@@ -35,6 +35,7 @@ def test_symbol_type_str():
 
 
 # --- Symbol ---
+
 
 def _make_symbol(**overrides):
     defaults = {
@@ -109,6 +110,7 @@ def test_symbol_invalid_type_raises():
 
 # --- ParsedFile ---
 
+
 def test_parsed_file_creation():
     pf = ParsedFile(filepath="/test.py", language="python")
     assert pf.is_successful
@@ -148,6 +150,7 @@ def test_parsed_file_negative_parse_time_raises():
 
 
 # --- CodebaseIndex ---
+
 
 def test_codebase_index_creation():
     idx = CodebaseIndex(root_path="/project")
@@ -191,6 +194,7 @@ def test_codebase_index_empty_root_raises():
 
 # --- MemoryType ---
 
+
 def test_memory_type_from_string():
     assert MemoryType.from_string("conversation") == MemoryType.CONVERSATION
     assert MemoryType.from_string("NOTE") == MemoryType.NOTE
@@ -202,6 +206,7 @@ def test_memory_type_from_string_invalid():
 
 
 # --- Memory ---
+
 
 def _make_memory(**overrides):
     defaults = {
