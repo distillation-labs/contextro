@@ -30,6 +30,7 @@ __all__ = ["SKIP_DIRS", "discover_files", "IndexResult", "IndexingPipeline"]
 
 METADATA_VERSION = 2
 FINGERPRINTS_KEY = "fingerprints"
+STAT_SIGNATURES_KEY = "stat_signatures"
 LEGACY_FILE_STATE_KEY = "mtimes"
 CONTENT_HASH_DETECTION = "content_hash"
 
@@ -524,52 +525,110 @@ class IndexingPipeline:
         )
         if stored_file_state is None:
             return self.index(codebase_path, progress_callback)
+        stored_stat_signatures = (
+            self._extract_stat_signatures(stored_metadata) if stored_metadata is not None else None
+        )
 
         # Discover current files and compute file-state fingerprints.
         files = discover_files(codebase_path, self._settings)
 
         from contextro_mcp.accelerator import diff_mtimes_fast
 
-        current_fingerprints = self._compute_file_fingerprints(files)
+        current_fingerprints = dict(stored_file_state)
+        current_stat_signatures: Dict[str, str] | None = None
         using_legacy_mtimes = stored_metadata is not None and self._metadata_uses_legacy_mtimes(
             stored_metadata
+        )
+        using_fast_path = (
+            self._settings.incremental_index_fast_path_enabled
+            and not using_legacy_mtimes
+            and stored_stat_signatures is not None
+        )
+        needs_stat_upgrade = (
+            self._settings.incremental_index_fast_path_enabled
+            and not using_legacy_mtimes
+            and stored_stat_signatures is None
         )
 
         if using_legacy_mtimes:
             current_file_state = self._compute_file_mtimes(files)
+            current_stat_signatures = self._compute_file_stat_signatures(files)
             logger.info(
                 "Legacy mtime metadata detected; diffing once with mtimes before "
                 "upgrading to content hashes"
             )
+            current_fingerprints = self._compute_file_fingerprints(files)
+            added_list, modified_list, deleted_list = diff_mtimes_fast(
+                current_file_state,
+                stored_file_state,
+            )
+            new_files = set(added_list)
+            modified_files = set(modified_list)
+            deleted_files = set(deleted_list)
+        elif using_fast_path:
+            current_stat_signatures = self._compute_file_stat_signatures(files)
+            added_list, candidate_modified_list, deleted_list = diff_mtimes_fast(
+                current_stat_signatures,
+                stored_stat_signatures,
+            )
+            candidate_paths = [Path(path) for path in set(added_list) | set(candidate_modified_list)]
+            candidate_fingerprints = (
+                self._compute_file_fingerprints(candidate_paths) if candidate_paths else {}
+            )
+            new_files = set(added_list)
+            modified_files = {
+                path
+                for path in candidate_modified_list
+                if candidate_fingerprints.get(path) != stored_file_state.get(path)
+            }
+            deleted_files = set(deleted_list)
+            for deleted in deleted_files:
+                current_fingerprints.pop(deleted, None)
+            for path in new_files | modified_files:
+                fingerprint = candidate_fingerprints.get(path)
+                if fingerprint is not None:
+                    current_fingerprints[path] = fingerprint
+            logger.info(
+                "Incremental stat diff: %d new, %d modified, %d deleted "
+                "(%d candidates hashed)",
+                len(new_files),
+                len(modified_files),
+                len(deleted_files),
+                len(candidate_paths),
+            )
         else:
+            current_fingerprints = self._compute_file_fingerprints(files)
+            if needs_stat_upgrade:
+                current_stat_signatures = self._compute_file_stat_signatures(files)
             current_file_state = current_fingerprints
             logger.info("Diffing %d files with content hashes", len(files))
-
-        added_list, modified_list, deleted_list = diff_mtimes_fast(
-            current_file_state,
-            stored_file_state,
-        )
-        new_files = set(added_list)
-        modified_files = set(modified_list)
-        deleted_files = set(deleted_list)
-        logger.info(
-            "Incremental diff: %d new, %d modified, %d deleted",
-            len(new_files),
-            len(modified_files),
-            len(deleted_files),
-        )
+            added_list, modified_list, deleted_list = diff_mtimes_fast(
+                current_file_state,
+                stored_file_state,
+            )
+            new_files = set(added_list)
+            modified_files = set(modified_list)
+            deleted_files = set(deleted_list)
+            logger.info(
+                "Incremental diff: %d new, %d modified, %d deleted",
+                len(new_files),
+                len(modified_files),
+                len(deleted_files),
+            )
 
         changed_files = new_files | modified_files
 
         if not changed_files and not deleted_files:
-            if using_legacy_mtimes:
+            if using_legacy_mtimes or using_fast_path or needs_stat_upgrade:
                 self._write_metadata(
                     codebase_path=codebase_path,
                     fingerprints=current_fingerprints,
+                    stat_signatures=current_stat_signatures,
                 )
             # No changes — return stats from existing index
             graph_stats = self._graph_engine.get_statistics()
-            self._embedding_service.unload()
+            if not self._settings.incremental_index_fast_path_enabled:
+                self._embedding_service.unload()
             return IndexResult(
                 total_files=len(files),
                 total_symbols=graph_stats.get("total_nodes", 0),
@@ -623,7 +682,13 @@ class IndexingPipeline:
             self._bm25_engine.ensure_fts_index()
 
             # Save updated metadata
-            self._save_metadata(codebase_path, files)
+            if current_stat_signatures is None:
+                current_stat_signatures = self._compute_file_stat_signatures(files)
+            self._write_metadata(
+                codebase_path=codebase_path,
+                fingerprints=current_fingerprints,
+                stat_signatures=current_stat_signatures,
+            )
 
             self._persist_graph()
         finally:
@@ -782,6 +847,7 @@ class IndexingPipeline:
             codebase_path=codebase_paths[0],
             codebase_paths=codebase_paths,
             fingerprints=self._compute_file_fingerprints(files),
+            stat_signatures=self._compute_file_stat_signatures(files),
         )
 
     def _save_metadata(self, codebase_path: Path, files: List[Path]) -> None:
@@ -789,6 +855,7 @@ class IndexingPipeline:
         self._write_metadata(
             codebase_path=codebase_path,
             fingerprints=self._compute_file_fingerprints(files),
+            stat_signatures=self._compute_file_stat_signatures(files),
         )
 
     def _load_metadata_payload(self) -> Optional[Dict[str, Any]]:
@@ -826,6 +893,20 @@ class IndexingPipeline:
         """Return True when metadata still uses the old mtime payload."""
         return LEGACY_FILE_STATE_KEY in metadata and FINGERPRINTS_KEY not in metadata
 
+    def _extract_stat_signatures(self, metadata: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        raw_state = metadata.get(STAT_SIGNATURES_KEY)
+        if raw_state is None:
+            return None
+        if not isinstance(raw_state, dict):
+            return None
+
+        normalized: Dict[str, str] = {}
+        for path, value in raw_state.items():
+            if not isinstance(path, str) or not isinstance(value, str):
+                return None
+            normalized[path] = value
+        return normalized
+
     def _compute_file_fingerprints(self, files: List[Path]) -> Dict[str, str]:
         """Hash file contents for reliable change detection."""
         from contextro_mcp.accelerator import hash_files_fast
@@ -838,11 +919,18 @@ class IndexingPipeline:
 
         return scan_mtimes_fast([str(f) for f in files])
 
+    def _compute_file_stat_signatures(self, files: List[Path]) -> Dict[str, str]:
+        """Read cheap file stat signatures for fast incremental candidate detection."""
+        from contextro_mcp.accelerator import scan_file_stats_fast
+
+        return scan_file_stats_fast([str(f) for f in files])
+
     def _write_metadata(
         self,
         *,
         codebase_path: Path,
         fingerprints: Dict[str, str],
+        stat_signatures: Optional[Dict[str, str]] = None,
         codebase_paths: Optional[List[Path]] = None,
     ) -> None:
         """Write normalized metadata for content-hash incremental indexing."""
@@ -852,6 +940,8 @@ class IndexingPipeline:
             "codebase_path": str(codebase_path),
             FINGERPRINTS_KEY: fingerprints,
         }
+        if stat_signatures is not None:
+            metadata[STAT_SIGNATURES_KEY] = stat_signatures
         if codebase_paths is not None:
             metadata["codebase_paths"] = [str(p) for p in codebase_paths]
         self._metadata_path.parent.mkdir(parents=True, exist_ok=True)
