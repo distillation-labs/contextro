@@ -1,6 +1,6 @@
 """Tests for response builder with verbosity levels."""
 
-from contextia_mcp.formatting.response_builder import ResponseBuilder
+from contextro_mcp.formatting.response_builder import ResponseBuilder
 
 
 def _make_search_result(id_="a", name="func_a", score=0.9):
