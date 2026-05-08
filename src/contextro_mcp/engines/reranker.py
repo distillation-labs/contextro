@@ -19,8 +19,15 @@ class FlashReranker:
     is not installed.
     """
 
-    def __init__(self, model_name: str = "ms-marco-MiniLM-L-12-v2"):
+    def __init__(
+        self,
+        model_name: str = "ms-marco-MiniLM-L-12-v2",
+        max_passage_chars: Optional[int] = None,
+    ):
         self._model_name = model_name
+        self._max_passage_chars = (
+            max_passage_chars if max_passage_chars and max_passage_chars > 0 else None
+        )
         self._ranker: Optional[Any] = None
         self._available: Optional[bool] = None
 
@@ -52,6 +59,7 @@ class FlashReranker:
         query: str,
         results: List[Dict[str, Any]],
         limit: int = 10,
+        max_passage_chars: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Rerank search results using FlashRank.
 
@@ -78,8 +86,15 @@ class FlashReranker:
 
             # Build passages for FlashRank
             passages = []
+            passage_chars = (
+                max_passage_chars
+                if max_passage_chars is not None and max_passage_chars > 0
+                else self._max_passage_chars
+            )
             for r in results:
                 text = r.get("text", r.get("symbol_name", ""))
+                if passage_chars is not None:
+                    text = text[:passage_chars]
                 passages.append({"id": r.get("id", ""), "text": text, "meta": r})
 
             request = RerankRequest(query=query, passages=passages)
