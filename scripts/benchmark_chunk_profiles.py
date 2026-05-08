@@ -1,4 +1,4 @@
-"""Compare retrieval quality across Contextia chunking profiles."""
+"""Compare retrieval quality across Contextro chunking profiles."""
 
 from __future__ import annotations
 
@@ -28,7 +28,9 @@ PROFILES: dict[str, dict[str, str]] = {
 
 
 def main() -> dict:
-    parser = argparse.ArgumentParser(description="Benchmark retrieval quality across chunk profiles.")
+    parser = argparse.ArgumentParser(
+        description="Benchmark retrieval quality across chunk profiles."
+    )
     parser.add_argument(
         "--path",
         type=Path,
