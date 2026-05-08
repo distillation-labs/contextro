@@ -1,0 +1,286 @@
+{
+  "skill_name": "applied-ai-engineer",
+  "version": "1.1.0",
+  "description": "Eval suite for the applied AI engineering skill. Measures trigger quality, harness-first engineering, observability discipline, benchmark and eval rigor, and production-safe implementation planning.",
+  "categories": {
+    "triggering": "Skill loads for productionization and reliability work",
+    "workflow": "Skill follows metric, baseline, harness, implementation, and validation order",
+    "evals": "Skill insists on benchmarks or evaluator design before trusting changes",
+    "observability": "Skill adds signals and recovery paths for long-running systems",
+    "anti_pattern": "Skill avoids shipping without guardrails or using prompt blobs as system design",
+    "output_quality": "Skill returns rollout, rollback, and concrete enforcement mechanisms"
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "trigger-productionize-agent-feature",
+      "category": "triggering",
+      "prompt": "We have a promising idea for searchable compaction archive. I need an applied AI engineer plan to productionize it safely.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads and frames the task as harness, implementation, observability, and rollout work.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill triggers for productionization request",
+          "type": "routing",
+          "passing_condition": "Skill loads for productionize and safely ship phrasing"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "trigger-build-harness",
+      "category": "triggering",
+      "prompt": "Build me a proper harness and eval plan for improving Contextro's retrieval pipeline.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads for harness and evaluation design.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill triggers for harness work",
+          "type": "routing",
+          "passing_condition": "Skill loads for harness and eval request"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "no-trigger-pure-research",
+      "category": "triggering",
+      "prompt": "Research the most novel ideas in long-context memory systems and summarize the papers.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load for pure literature review with no implementation intent.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill does not trigger for pure research",
+          "type": "routing",
+          "passing_condition": "Skill does not load for literature-only request"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "no-trigger-trivial-edit",
+      "category": "triggering",
+      "prompt": "Add a comment to the SearchEngine class.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load for trivial code edits.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill does not trigger for trivial edit",
+          "type": "routing",
+          "passing_condition": "Skill does not load for small direct edit"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "workflow-metric-first",
+      "category": "workflow",
+      "prompt": "Make Contextro's compaction system better.",
+      "expected_behavior": "Skill starts by naming user-visible outcome, metric, and constraints before implementation steps.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "metric and constraints come first",
+          "type": "workflow",
+          "passing_condition": "Response begins with outcome, metric, or constraints before implementation details"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "workflow-baseline-before-change",
+      "category": "workflow",
+      "prompt": "Plan the engineering work to reduce token output in search responses.",
+      "expected_behavior": "Skill establishes current benchmark command and baseline before proposing changes.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "baseline is established",
+          "type": "workflow",
+          "passing_condition": "Response includes benchmark command and current baseline before proposed changes"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "evals-harness-before-trust",
+      "category": "evals",
+      "prompt": "We think AST-aware compression will help. Give me the implementation plan.",
+      "expected_behavior": "Skill includes a benchmark or eval harness before trusting the improvement.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "benchmark or eval plan is included",
+          "type": "evals",
+          "passing_condition": "Response includes a benchmark command, eval set, or before-vs-after comparison plan"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "evals-realistic-environment",
+      "category": "evals",
+      "prompt": "How would you validate a new cross-repo search workflow?",
+      "expected_behavior": "Skill prefers realistic task evaluation over only synthetic microbenchmarks.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "realistic evaluation is included",
+          "type": "evals",
+          "passing_condition": "Response includes realistic task scenarios or evaluator-style checks, not only isolated microbenchmarks"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "observability-signals-added",
+      "category": "observability",
+      "prompt": "Design the engineering plan for a long-running agent feature that may regress over time.",
+      "expected_behavior": "Skill adds logs, metrics, traces, or equivalent signals plus resume or recovery artifacts.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "signals are proposed",
+          "type": "observability",
+          "passing_condition": "Response includes logs, metrics, traces, event records, or resume artifacts"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "observability-resume-and-recovery",
+      "category": "observability",
+      "prompt": "How would you engineer Contextro to survive compaction and long tasks more reliably?",
+      "expected_behavior": "Skill includes resume, checkpoint, archive, or trajectory concepts.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "resume or checkpoint path is included",
+          "type": "observability",
+          "passing_condition": "Response includes checkpointing, session packets, searchable archive, or trajectory logging"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "anti-pattern-no-ship-without-evals",
+      "category": "anti_pattern",
+      "prompt": "We don't need benchmarks. Just implement searchable archive and ship it.",
+      "expected_behavior": "Skill rejects shipping without evaluation.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "shipping without evals is rejected",
+          "type": "anti_pattern",
+          "passing_condition": "Response refuses to skip benchmark or eval validation"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "anti-pattern-no-single-metric-blindness",
+      "category": "anti_pattern",
+      "prompt": "If latency drops by 20%, I don't care if tests fail or memory doubles.",
+      "expected_behavior": "Skill rejects single-metric optimization that ignores guardrails.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "guardrails are defended",
+          "type": "anti_pattern",
+          "passing_condition": "Response rejects ignoring tests, memory, or user-visible regressions"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "anti-pattern-no-giant-prompt-manual",
+      "category": "anti_pattern",
+      "prompt": "Let's solve agent reliability by writing a massive 5000-line AGENTS file.",
+      "expected_behavior": "Skill rejects giant prompt manuals and prefers enforceable artifacts.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "prompt blob solution is rejected",
+          "type": "anti_pattern",
+          "passing_condition": "Response recommends concise maps, docs, lints, tests, or evals instead of giant manuals"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "output-quality-rollout-and-rollback",
+      "category": "output_quality",
+      "prompt": "Give me the implementation plan for a new memory feature.",
+      "expected_behavior": "Skill includes rollout and rollback criteria.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "rollout and rollback are included",
+          "type": "output_quality",
+          "passing_condition": "Response includes rollout, rollback, or failure recovery criteria"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "output-quality-enforcement-artifacts",
+      "category": "output_quality",
+      "prompt": "How do we make agent behavior consistent across future sessions?",
+      "expected_behavior": "Skill prefers enforceable repo artifacts over repeated human reminding.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "enforcement mechanisms are proposed",
+          "type": "output_quality",
+          "passing_condition": "Response includes docs, lint, tests, evals, rules, or hooks as enforcement mechanisms"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "workflow-modular-slice-before-rewrite",
+      "category": "workflow",
+      "prompt": "The FastMCP server is getting messy. Let's rewrite half the codebase and move everything around while we add searchable archive.",
+      "expected_behavior": "Skill rejects the broad rewrite impulse and instead proposes a small, benchmarked slice with explicit module boundaries.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "small enforceable slice is preferred",
+          "type": "workflow",
+          "passing_condition": "Response proposes a minimal incremental slice before any broad rewrite"
+        },
+        {
+          "id": "a2",
+          "text": "module boundaries are named",
+          "type": "workflow",
+          "passing_condition": "Response calls out boundaries such as entrypoint vs domain logic, formatting, state, or orchestration"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "output-quality-thin-entrypoint-plan",
+      "category": "output_quality",
+      "prompt": "Plan the engineering work for a new MCP feature without letting server.py become the dumping ground.",
+      "expected_behavior": "Skill returns a plan that keeps entrypoints thin and routes reusable logic into focused modules with verification.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "thin entrypoint approach included",
+          "type": "output_quality",
+          "passing_condition": "Response says to keep the entrypoint thin or avoid putting all feature logic in server.py"
+        },
+        {
+          "id": "a2",
+          "text": "verification remains part of the modularization plan",
+          "type": "output_quality",
+          "passing_condition": "Response includes tests, benchmark, or eval checks alongside the modular implementation plan"
+        }
+      ]
+    }
+  ]
+}

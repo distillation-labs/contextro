@@ -1,0 +1,274 @@
+{
+  "skill_name": "mcp-protocol-architect",
+  "version": "1.0.0",
+  "categories": {
+    "triggering": "Skill loads for MCP architecture questions",
+    "protocol": "Skill models tools, resources, prompts, lifecycle, and transport correctly",
+    "anti_pattern": "Skill rejects incorrect primitive modeling",
+    "output_quality": "Skill returns a usable MCP design decision"
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "trigger-mcp-surface-design",
+      "category": "triggering",
+      "prompt": "Should this new MCP feature be a tool, resource, or prompt?",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads for primitive design.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill triggers",
+          "type": "routing",
+          "passing_condition": "Skill loads for primitive design question"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "trigger-transport-design",
+      "category": "triggering",
+      "prompt": "Should this MCP server use stdio or streamable HTTP?",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads for transport design.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill triggers",
+          "type": "routing",
+          "passing_condition": "Skill loads for MCP transport question"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "no-trigger-python-refactor",
+      "category": "triggering",
+      "prompt": "Refactor this Python helper into two functions.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load for ordinary Python refactor.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "no trigger",
+          "type": "routing",
+          "passing_condition": "Skill does not load for plain Python refactor"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "no-trigger-rust-hot-path",
+      "category": "triggering",
+      "prompt": "Optimize this Rust hashing loop.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load for low-level Rust optimization.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "no trigger",
+          "type": "routing",
+          "passing_condition": "Skill does not load for Rust micro-optimization"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "protocol-tool-vs-resource",
+      "category": "protocol",
+      "prompt": "We want to expose the current schema of the memory store. Should that be a tool or a resource?",
+      "expected_behavior": "Skill favors a resource for passive context.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "resource chosen for passive context",
+          "type": "protocol",
+          "passing_condition": "Response recommends a resource for static or passive schema exposure"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "protocol-tool-for-active-operation",
+      "category": "protocol",
+      "prompt": "We want the model to trigger reindexing on demand. Which MCP primitive should own that?",
+      "expected_behavior": "Skill chooses a tool for active execution.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "tool chosen for active operation",
+          "type": "protocol",
+          "passing_condition": "Response recommends a tool for explicit active reindexing"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "protocol-prompt-for-workflow",
+      "category": "protocol",
+      "prompt": "We need a reusable user-invoked workflow for onboarding a new repo to Contextro. Should that be a prompt?",
+      "expected_behavior": "Skill recognizes prompt as a valid reusable workflow wrapper.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "prompt recognized correctly",
+          "type": "protocol",
+          "passing_condition": "Response recommends a prompt or prompt-plus-tools structure for reusable user-invoked workflow"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "protocol-lifecycle-capabilities",
+      "category": "protocol",
+      "prompt": "We're adding a dynamic tool catalog. What protocol concerns do we need to model?",
+      "expected_behavior": "Skill mentions capabilities, list discovery, and notifications.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "lifecycle and notifications included",
+          "type": "protocol",
+          "passing_condition": "Response includes capability negotiation, list discovery, or list-changed notifications"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "protocol-transport-tradeoff",
+      "category": "protocol",
+      "prompt": "This server is local-only and launched by the host as a subprocess. What transport should we prefer?",
+      "expected_behavior": "Skill prefers stdio for local subprocess workflows.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "stdio preferred for local subprocess",
+          "type": "protocol",
+          "passing_condition": "Response recommends stdio for local single-host integration"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "anti-pattern-everything-is-a-tool",
+      "category": "anti_pattern",
+      "prompt": "Let's expose every piece of context as a tool so the model can decide everything.",
+      "expected_behavior": "Skill rejects collapsing all primitives into tools.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "rejects everything-as-tool",
+          "type": "anti_pattern",
+          "passing_condition": "Response explicitly rejects exposing all context as tools"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "anti-pattern-prompts-as-api-bandage",
+      "category": "anti_pattern",
+      "prompt": "The API surface is messy, but we can hide it with a prompt and call it done.",
+      "expected_behavior": "Skill rejects prompts as a substitute for sound primitive design.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "rejects prompts as bandage",
+          "type": "anti_pattern",
+          "passing_condition": "Response says prompts should not compensate for bad API or primitive design"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "output-quality-decision-structure",
+      "category": "output_quality",
+      "prompt": "Design the MCP surface for cross-repo search and onboarding.",
+      "expected_behavior": "Skill returns primitive mapping plus transport/lifecycle implications.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "returns usable MCP design",
+          "type": "output_quality",
+          "passing_condition": "Response includes primitive mapping and transport or lifecycle notes"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "protocol-dynamic-catalog-updates",
+      "category": "protocol",
+      "prompt": "Tools are generated from workspace plugins and may change while the client is connected. What must the protocol design include?",
+      "expected_behavior": "Skill calls for capability negotiation, list discovery, and list-changed notifications so clients can react safely to dynamic tool availability.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "dynamic lists need notifications",
+          "type": "protocol",
+          "passing_condition": "Response includes list discovery and list-changed notifications for dynamic tool catalogs"
+        },
+        {
+          "id": "a2",
+          "text": "capability negotiation included",
+          "type": "protocol",
+          "passing_condition": "Response mentions initialization or capability negotiation implications"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "protocol-local-first-transport",
+      "category": "protocol",
+      "prompt": "A team wants to expose a local-only repo search server over public HTTP because it feels more modern. Is that the right default?",
+      "expected_behavior": "Skill rejects remote-first transport when the deployment is local-first and subprocess-friendly, and explains why stdio remains the better default here.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "rejects unnecessary remote-first transport",
+          "type": "protocol",
+          "passing_condition": "Response recommends stdio or another local transport and explains why public HTTP is unnecessary here"
+        },
+        {
+          "id": "a2",
+          "text": "security and deployment tradeoffs included",
+          "type": "protocol",
+          "passing_condition": "Response mentions security, auth, or deployment complexity tradeoffs"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "anti-pattern-resource-with-side-effects",
+      "category": "anti_pattern",
+      "prompt": "Let's expose reindexing as a resource so the client can 'read' it to trigger work.",
+      "expected_behavior": "Skill rejects modeling side-effecting work as a resource and redirects it to a tool.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "rejects side effects in resource",
+          "type": "anti_pattern",
+          "passing_condition": "Response says side-effecting reindex work must be modeled as a tool, not a resource"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "output-quality-tradeoff-analysis",
+      "category": "output_quality",
+      "prompt": "We need an MCP design for a workspace state inspector that exposes snapshots, allows refresh, and supports a guided onboarding flow. What design should we use?",
+      "expected_behavior": "Skill maps snapshots to resources, refresh to a tool, onboarding to a prompt, and includes lifecycle and rejected alternatives.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "maps each concern to the right primitive",
+          "type": "output_quality",
+          "passing_condition": "Response splits snapshots, refresh, and onboarding across resource, tool, and prompt appropriately"
+        },
+        {
+          "id": "a2",
+          "text": "tradeoffs included",
+          "type": "output_quality",
+          "passing_condition": "Response includes tradeoffs or rejected alternatives, not just a raw mapping"
+        }
+      ]
+    }
+  ]
+}
