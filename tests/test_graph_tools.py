@@ -2,18 +2,20 @@
 
 import asyncio
 
-import contextia_mcp.server as server_module
-from contextia_mcp.core.graph_models import (
+import contextro_mcp.server as server_module
+from contextro_mcp.core.graph_models import (
     NodeType,
     RelationshipType,
     UniversalLocation,
     UniversalNode,
     UniversalRelationship,
 )
-from contextia_mcp.state import get_state
+from contextro_mcp.state import get_state
+
 from tests.conftest import _call_tool, _setup_indexed
 
 # --- Helpers for direct graph manipulation ---
+
 
 def _make_node(name, node_type=NodeType.FUNCTION, file_path="src/test.py", start_line=1):
     return UniversalNode(
@@ -42,7 +44,7 @@ def _make_call_rel(source_name, target_name):
 
 def _setup_graph_with_calls(state, codebase_path):
     """Set up a graph with known call relationships for testing."""
-    from contextia_mcp.engines.graph_engine import RustworkxCodeGraph
+    from contextro_mcp.engines.graph_engine import RustworkxCodeGraph
 
     graph = RustworkxCodeGraph()
 
@@ -72,7 +74,7 @@ class TestFindSymbol:
 
     def test_find_symbol_exact_match(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": "hello"})
 
         result = asyncio.run(run())
@@ -82,7 +84,7 @@ class TestFindSymbol:
 
     def test_find_symbol_no_match(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": "nonexistent_xyz"})
 
         result = asyncio.run(run())
@@ -90,7 +92,7 @@ class TestFindSymbol:
 
     def test_find_symbol_fuzzy_match(self, mini_codebase, tmp_path):
         async def run():
-            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextia")
+            mcp, _, _ = await _setup_indexed(mini_codebase, tmp_path / ".contextro")
             return await _call_tool(mcp, "find_symbol", {"name": "hell", "exact": False})
 
         result = asyncio.run(run())
