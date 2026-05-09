@@ -297,6 +297,23 @@ introspect(query="how do I use pattern_search")
 
 ---
 
+## Install Agent Skills
+
+Teach your AI coding agent how to use Contextro with one command:
+
+```bash
+npx @contextro/skills install
+```
+
+This installs skills into your project for Claude Code, Cursor, Copilot, Kiro, and OpenCode. Your agent will automatically use Contextro for code discovery instead of reading files.
+
+```bash
+npx @contextro/skills list        # See available skills
+npx @contextro/skills benchmark   # Run MCP vs no-MCP experiment
+```
+
+---
+
 ## All 35 Tools at a Glance
 
 | Tool | What it does |
