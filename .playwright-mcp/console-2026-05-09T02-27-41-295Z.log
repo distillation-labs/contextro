@@ -1,5 +1,0 @@
-[    1428ms] [WARNING] AWSC.Clog is not available. @ https://a.b.cdn.console.awsstatic.com/a/v1/BWK3BDW6H5HMZ6LMDM4L4HSKUMRMB5DVFZP4E44CYZ66OJRDD3GQ/assets/module-CFtYEoHi.js:2524
-[    1450ms] [WARNING] Event does not contain a MessageChannel port, therefore unable to call postMessage with errorType: INVALID_REQUEST @ https://global.console.aws.amazon.com/lotus/csp/@amzn/aws-paddy-nav-widget/1/iFrame.html?packageName=%40amzn%2Faws-paddy-nav-widget&majorVersion=1&versionId=aa6026cc-0504-4e41-b6a7-e464602341b2:119
-[    1450ms] [WARNING] Event does not contain a MessageChannel port, therefore unable to call postMessage with errorType: INVALID_REQUEST @ https://global.console.aws.amazon.com/lotus/csp/@amzn/aws-paddy-nav-widget/1/iFrame.html?packageName=%40amzn%2Faws-paddy-nav-widget&majorVersion=1&versionId=aa6026cc-0504-4e41-b6a7-e464602341b2:119
-[    2083ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://q.us-east-1.amazonaws.com/identity/metadata:0
-[    2139ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://q.eu-central-1.amazonaws.com/identity/metadata:0
