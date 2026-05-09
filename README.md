@@ -19,9 +19,9 @@ With:     search("authentication flow") → exact result in <2ms
 
 | Task | Without Contextro | With Contextro | Savings |
 |---|---|---|---|
-| Find a function | Read 5 files (~5000 tokens) | `search()` (~221 tokens) | **23x** |
-| Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~9 tokens) | **333x** |
-| Understand a class | Read file + grep (~2000 tokens) | `explain()` (~96 tokens) | **21x** |
+| Find a function | Read 5 files (~5000 tokens) | `search()` (~116 tokens) | **43x** |
+| Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~6 tokens) | **500x** |
+| Understand a class | Read file + grep (~2000 tokens) | `explain()` (~43 tokens) | **47x** |
 | Check what breaks | Manual audit (~8000 tokens) | `impact()` (~300 tokens) | **27x** |
 
 ---
@@ -355,11 +355,11 @@ Every step is designed to balance relevance, speed, and token efficiency.
 | Incremental reindex | 22ms (no changes) |
 | Search latency | <2ms (warm index) |
 | File discovery | 15ms for 3,349 files |
-| Hybrid MRR | 0.975 (20-query benchmark) |
-| tokens_per_search | 221 (down from 378 baseline) |
-| tokens_per_explain | 96 (down from 229 baseline) |
-| tokens_per_find_callers | 9 (down from 16 baseline) |
-| Total workflow tokens | 1,918 (16 tool calls) |
+| Hybrid MRR | 1.000 (20-query benchmark, perfect) |
+| tokens_per_search | 116 (down from 378 baseline) |
+| tokens_per_explain | 43 (down from 229 baseline) |
+| tokens_per_find_callers | 6 (down from 16 baseline) |
+| Total workflow tokens | 1,043 (16 tool calls, -59% from baseline) |
 | Memory usage | <350MB |
 
 ---

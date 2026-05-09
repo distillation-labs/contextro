@@ -112,22 +112,22 @@ markers = [
 # ---------------------------------------------------------------------------
 #
 # Token efficiency — 16-tool workflow, median of 5 runs
-#   Total output tokens      1,043
-#   tokens_per_search          116
-#   tokens_per_explain          43
-#   tokens_per_find_symbol      36
-#   tokens_per_find_callers      6
-#   tokens_per_status           20
-#   Avg tokens / tool call      65
+#   Total output tokens      1,043  (-59% from 2,552 baseline)
+#   tokens_per_search          116  (-69% from 378)
+#   tokens_per_explain          43  (-81% from 229)
+#   tokens_per_find_symbol      36  (-45% from 66)
+#   tokens_per_find_callers      6  (-63% from 16)
+#   tokens_per_status           20  (-88% from 169)
+#   Avg tokens / tool call      65  (-59% from 159)
 #
 # Retrieval quality — 20 docstring queries, src codebase
-#   Hybrid MRR               1.000  (perfect)
-#   Hybrid recall@1          1.000  (perfect)
+#   Hybrid MRR               1.000  (perfect, up from 0.975)
+#   Hybrid recall@1          1.000  (perfect, up from 0.95)
 #   Hybrid recall@5          1.000
 #   Hybrid avg tokens/query    152
 #   Hybrid avg latency        4.4 ms
 #
 # Indexing — potion-code-16m, 76 files / 1,620 chunks
-#   Full index (benchmark)   0.45 s
+#   Full index (benchmark)   0.45 s  (77x faster than 34.6s baseline)
 #   Incremental (no changes)   22 ms
 #   File discovery (3,349)     15 ms
