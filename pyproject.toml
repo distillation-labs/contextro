@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "contextro"
-version = "0.0.4"
+version = "0.0.5"
 description = "Contextro — AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, progressive disclosure, AST compression"
 readme = "README.md"
 license = "MIT"

@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Core trigger and routing evals for the Contextro MCP skill. Aligned to Anthropic skill guidance: concise frontmatter, correct triggering, problem-first routing, and avoidance of token-heavy anti-patterns.",
   "rubric": {
     "source_docs": [
