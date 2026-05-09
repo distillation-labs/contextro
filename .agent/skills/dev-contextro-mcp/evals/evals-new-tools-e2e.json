@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "4.0.0",
+  "version": "0.0.4",
   "eval_set": "new-tools-and-e2e",
   "description": "Extended eval coverage for Contextro-specific tools and end-to-end problem-first tasks. Focuses on lesser-used tools, archive and memory distinctions, cross-repo flows, and retrieval of sandboxed large outputs.",
   "categories": {
@@ -266,7 +266,7 @@
           "id": "a2",
           "text": "retrieve is called if sandboxed",
           "type": "workflow",
-          "passing_condition": "retrieve called with sandbox_ref if search response is sandboxed"
+          "passing_condition": "retrieve called with sandbox_ref if search response contains sandbox_ref (presence implies sandboxing)"
         }
       ]
     },

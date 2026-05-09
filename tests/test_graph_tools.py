@@ -78,8 +78,9 @@ class TestFindSymbol:
 
         result = asyncio.run(run())
         assert "error" not in result
-        assert result["total"] >= 1
-        assert any(s["name"] == "hello" for s in result["symbols"])
+        assert "n" in result or len(result.get("symbols", [])) >= 1
+        syms = result.get("symbols", [result]) if "symbols" in result else [result]
+        assert any(s["n"] == "hello" for s in syms)
 
     def test_find_symbol_no_match(self, mini_codebase, tmp_path):
         async def run():
@@ -96,8 +97,9 @@ class TestFindSymbol:
 
         result = asyncio.run(run())
         assert "error" not in result
-        assert result["total"] >= 1
-        assert any("hell" in s["name"].lower() for s in result["symbols"])
+        assert "n" in result or len(result.get("symbols", [])) >= 1
+        syms = result.get("symbols", [result]) if "symbols" in result else [result]
+        assert any("hell" in s["n"].lower() for s in syms)
 
     def test_find_symbol_includes_relationships(self, tmp_path):
         mcp = server_module.create_server()
@@ -106,9 +108,9 @@ class TestFindSymbol:
 
         result = asyncio.run(_call_tool(mcp, "find_symbol", {"name": "hello"}))
         assert "error" not in result
-        symbol = result["symbols"][0]
-        # Now shows caller/callee counts and top names instead of raw rels
-        assert "callers_count" in symbol or "callees_count" in symbol
+        # Single result is flattened; multiple results have symbols list
+        symbol = result if "n" in result else result.get("symbols", [result])[0]
+        assert "callers" in symbol or "callees" in symbol
 
     def test_find_symbol_relative_paths(self, tmp_path):
         mcp = server_module.create_server()
@@ -116,8 +118,8 @@ class TestFindSymbol:
         _setup_graph_with_calls(state, tmp_path)
 
         result = asyncio.run(_call_tool(mcp, "find_symbol", {"name": "hello"}))
-        symbol = result["symbols"][0]
-        file_path = symbol["file"]
+        symbol = result if "n" in result else result.get("symbols", [result])[0]
+        file_path = symbol["f"]
         assert not file_path.startswith("/"), f"Path not relative: {file_path}"
 
 
@@ -142,7 +144,7 @@ class TestFindCallers:
 
         result = asyncio.run(_call_tool(mcp, "find_callers", {"symbol_name": "orchestrate"}))
         assert "error" not in result
-        assert result["total"] == 0
+        assert len(result.get("callers", result.get("callees", []))) == 0
         assert result["callers"] == []
 
     def test_find_callers_with_callers(self, tmp_path):
@@ -152,8 +154,7 @@ class TestFindCallers:
 
         result = asyncio.run(_call_tool(mcp, "find_callers", {"symbol_name": "helper"}))
         assert "error" not in result
-        assert result["symbol"] == "helper"
-        assert result["total"] >= 2
+        assert len(result.get("callers", result.get("callees", []))) >= 2
         # Compact format: "name (file:line)"
         caller_names = [c.split(" (")[0] for c in result["callers"]]
         assert "hello" in caller_names
@@ -181,8 +182,7 @@ class TestFindCallees:
 
         result = asyncio.run(_call_tool(mcp, "find_callees", {"symbol_name": "orchestrate"}))
         assert "error" not in result
-        assert result["symbol"] == "orchestrate"
-        assert result["total"] >= 2
+        assert len(result.get("callers", result.get("callees", []))) >= 2
         # Compact format: "name (file:line)"
         callee_names = [c.split(" (")[0] for c in result["callees"]]
         assert "hello" in callee_names
@@ -195,5 +195,5 @@ class TestFindCallees:
 
         result = asyncio.run(_call_tool(mcp, "find_callees", {"symbol_name": "helper"}))
         assert "error" not in result
-        assert result["total"] == 0
+        assert len(result.get("callers", result.get("callees", []))) == 0
         assert result["callees"] == []

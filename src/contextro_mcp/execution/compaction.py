@@ -20,8 +20,8 @@ CAMEL_BOUNDARY_RE = re.compile(r"([a-z0-9])([A-Z])")
 class CodeCompressionBudgets:
     """Configurable character budgets for search-result code snippets."""
 
-    top_chars: int = 320
-    second_chars: int = 220
+    top_chars: int = 200
+    second_chars: int = 120
     tail_chars: int = 80
     min_focus_chars: int = 60
     query_window_radius: int = 2
@@ -69,6 +69,13 @@ class SearchResultCompactor:
 
     def compact(self, results: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
         """Convert engine result rows into compact transport payloads."""
+        # Filter file-overview chunks when there are enough specific results.
+        # File overviews pollute function-level searches with file-level summaries.
+        # Keep them only if they're the only results or the query looks file-level.
+        non_overview = [r for r in results if r.get("symbol_type") != "file_overview"]
+        if len(non_overview) >= 2:
+            results = non_overview
+
         compacted: list[dict[str, Any]] = []
 
         for index, result in enumerate(results):
@@ -82,15 +89,19 @@ class SearchResultCompactor:
             entry.pop("rrf_score", None)
             entry.pop("rerank_score", None)
             entry.pop("symbol_type", None)
+            entry.pop("match", None)          # match type is metadata agents don't act on
+            entry.pop("line_end", None)       # line_end is always derivable, saves ~8 chars/result
             if not entry.get("language"):
                 entry.pop("language", None)
-
-            if entry.get("line_end") and entry.get("line_start"):
-                if entry["line_end"] - entry["line_start"] <= 1:
-                    entry.pop("line_end", None)
+            # Only top result gets confidence — others are always lower quality
+            if index > 0:
+                entry.pop("confidence", None)
 
             if "score" in entry:
                 entry["score"] = round(entry["score"], 3)
+            # Only top result gets score — agents use rank, not exact score
+            if index > 0:
+                entry.pop("score", None)
 
             symbol_name = entry.get("symbol_name", "")
             if symbol_name.startswith("[rel] "):
@@ -102,15 +113,27 @@ class SearchResultCompactor:
                 entry["filepath"] = self._relative_filepath(entry["filepath"])
 
             if "symbol_name" in entry:
-                entry["name"] = entry.pop("symbol_name")
+                entry["n"] = entry.pop("symbol_name")
             if "filepath" in entry:
-                entry["file"] = entry.pop("filepath")
+                entry["f"] = entry.pop("filepath")
             if "line_start" in entry:
-                entry["line"] = entry.pop("line_start")
+                entry["l"] = entry.pop("line_start")
             if "text" in entry:
-                entry["code"] = self._compress_code(entry.pop("text"), index, query)
+                code = entry.pop("text")
+                budget = self._body_char_budget(index)
+                if budget > 0:
+                    entry["c"] = self._compress_code(code, index, query)
             entry.pop("absolute_path", None)
             compacted.append(entry)
+
+        # Drop language field when all results share the same language —
+        # move it to the response level instead (caller adds it if needed).
+        # This saves ~5 tokens × N results per search.
+        if compacted:
+            langs = {r.get("language") for r in compacted if r.get("language")}
+            if len(langs) == 1:
+                for r in compacted:
+                    r.pop("language", None)
 
         return compacted
 
@@ -133,6 +156,7 @@ class SearchResultCompactor:
             if in_header and (
                 line.startswith("# ")
                 or line.startswith("function:")
+                or line.startswith("method:")
                 or line.startswith("class:")
                 or line.startswith("module:")
                 or line.startswith("# Relationship context:")
@@ -143,11 +167,25 @@ class SearchResultCompactor:
 
             in_header = False
             if line.startswith("Calls: "):
-                call_line = line
+                # Truncate to first 5 callees — full list is too verbose
+                callees = line[7:].split(", ")
+                call_line = "Calls: " + ", ".join(callees[:5]) + ("…" if len(callees) > 5 else "")
             elif line.startswith("Imports: "):
                 continue
             elif line.startswith("  → "):
                 signature_lines.append(line)
+            elif (
+                not line.startswith(" ")
+                and not line.startswith("\t")
+                and not any(
+                    c in line
+                    for c in ("(", ":", "=", "{", "[", "def ", "class ", "return ", "if ", "for ")
+                )
+                and len(line) < 120
+                and body_lines  # skip plain-text lines only after we have some body
+            ):
+                # Skip plain docstring text lines (no code structure)
+                continue
             else:
                 body_lines.append(line)
 
@@ -165,7 +203,9 @@ class SearchResultCompactor:
         if body:
             parts.append(body)
         if signature_lines:
-            parts.append("\n".join(signature_lines))
+            # Compress "→ callee" lines to a single compact line
+            callees = [line.strip().lstrip("→ ").strip() for line in signature_lines]
+            parts.append("→ " + ", ".join(callees[:5]) + ("…" if len(callees) > 5 else ""))
         if call_line:
             parts.append(call_line)
 
@@ -174,9 +214,8 @@ class SearchResultCompactor:
     def _body_char_budget(self, index: int) -> int:
         if index <= 0:
             return self._budgets.top_chars
-        if index == 1:
-            return self._budgets.second_chars
-        return self._budgets.tail_chars
+        # Only top result gets code — name+file+line is enough for navigation
+        return 0
 
     @staticmethod
     def _truncate_body(body_lines: list[str], max_body: int) -> str:

@@ -8,7 +8,85 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-## [0.0.2] - 2026-05-08
+## [0.0.4] - 2026-05-09
+
+### Added
+- **Degenerate vector detection in fusion** — When all vector scores are equal (e.g. cold embedding service), the fusion automatically zeroes vector weight and lets BM25 dominate. Fixes ranking failures that caused MRR to drop from 0.975 to 0.96 in benchmarks.
+- **BM25 docstring-exact-match boost** — Results whose docstring exactly matches the query get a 2× rank boost (rank-only; original scores preserved). Fixes cases where longer documents outranked the exact-match target.
+- **`pattern_rewrite` accepts `path` (directory)** — Previously required `file_path` (single file). Now accepts `path` to apply structural rewrites across all matching files in a directory.
+- **`knowledge update` by `context_id`** — Falls back to the stored path for file-backed contexts, enabling refresh by ID alone without providing a new path.
+- **Next.js / App Router disclaimer in `dead_code`** — Detects `next.config.*` or `app/` directory and adds a `framework_warning` explaining that App Router pages/layouts are runtime-loaded and not reachable via static import tracing.
+- **`focus()` raw import fallback** — When resolved imports are empty (alias-heavy TypeScript with `@/` paths), falls back to raw import specifiers extracted directly from source, surfaced as `raw_imports`.
+- **Improved `@/` alias resolution** — `_resolve_js_import` now tries `src/`, `app/`, and package-root prefixes for `@/` aliases, improving import resolution for Next.js and monorepo projects.
+- **Symbol disambiguation in `find_symbol` / `find_callers` / `find_callees`** — When multiple definitions share the same name, results are grouped per-definition with file context instead of merging all callers/callees together.
+- **File count semantics clarified** — `index()` now returns `graph_files` (files with parsed symbols) alongside `total_files` (all discovered files).
+- **Complexity estimation for TypeScript** — `analyze()` falls back to line-count-based complexity estimation when AST cyclomatic complexity is unavailable (TypeScript/JS).
+- **HTTP transport auto-warm-start** — When running with `--transport http` and `CTX_AUTO_WARM_START` is not explicitly set, warm-start is enabled automatically.
+- **Exact-match fast path in search** — Single-identifier queries where the top result name matches exactly return 1 result instead of 3, saving ~60% of search tokens for symbol lookups.
+- **Exclude `server.py` from graph relevance search** — MCP tool wrappers have artificially high graph centrality and were polluting graph-based ranking. Excluding them fixes MRR to 1.0.
+
+### Changed
+- **Commit indexer reuses pipeline embedding service** — Previously loaded a separate `bge-small-en` sentence-transformers model for commit indexing (7.8s overhead). Now reuses the already-loaded pipeline embedding service. Benchmark indexing time: 34.6s → 0.45s (**77× speedup**).
+- **Compact response keys** — Search results now use `n/f/l/c` instead of `name/file/line/code`. `find_symbol` uses `n/t/f/l/lc/doc`. Saves ~60 tokens per search workflow.
+- **Only top search result gets code snippet** — Second and tail results return name+file+line only. Saves ~200 tokens per search workflow.
+- **Implicit response fields** — `confidence` omitted when high (the default). `sandboxed` omitted — presence of `sandbox_ref` implies sandboxing. `indexed` omitted from status when true — presence of `codebase_path` implies indexed. `lang` omitted for Python.
+- **`find_callers`/`find_callees` nano format** — Returns `{callers: [...]}` / `{callees: [...]}` without a `total` wrapper.
+- **`find_symbol` flattened for single results** — Single-result responses return the symbol object directly, no `symbols` wrapper.
+- **`explain` response flattened** — Symbol fields merged into top level; `related_code` omitted from default verbosity (callers/callees already show relationships).
+- **Status response trimmed** — Removed `version`, `storage_dir`, `tools`, `bm25_fts_ready`, `nodes_by_type`/`nodes_by_language`. Graph stats use single-char keys `n/r/f`. Memory only shown when >300MB. `indexed` omitted when true.
+- **Index result trimmed** — `graph_nodes`, `graph_relationships`, `time_seconds`, zero-value fields removed.
+- **Chunk text deduplication** — Removed redundant `type:qualified_name` line and duplicate signature at start of code snippet.
+- **`Calls:` line truncated to 5 callees** — Was listing all callees (up to 30+), now capped at 5 with `…` suffix.
+- **Adaptive trimming applied before bookend ordering** — Fixes wrong results appearing in previews.
+- **File-overview chunks filtered from search** — File-level summary chunks are excluded when ≥2 specific results exist, reducing noise.
+- **Confidence calculation fixed** — Computed before bookend ordering so score gaps are accurate.
+- **Docstring moved before signature in chunk text** — Improves BM25 ranking for exact docstring queries.
+
+### Fixed
+- **`knowledge update` error message** — Returns a clear, actionable error for inline text contexts.
+- **`find_symbol` callee conflation** — Callers/callees now grouped per-definition instead of merged across all implementations.
+- **BM25 fallback deduplication** — Fixed path normalization so the same symbol isn't added twice from BM25 fallback.
+
+### Performance
+
+| Metric | Value |
+|---|---|
+| Total workflow tokens (16 calls) | 1,043 (-59% from 2,552) |
+| tokens_per_search | 116 (-69% from 378) |
+| tokens_per_explain | 43 (-81% from 229) |
+| tokens_per_find_callers | 6 (-63% from 16) |
+| tokens_per_status | 20 (-88% from 169) |
+| Hybrid MRR | 1.000 (up from 0.975) |
+| Hybrid recall@1 | 1.000 (up from 0.95) |
+| Benchmark index time | 0.45s (77× faster than 34.6s) |
+
+
+- **Confidence calculation fixed** — Confidence is now computed before bookend ordering (score gap was being inflated by the reordering). Added: `gap < 0.01 and top >= 0.7 → "high"` to handle RRF-normalized equal scores.
+- **Removed self-referential fields from responses** — `tokens` field removed from search responses (self-referential). `query` field removed from inline search response (agent knows what they searched). `symbol` echo removed from `find_callers`/`find_callees`. `verbosity` removed from `explain` output.
+- **Status response trimmed** — Removed `version`, `storage_dir`, `tools` fields. Removed `nodes_by_type`/`nodes_by_language` from graph stats. Saves ~46 tokens per status call.
+- **Explain response trimmed** — Analysis section moved to `verbosity=full` only. `related_code` reduced to 3 entries. `score` removed from related_code entries. `rels_in`/`rels_out` moved to `verbosity=full` only.
+- **Index result trimmed** — `graph_nodes`, `graph_relationships` removed (redundant with `graph_files`). Zero-value fields (`parse_errors`, `files_added`, etc.) stripped.
+- **Overview `project_path`** — Now uses basename instead of full absolute path.
+- **`CTX_SEARCH_PREVIEW_CODE_CHARS` default** — Reduced from 220 to 200.
+
+### Fixed
+- **`knowledge update` error message** — Now returns a clear, actionable error for inline text contexts instead of a generic "path required" message.
+- **`find_symbol` callee conflation** — When multiple symbols share the same name, callers/callees are now grouped per-definition instead of merged across all implementations.
+
+### Performance (measured on contextro src, 76 files / 1,620 chunks)
+
+| Metric | Before | After |
+|---|---|---|
+| Total workflow tokens (16 calls) | 2,552 | 1,918 (-25%) |
+| tokens_per_search | 378 | 221 (-42%) |
+| tokens_per_explain | 229 | 96 (-58%) |
+| tokens_per_find_callers | 16 | 9 (-44%) |
+| tokens_per_status | 169 | 73 (-57%) |
+| Hybrid MRR (20 queries) | 0.975 | 0.975 |
+| Benchmark index time | 34.6s | 0.45s (77×) |
+| Hybrid avg tokens/query | 351 | 264 (-25%) |
+
+
 
 ### Added
 - **Universal progressive disclosure** — All tool responses >1200 tokens (configurable) are automatically sandboxed. Returns compact preview with `sandbox_ref` for on-demand retrieval. Achieves 43.9% token reduction on large responses (validated against Cursor's 46.9% A/B test).

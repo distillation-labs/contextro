@@ -444,36 +444,39 @@ def create_server():
                 pass
 
         result: dict[str, Any] = {
-            "id": node.id,
-            "name": node.name,
-            "type": node.node_type.value,
-            "file": file_path,
-            "line": node.location.start_line,
+            # id omitted — internal graph ID, not useful to agents
+            # compact keys: n=name, t=type, f=file, l=line
+            "n": node.name,
+            "f": file_path,
+            "l": node.location.start_line,
         }
-        # Only include end_line if span > 1 line
-        if node.location.end_line and node.location.end_line > node.location.start_line:
-            result["end_line"] = node.location.end_line
+        # type omitted when function (most common case)
+        if node.node_type.value != "function":
+            result["t"] = node.node_type.value
         # Only include non-default/non-empty optional fields
         if node.language and node.language != "python":
-            result["language"] = node.language
+            result["lang"] = node.language
         if node.complexity and node.complexity > 1:
             result["complexity"] = node.complexity
         if node.line_count and node.line_count > 1:
-            result["line_count"] = node.line_count
+            result["lc"] = node.line_count
+        elif node.location.end_line and node.location.end_line > node.location.start_line:
+            # Only include end_line when line_count is unavailable
+            result["el"] = node.location.end_line
         if node.docstring:
-            # Truncate long docstrings
-            doc = node.docstring
-            if len(doc) > 200:
-                doc = doc[:200] + "..."
-            result["docstring"] = doc
+            # Truncate docstrings aggressively — first sentence is enough
+            doc = node.docstring.split(".")[0].strip()
+            if len(doc) > 100:
+                doc = doc[:100] + "…"
+            result["doc"] = doc
         if node.visibility and node.visibility != "public":
-            result["visibility"] = node.visibility
+            result["vis"] = node.visibility
         if node.is_async:
-            result["is_async"] = True
+            result["async"] = True
         if node.return_type:
-            result["return_type"] = node.return_type
+            result["ret"] = node.return_type
         if node.parameter_types:
-            result["parameter_types"] = node.parameter_types
+            result["params"] = node.parameter_types
         return _apply_disclosure(
             result,
             tool_name="overview",
@@ -558,15 +561,15 @@ def create_server():
         else:
             peak_rss_mb = rss_raw / 1024
 
-        from contextro_mcp import __version__
-
         result: dict[str, Any] = {
-            "version": __version__,
-            "indexed": indexed,
-            "codebase_path": str(state.codebase_path) if state.codebase_path else None,
-            "storage_dir": str(_status_settings.storage_path),
-            "memory": {"peak_rss_mb": round(peak_rss_mb, 1)},
+            # indexed omitted when true — presence of codebase_path implies it
+            "codebase_path": state.codebase_path.name if state.codebase_path else None,
         }
+        if not indexed:
+            result["indexed"] = False
+        # Only surface memory when approaching the limit — saves 8 tokens on normal calls
+        if peak_rss_mb > 300:
+            result["memory"] = {"peak_rss_mb": round(peak_rss_mb, 1)}
 
         # Surface background indexing state
         with _index_job_lock:
@@ -593,14 +596,17 @@ def create_server():
                     result["vector_chunks"] = cached_index_stats.get(
                         "vector_chunks", state.vector_engine.count()
                     )
-                if state.bm25_engine:
-                    result["bm25_fts_ready"] = cached_index_stats.get(
-                        "bm25_fts_ready", state.bm25_engine._fts_index_created
-                    )
+                # bm25_fts_ready omitted — always true when indexed, agents don't need it
                 if state.graph_engine:
-                    result["graph"] = cached_index_stats.get(
+                    full_graph_stats = cached_index_stats.get(
                         "graph", state.graph_engine.get_statistics()
                     )
+                    # Single-char keys for maximum compactness
+                    result["graph"] = {
+                        "n": full_graph_stats.get("total_nodes", 0),
+                        "r": full_graph_stats.get("total_relationships", 0),
+                        "f": full_graph_stats.get("total_files", 0),
+                    }
             else:
                 result.setdefault(
                     "hint",
@@ -617,16 +623,21 @@ def create_server():
             if not is_background_indexing:
                 commit_count = job_result.get("commits_indexed")
                 if commit_count is not None:
-                    result["commits_indexed"] = commit_count
+                    if commit_count > 0:
+                        result["commits_indexed"] = commit_count
                 elif cached_index_stats.get("commits_indexed") is not None:
-                    result["commits_indexed"] = cached_index_stats["commits_indexed"]
+                    cc = cached_index_stats["commits_indexed"]
+                    if cc > 0:
+                        result["commits_indexed"] = cc
                 else:
                     try:
                         from contextro_mcp.config import get_settings as _gs
                         from contextro_mcp.git.commit_indexer import CommitHistoryIndexer as _CI
 
                         _s = _gs()
-                        result["commits_indexed"] = _CI.count_commits_in_db(str(_s.lancedb_path))
+                        cc = _CI.count_commits_in_db(str(_s.lancedb_path))
+                        if cc > 0:
+                            result["commits_indexed"] = cc
                     except Exception:
                         pass
             if state.cross_repo_manager and state.cross_repo_manager.repo_count > 1:
@@ -644,9 +655,6 @@ def create_server():
                         "size": cache.size,
                     }
 
-            result["tools"] = (
-                "search, code, find_symbol, find_callers, explain, impact, commit_search"
-            )
         elif job_status != "indexing":
             result.setdefault("hint", "Run 'index' first.")
 
@@ -782,6 +790,20 @@ def create_server():
                     state._query_cache.invalidate()
                 index_result = result.to_dict()
                 index_result["status"] = "done"
+                index_result.pop("time_seconds", None)  # rarely needed by agents
+                graph_files = state.graph_engine.get_statistics().get(
+                    "total_files", 0
+                ) if state.graph_engine else 0
+                # Only include graph_files when it differs from total_files
+                if graph_files != index_result.get("total_files", 0):
+                    index_result["graph_files"] = graph_files
+                # Strip zero-value noise fields
+                for _zf in ("parse_errors", "files_added", "files_modified", "files_deleted"):
+                    if not index_result.get(_zf):
+                        index_result.pop(_zf, None)
+                # Always strip redundant graph detail
+                index_result.pop("graph_nodes", None)
+                index_result.pop("graph_relationships", None)
                 # Inline git integration for incremental path
                 from contextro_mcp.git.commit_indexer import (
                     get_current_branch,
@@ -917,6 +939,20 @@ def create_server():
 
                 index_result = result.to_dict()
                 index_result["status"] = "done"
+                index_result.pop("time_seconds", None)  # rarely needed by agents
+                # Only include graph_files when it differs from total_files
+                graph_files = state.graph_engine.get_statistics().get(
+                    "total_files", 0
+                ) if state.graph_engine else 0
+                if graph_files != index_result.get("total_files", 0):
+                    index_result["graph_files"] = graph_files
+                # Strip zero-value noise fields
+                for _zf in ("parse_errors", "files_added", "files_modified", "files_deleted"):
+                    if not index_result.get(_zf):
+                        index_result.pop(_zf, None)
+                # Always strip redundant graph detail (graph_files covers it)
+                index_result.pop("graph_nodes", None)
+                index_result.pop("graph_relationships", None)
 
                 for vpath in validated:
                     _do_git_integration(vpath, result, index_result)
@@ -926,7 +962,7 @@ def create_server():
                 logger.info("Search pipeline pre-warmed")
 
                 elapsed = round(_time.time() - _index_job.get("started_at", _time.time()), 3)
-                index_result["time_seconds"] = elapsed
+                # time_seconds already popped above — don't re-add it
                 with _index_job_lock:
                     _index_job["status"] = "done"
                     _index_job["result"] = index_result
@@ -1049,17 +1085,30 @@ def create_server():
                 callers = state.graph_engine.get_callers(node.id)
                 callees = state.graph_engine.get_callees(node.id)
                 if callers:
-                    entry["callers_count"] = len(callers)
-                    entry["top_callers"] = [c.name for c in callers[:5]]
+                    # callers_count omitted — len(top_callers) tells the agent
+                    entry["callers"] = [c.name for c in callers[:5]]
+                    if len(callers) > 5:
+                        entry["callers+"] = len(callers)
                 if callees:
-                    entry["callees_count"] = len(callees)
-                    entry["top_callees"] = [c.name for c in callees[:5]]
+                    entry["callees"] = [c.name for c in callees[:5]]
+                    if len(callees) > 5:
+                        entry["callees+"] = len(callees)
             symbols.append(entry)
 
-        result: dict[str, Any] = {"total": total_matches, "symbols": symbols}
+        # Single result: return symbol directly (no wrapper)
+        # Multiple results: return {total: N, symbols: [...]}
+        if len(symbols) == 1:
+            result = symbols[0]
+        else:
+            result = {"total": total_matches, "symbols": symbols}
         if total_matches > MAX_SYMBOLS:
             result["note"] = (
                 f"Showing top {MAX_SYMBOLS} of {total_matches}. Use exact=True for precise lookup."
+            )
+        elif total_matches > 1:
+            result["disambiguation_note"] = (
+                f"{total_matches} definitions found. Use find_callees/find_callers with the "
+                "specific file path to avoid mixing results from different implementations."
             )
         _get_tracker().track_find_symbol(name, found=True)
         return _tool_result(result, fmt="symbols")
@@ -1085,6 +1134,42 @@ def create_server():
         if not matches:
             return {"error": f"Symbol '{symbol_name}' not found."}
 
+        # When multiple definitions share the same name, group callers per-definition.
+        if len(matches) > 1:
+            definitions = []
+            total = 0
+            for node in matches:
+                node_callers = [
+                    _serialize_node_compact(c, state.codebase_path)
+                    for c in state.graph_engine.get_callers(node.id)
+                ]
+                total += len(node_callers)
+                file_path = node.location.file_path
+                if state.codebase_path:
+                    try:
+                        file_path = str(Path(file_path).relative_to(state.codebase_path))
+                    except ValueError:
+                        pass
+                definitions.append({
+                    "definition": f"{file_path}:{node.location.start_line}",
+                    "callers": node_callers[:20],
+                })
+            _get_tracker().track_find_symbol(symbol_name, found=bool(total))
+            return _tool_result(
+                _apply_disclosure(
+                    {
+                        "symbol": symbol_name,
+                        "total": total,
+                        "disambiguation_note": (
+                            f"{len(matches)} definitions found; callers grouped per definition."
+                        ),
+                        "definitions": definitions,
+                    },
+                    tool_name="find_callers",
+                    preview_keys=["symbol", "total", "disambiguation_note"],
+                )
+            )
+
         all_callers = []
         seen: set[str] = set()
         for node in matches:
@@ -1098,17 +1183,8 @@ def create_server():
         all_callers = all_callers[:20]
 
         _get_tracker().track_find_symbol(symbol_name, found=bool(all_callers))
-        return _tool_result(
-            _apply_disclosure(
-                {
-                    "symbol": symbol_name,
-                    "total": total,
-                    "callers": all_callers,
-                },
-                tool_name="find_callers",
-                preview_keys=["symbol", "total"],
-            )
-        )
+        # Nano format: callers list only, no redundant total/wrapper
+        return _tool_result({"callers": all_callers})
 
     @mcp.tool(annotations={"readOnlyHint": True})
     def find_callees(
@@ -1131,6 +1207,43 @@ def create_server():
         if not matches:
             return {"error": f"Symbol '{symbol_name}' not found."}
 
+        # When multiple definitions share the same name, group callees per-definition
+        # so the agent can see which callees belong to which implementation.
+        if len(matches) > 1:
+            definitions = []
+            total = 0
+            for node in matches:
+                node_callees = [
+                    _serialize_node_compact(c, state.codebase_path)
+                    for c in state.graph_engine.get_callees(node.id)
+                ]
+                total += len(node_callees)
+                file_path = node.location.file_path
+                if state.codebase_path:
+                    try:
+                        file_path = str(Path(file_path).relative_to(state.codebase_path))
+                    except ValueError:
+                        pass
+                definitions.append({
+                    "definition": f"{file_path}:{node.location.start_line}",
+                    "callees": node_callees[:20],
+                })
+            _get_tracker().track_find_symbol(symbol_name, found=bool(total))
+            return _tool_result(
+                _apply_disclosure(
+                    {
+                        "symbol": symbol_name,
+                        "total": total,
+                        "disambiguation_note": (
+                            f"{len(matches)} definitions found; callees grouped per definition."
+                        ),
+                        "definitions": definitions,
+                    },
+                    tool_name="find_callees",
+                    preview_keys=["symbol", "total", "disambiguation_note"],
+                )
+            )
+
         all_callees = []
         seen: set[str] = set()
         for node in matches:
@@ -1143,17 +1256,7 @@ def create_server():
         all_callees = all_callees[:20]
 
         _get_tracker().track_find_symbol(symbol_name, found=bool(all_callees))
-        return _tool_result(
-            _apply_disclosure(
-                {
-                    "symbol": symbol_name,
-                    "total": total,
-                    "callees": all_callees,
-                },
-                tool_name="find_callees",
-                preview_keys=["symbol", "total"],
-            )
-        )
+        return _tool_result({"callees": all_callees})
 
     @mcp.tool(annotations={"readOnlyHint": True})
     def analyze(
@@ -1361,17 +1464,18 @@ def create_server():
             symbol_data["callees"] = callees
             if len(all_callees) > MAX_CALLEES:
                 symbol_data["callees_total"] = len(all_callees)
-        rels_from = state.graph_engine.get_relationships_from(node.id)
-        rels_to = state.graph_engine.get_relationships_to(node.id)
-        # Cap relationship lists too
-        if rels_from:
-            symbol_data["rels_out"] = [_serialize_relationship(r) for r in rels_from[:20]]
-            if len(rels_from) > 20:
-                symbol_data["rels_out_total"] = len(rels_from)
-        if rels_to:
-            symbol_data["rels_in"] = [_serialize_relationship(r) for r in rels_to[:20]]
-            if len(rels_to) > 20:
-                symbol_data["rels_in_total"] = len(rels_to)
+        # rels_in/rels_out contain raw graph IDs — only useful for full verbosity
+        if verbosity == "full":
+            rels_from = state.graph_engine.get_relationships_from(node.id)
+            rels_to = state.graph_engine.get_relationships_to(node.id)
+            if rels_from:
+                symbol_data["rels_out"] = [_serialize_relationship(r) for r in rels_from[:20]]
+                if len(rels_from) > 20:
+                    symbol_data["rels_out_total"] = len(rels_from)
+            if rels_to:
+                symbol_data["rels_in"] = [_serialize_relationship(r) for r in rels_to[:20]]
+                if len(rels_to) > 20:
+                    symbol_data["rels_in_total"] = len(rels_to)
 
         # Vector search for related code (compact: name + file + score only)
         search_results = []
@@ -1391,31 +1495,31 @@ def create_server():
                             pass
                     search_results.append(
                         {
-                            "symbol_name": r.get("symbol_name", ""),
-                            "filepath": fp,
-                            "score": round(r.get("score", 0), 4),
+                            "name": r.get("symbol_name", ""),
+                            "file": fp,
                         }
                     )
             except Exception as e:
                 logger.debug("Vector search failed in explain: %s", e)
                 pass
 
-        # Code analysis — just quality score, not full repo complexity
+        # Code analysis — only include for 'full' verbosity to save tokens
         analysis = {}
-        try:
-            from contextro_mcp.analysis.code_analyzer import CodeAnalyzer
-            from contextro_mcp.core.graph_models import NodeType as _NT
+        if verbosity == "full":
+            try:
+                from contextro_mcp.analysis.code_analyzer import CodeAnalyzer
+                from contextro_mcp.core.graph_models import NodeType as _NT
 
-            analyzer = CodeAnalyzer(state.graph_engine)
-            quality = analyzer.calculate_quality_metrics()
-            total_funcs = len(state.graph_engine.get_nodes_by_type(_NT.FUNCTION))
-            analysis = {
-                "complexity": {"total_functions": total_funcs},
-                "quality": quality,
-            }
-        except Exception as e:
-            logger.debug("Code analysis failed in explain: %s", e)
-            pass
+                analyzer = CodeAnalyzer(state.graph_engine)
+                quality = analyzer.calculate_quality_metrics()
+                total_funcs = len(state.graph_engine.get_nodes_by_type(_NT.FUNCTION))
+                analysis = {
+                    "complexity": {"total_functions": total_funcs},
+                    "quality": quality,
+                }
+            except Exception as e:
+                logger.debug("Code analysis failed in explain: %s", e)
+                pass
 
         builder = ResponseBuilder(verbosity)
         # For summary mode, strip verbose relationship data from symbol_data
@@ -1518,7 +1622,7 @@ def create_server():
             chunk_count = state.vector_engine.count()
 
         result: dict[str, Any] = {
-            "project_path": str(root) if root else None,
+            "project_path": root.name if root else None,
             "total_files": stats.get("total_files", 0),
             "total_symbols": stats.get("total_nodes", 0),
             "total_relationships": stats.get("total_relationships", 0),
@@ -1783,10 +1887,33 @@ def create_server():
 
         from contextro_mcp.reports.product import get_static_analysis_bundle
 
+        result = get_static_analysis_bundle(state)["dead_code"]
+
+        # Detect Next.js/App Router and add a disclaimer — App Router pages/layouts are
+        # loaded by the framework at runtime and are NOT reachable via static import tracing.
+        # Dead-code results for these files are unreliable.
+        is_nextjs = False
+        if state.codebase_path:
+            next_config = state.codebase_path / "next.config.js"
+            next_config_ts = state.codebase_path / "next.config.ts"
+            next_config_mjs = state.codebase_path / "next.config.mjs"
+            if next_config.exists() or next_config_ts.exists() or next_config_mjs.exists():
+                is_nextjs = True
+            elif (state.codebase_path / "app").is_dir() or (state.codebase_path / "src" / "app").is_dir():
+                # Heuristic: App Router directory present
+                is_nextjs = True
+        if is_nextjs:
+            result["framework_warning"] = (
+                "Next.js / App Router detected. Pages, layouts, route handlers, and middleware "
+                "are loaded by the framework at runtime — they are NOT reachable via static import "
+                "tracing. Files under app/ or pages/ flagged as 'unreachable' are likely false "
+                "positives. Treat dead_code results for this repo as advisory only."
+            )
+
         return _apply_disclosure(
-            get_static_analysis_bundle(state)["dead_code"],
+            result,
             tool_name="dead_code",
-            preview_keys=["summary", "unused_files", "unused_symbols"],
+            preview_keys=["summary", "framework_warning", "unused_files", "unused_symbols"],
             max_list_items=8,
         )
 
@@ -2329,8 +2456,6 @@ def create_server():
             return {"contexts": len(state._knowledge_contexts), "store_count": store.count()}
 
         elif command == "update":
-            if not path:
-                return {"error": "path required for 'update'"}
             target_id = context_id
             if not target_id and name:
                 for cid, ctx in state._knowledge_contexts.items():
@@ -2339,12 +2464,22 @@ def create_server():
                         break
             if not target_id:
                 return {"error": "Specify context_id or name to update"}
+            # Resolve the path to re-index: use provided path, or fall back to stored path
+            existing_ctx = state._knowledge_contexts.get(target_id, {})
+            update_path = path or existing_ctx.get("path", "")
+            if not update_path:
+                return {
+                    "error": (
+                        "path required for 'update' when the context was created from inline text. "
+                        "Provide a new path or use knowledge(command='remove') then knowledge(command='add')."
+                    )
+                }
             # Remove old, re-add
             store.forget(tags=[target_id])
             state._knowledge_contexts.pop(target_id, None)
-            # Re-add with same name
-            ctx_name = name or target_id
-            return knowledge(command="add", name=ctx_name, value=path)
+            # Re-add with same name, using resolved path
+            ctx_name = name or existing_ctx.get("name") or target_id
+            return knowledge(command="add", name=ctx_name, value=update_path)
 
         elif command == "cancel":
             return {"status": "no background operations to cancel"}
@@ -2363,13 +2498,18 @@ def create_server():
         state = get_state()
         if state.commit_indexer is None:
             settings = get_settings()
-            embedding_svc = get_embedding_service(settings.embedding_model)
+            # Reuse the pipeline's embedding service if already loaded (avoids double model load)
+            embedding_svc = (
+                state.vector_engine._embedding_service
+                if state.vector_engine and hasattr(state.vector_engine, "_embedding_service")
+                else get_embedding_service(settings.embedding_model)
+            )
             model_config = EMBEDDING_MODELS.get(settings.embedding_model, {})
             from contextro_mcp.git.commit_indexer import CommitHistoryIndexer
 
             state.commit_indexer = CommitHistoryIndexer(
                 embedding_service=embedding_svc,
-                vector_dims=model_config.get("dimensions", 768),
+                vector_dims=model_config.get("dimensions", 256),
             )
         return state.commit_indexer
 
@@ -3152,68 +3292,133 @@ def create_server():
                 return {"error": "pattern and replacement required for pattern_rewrite"}
             if not language:
                 return {"error": "language required for pattern_rewrite"}
-            if not file_path:
-                return {"error": "file_path required for pattern_rewrite"}
+            if not file_path and not path:
+                return {"error": "file_path (single file) or path (directory) required for pattern_rewrite"}
 
             try:
                 from ast_grep_py import SgRoot
             except ImportError:
                 return {"error": "ast-grep not installed"}
 
-            fp = Path(file_path)
-            if not fp.is_absolute() and state.codebase_path:
-                fp = state.codebase_path / file_path
-            if not fp.exists():
-                return {"error": f"File not found: {file_path}"}
+            # Determine target: single file or directory
+            ext_map = {
+                "python": [".py"],
+                "javascript": [".js", ".jsx", ".mjs"],
+                "typescript": [".ts", ".tsx"],
+                "rust": [".rs"],
+                "go": [".go"],
+                "java": [".java"],
+                "cpp": [".cpp", ".cc", ".cxx", ".h", ".hpp"],
+                "c": [".c", ".h"],
+                "ruby": [".rb"],
+                "php": [".php"],
+                "swift": [".swift"],
+                "kotlin": [".kt"],
+                "csharp": [".cs"],
+            }
+            extensions = ext_map.get(language.lower(), [f".{language}"])
 
+            target_files: list[Path] = []
+            if file_path:
+                fp = Path(file_path)
+                if not fp.is_absolute() and state.codebase_path:
+                    fp = state.codebase_path / file_path
+                if not fp.exists():
+                    return {"error": f"File not found: {file_path}"}
+                target_files = [fp]
+            else:
+                # path is a directory — collect all matching files
+                dir_path = Path(path)
+                if not dir_path.is_absolute() and state.codebase_path:
+                    dir_path = state.codebase_path / path
+                if not dir_path.exists():
+                    return {"error": f"Path not found: {path}"}
+                if dir_path.is_file():
+                    target_files = [dir_path]
+                else:
+                    for ext in extensions:
+                        for fp in dir_path.rglob(f"*{ext}"):
+                            if any(skip in fp.parts for skip in SKIP_DIRS):
+                                continue
+                            target_files.append(fp)
+
+            if not target_files:
+                return {"operation": "pattern_rewrite", "changes": 0, "message": "No matching files found"}
+
+            all_results = []
+            total_changes = 0
             try:
-                source = fp.read_text(errors="replace")
-                root = SgRoot(source, language.lower())
-                node = root.root()
-                edits = node.find_all(pattern=pattern)
-                if not edits:
-                    return {
-                        "operation": "pattern_rewrite",
-                        "file": file_path,
-                        "changes": 0,
-                        "message": "No matches found",
-                    }
+                for fp in target_files:
+                    source = fp.read_text(errors="replace")
+                    root_node = SgRoot(source, language.lower())
+                    node = root_node.root()
+                    edits = node.find_all(pattern=pattern)
+                    if not edits:
+                        continue
+                    new_source = node.commit_edits([m.replace(replacement) for m in edits])
+                    changes = len(edits)
+                    total_changes += changes
+                    rel = str(fp)
+                    if state.codebase_path:
+                        try:
+                            rel = str(fp.relative_to(state.codebase_path))
+                        except ValueError:
+                            pass
+                    if dry_run:
+                        old_lines = source.splitlines()
+                        new_lines = new_source.splitlines()
+                        diff_lines = []
+                        for i, (old, new) in enumerate(zip(old_lines, new_lines)):
+                            if old != new:
+                                diff_lines.append(f"L{i + 1}: -{old}")
+                                diff_lines.append(f"L{i + 1}: +{new}")
+                        all_results.append({
+                            "file": rel,
+                            "changes": changes,
+                            "diff_preview": "\n".join(diff_lines[:20]),
+                        })
+                    else:
+                        fp.write_text(new_source)
+                        all_results.append({"file": rel, "changes": changes, "applied": True})
+            except Exception as e:
+                return {"error": f"Pattern rewrite failed: {e}"}
 
-                # Apply replacements
-                new_source = node.commit_edits([m.replace(replacement) for m in edits])
-                changes = len(edits)
-
+            if len(all_results) == 1 and file_path:
+                # Single-file response (original compact format)
+                result_entry = all_results[0]
                 if dry_run:
-                    # Show diff preview
-                    old_lines = source.splitlines()
-                    new_lines = new_source.splitlines()
-                    diff_lines = []
-                    for i, (old, new) in enumerate(zip(old_lines, new_lines)):
-                        if old != new:
-                            diff_lines.append(f"L{i + 1}: -{old}")
-                            diff_lines.append(f"L{i + 1}: +{new}")
                     return _apply_disclosure(
                         {
                             "operation": "pattern_rewrite",
-                            "file": file_path,
-                            "changes": changes,
+                            "file": result_entry["file"],
+                            "changes": result_entry["changes"],
                             "dry_run": True,
-                            "diff_preview": "\n".join(diff_lines[:40]),
+                            "diff_preview": result_entry.get("diff_preview", ""),
                             "hint": "Set dry_run=false to apply changes",
                         },
                         tool_name="code",
                         preview_keys=["operation", "file", "changes", "dry_run"],
                     )
-                else:
-                    fp.write_text(new_source)
-                    return {
-                        "operation": "pattern_rewrite",
-                        "file": file_path,
-                        "changes": changes,
-                        "applied": True,
-                    }
-            except Exception as e:
-                return {"error": f"Pattern rewrite failed: {e}"}
+                return {
+                    "operation": "pattern_rewrite",
+                    "file": result_entry["file"],
+                    "changes": result_entry["changes"],
+                    "applied": True,
+                }
+
+            return _apply_disclosure(
+                {
+                    "operation": "pattern_rewrite",
+                    "total_changes": total_changes,
+                    "files_modified": len(all_results),
+                    "dry_run": dry_run,
+                    "results": all_results,
+                    **({"hint": "Set dry_run=false to apply changes"} if dry_run else {}),
+                },
+                tool_name="code",
+                preview_keys=["operation", "total_changes", "files_modified", "dry_run"],
+                max_list_items=10,
+            )
 
         # --- generate_codebase_overview ---
         elif operation == "generate_codebase_overview":
@@ -3725,6 +3930,11 @@ def main(argv: Optional[list[str]] = None):
             if transport == "http":
                 host = host_arg or os.environ.get("CTX_HTTP_HOST", "0.0.0.0")
                 port = port_arg or int(os.environ.get("CTX_HTTP_PORT", "8000"))
+                # HTTP servers are long-lived and shared; auto-warm-start by default
+                # so the server is immediately useful without requiring index() on every restart.
+                if not settings.auto_warm_start and "CTX_AUTO_WARM_START" not in os.environ:
+                    settings.auto_warm_start = True
+                    logger.info("HTTP transport: auto_warm_start enabled by default")
                 logger.info("Starting Contextro HTTP server on %s:%d", host, port)
                 server.run(transport="streamable-http", host=host, port=port, path="/mcp")
             else:

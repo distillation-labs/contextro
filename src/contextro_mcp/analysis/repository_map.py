@@ -517,7 +517,17 @@ def _resolve_js_import(
         candidates.extend(_js_candidates(Path(base)))
     else:
         if specifier.startswith("@/"):
-            candidates.extend(_js_candidates(Path(specifier[2:])))
+            # @/ alias: try root, src/, app/, and the source file's own package root
+            alias_path = specifier[2:]
+            candidates.extend(_js_candidates(Path(alias_path)))
+            candidates.extend(_js_candidates(Path("src") / alias_path))
+            candidates.extend(_js_candidates(Path("app") / alias_path))
+            # Also try relative to the source file's package root (first path component)
+            source_parts = Path(source_rel).parts
+            if len(source_parts) > 1:
+                pkg_root = source_parts[0]
+                candidates.extend(_js_candidates(Path(pkg_root) / alias_path))
+                candidates.extend(_js_candidates(Path(pkg_root) / "src" / alias_path))
         elif specifier.startswith("/"):
             candidates.extend(_js_candidates(Path(specifier.lstrip("/"))))
         else:

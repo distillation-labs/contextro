@@ -1,0 +1,357 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - generic [ref=e7]:
+      - 'img "Account color: Unset" [ref=e8]'
+      - navigation "Global" [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]:
+            - link "AWS Console Home" [ref=e12] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1
+              - img
+            - link "Skip to Main Content" [ref=e13] [cursor=pointer]:
+              - /url: "#c"
+            - button "Amazon Q" [expanded] [ref=e16] [cursor=pointer]:
+              - img [ref=e20]
+            - button "Services" [ref=e26] [cursor=pointer]:
+              - img [ref=e27]
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - img "Search" [ref=e42]:
+                - generic [ref=e43]:
+                  - img
+              - generic [ref=e44]:
+                - searchbox
+                - combobox "Search" [ref=e45]
+              - button "Ask Amazon Q" [ref=e440]:
+                - img "Ask Amazon Q" [ref=e441]
+              - generic: "[Option+S]"
+            - status [ref=e46]
+          - generic [ref=e47]:
+            - link "CloudShell" [ref=e49] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/cloudshell/home?region=us-east-1
+              - img
+            - generic "Notifications" [ref=e50] [cursor=pointer]:
+              - button "Notifications (none available)" [ref=e54]:
+                - generic [ref=e55]:
+                  - img
+              - generic [ref=e57]:
+                - img
+            - list [ref=e60]:
+              - listitem [ref=e61]:
+                - button "Help & support" [ref=e63] [cursor=pointer]:
+                  - img "Support" [ref=e65]
+              - listitem [ref=e68]:
+                - button "Settings" [ref=e70] [cursor=pointer]:
+                  - generic [ref=e73]:
+                    - img
+              - listitem [ref=e74]:
+                - combobox "Regions (United States (N. Virginia))" [ref=e76] [cursor=pointer]:
+                  - generic [ref=e78]: United States (N. Virginia)
+                  - generic [ref=e79]:
+                    - img
+              - listitem [ref=e80]:
+                - button "japneetkalkat" [ref=e82] [cursor=pointer]:
+                  - generic [ref=e86]:
+                    - 'generic "Account color: Unset" [ref=e88]':
+                      - generic [ref=e89]: japneetkalkat (212541130437)
+                      - generic [ref=e90]:
+                        - img
+                    - generic [ref=e92]: japneetkalkat
+      - generic:
+        - generic:
+          - list
+  - generic [ref=e100]:
+    - generic [ref=e102]:
+      - button "Open side navigation" [expanded] [ref=e105] [cursor=pointer]:
+        - generic [ref=e106]:
+          - img
+      - navigation "Breadcrumbs" [ref=e109]:
+        - list [ref=e110]:
+          - listitem [ref=e111]:
+            - link "Kiro" [disabled] [ref=e113]:
+              - generic [ref=e114]: Kiro
+        - list [ref=e115]:
+          - listitem [ref=e116]:
+            - generic [ref=e119]: Kiro
+    - complementary "Amazon Q" [ref=e121]:
+      - slider "Resize Amazon Q" [ref=e126]:
+        - generic:
+          - generic:
+            - img
+      - generic [ref=e128]:
+        - generic [ref=e130]:
+          - heading "Amazon Q" [level=4] [ref=e132]
+          - toolbar "Left panel actions" [ref=e134]:
+            - generic [ref=e135]:
+              - button "Toggle fullscreen" [ref=e139] [cursor=pointer]:
+                - generic [ref=e140]:
+                  - img
+              - button "Close Amazon Q" [ref=e143] [cursor=pointer]:
+                - generic [ref=e144]:
+                  - img
+        - region "Amazon Q" [ref=e147]:
+          - iframe [ref=e443]:
+            - generic [ref=f7e3]:
+              - generic:
+                - generic:
+                  - generic:
+                    - list
+              - generic [ref=f7e4]:
+                - img [ref=f7e8]
+                - generic [ref=f7e16]:
+                  - text: Help us improve Amazon Q by
+                  - button "providing feedback." [ref=f7e17] [cursor=pointer]:
+                    - generic [ref=f7e19]: providing feedback.
+    - navigation "Side navigation" [ref=e446]:
+      - button "Close side navigation" [active] [ref=e448] [cursor=pointer]:
+        - generic [ref=e449]:
+          - img
+      - generic [ref=e450]:
+        - heading "Kiro" [level=2] [ref=e451]:
+          - link "Kiro" [ref=e452] [cursor=pointer]:
+            - /url: /?region=us-east-1
+            - generic [ref=e453]: Kiro
+        - generic [ref=e454]:
+          - list [ref=e455]:
+            - listitem [ref=e456]:
+              - link "Dashboard" [ref=e457] [cursor=pointer]:
+                - /url: /kiro/dashboard?region=us-east-1
+            - listitem [ref=e458]:
+              - link "Users & Groups" [ref=e459] [cursor=pointer]:
+                - /url: /kiro/users?region=us-east-1
+          - separator [ref=e462]
+          - list [ref=e463]:
+            - listitem [ref=e464]:
+              - link "Settings" [ref=e465] [cursor=pointer]:
+                - /url: /settings?region=us-east-1
+    - main [ref=e163]:
+      - region "Notifications" [ref=e166]:
+        - generic [ref=e167]:
+          - generic [ref=e168] [cursor=pointer]:
+            - status [ref=e169]:
+              - heading "Notifications" [level=2] [ref=e170]
+              - generic [ref=e171]:
+                - generic [ref=e172]:
+                  - generic "Error" [ref=e173]:
+                    - img "Error" [ref=e174]:
+                      - img
+                  - text: "0"
+                - generic [ref=e175]:
+                  - generic "Warning" [ref=e176]:
+                    - img "Warning" [ref=e177]:
+                      - img
+                  - text: "1"
+                - generic [ref=e178]:
+                  - generic "Success" [ref=e179]:
+                    - img "Success" [ref=e180]:
+                      - img
+                  - text: "0"
+                - generic [ref=e181]:
+                  - generic "Info" [ref=e182]:
+                    - img "Info" [ref=e183]:
+                      - img
+                  - text: "1"
+                - generic [ref=e184]:
+                  - generic "In progress" [ref=e185]:
+                    - img "In progress" [ref=e186]:
+                      - img
+                  - text: "0"
+            - button "All notifications" [ref=e187]:
+              - generic [ref=e188]:
+                - img
+          - list "Notifications" [ref=e189]:
+            - listitem [ref=e190]:
+              - 'group "Warning Action required by May 15, 2026: Update your firewall allowlist for Kiro We are updating the service endpoints for Kiro as part of an infrastructure modernization effort. The IDE and CLI version published after May 15th, 2026 will communicate with updated endpoints under the kiro.dev domain. If your organization has configured firewall rules to allow access to Kiro, you will need to update those rules to allowlist the new endpoints before May 15, 2026, to avoid any service disruption. Learn more Opens in a new tab" [ref=e193]':
+                - img "Warning" [ref=e195]:
+                  - img
+                - generic [ref=e196]:
+                  - generic [ref=e197]: "Action required by May 15, 2026: Update your firewall allowlist for Kiro"
+                  - generic [ref=e198]:
+                    - text: We are updating the service endpoints for Kiro as part of an infrastructure modernization effort. The IDE and CLI version published after May 15th, 2026 will communicate with updated endpoints under the kiro.dev domain. If your organization has configured firewall rules to allow access to Kiro, you will need to update those rules to allowlist the new endpoints before
+                    - strong [ref=e199]: May 15, 2026
+                    - text: ", to avoid any service disruption."
+                    - link "Learn more Opens in a new tab" [ref=e200]:
+                      - /url: https://kiro.dev/docs/cli/privacy-and-security/firewalls/
+                      - text: Learn more
+                      - img "Opens in a new tab" [ref=e202]:
+                        - generic [ref=e203]:
+                          - img
+            - listitem [ref=e204]
+      - generic [ref=e206]:
+        - generic [ref=e210]:
+          - generic:
+            - generic [ref=e213]:
+              - img "Kiro Logo" [ref=e216]
+              - generic [ref=e217]:
+                - heading "Kiro" [level=1] [ref=e218]
+                - generic [ref=e219]: Agentic AI development from prototype to production
+                - paragraph [ref=e220]: Kiro helps you do your best work by bringing structure to AI coding with spec-driven development.
+                - paragraph [ref=e221]:
+                  - generic [ref=e222]:
+                    - text: Subscriptions are charged on a per-user basis. View
+                    - link "pricing page Opens in a new tab" [ref=e223]:
+                      - /url: https://kiro.dev/pricing/
+                      - text: pricing page
+                      - img "Opens in a new tab" [ref=e225]:
+                        - generic [ref=e226]:
+                          - img
+                    - text: for more details.
+              - button "Settings" [ref=e229] [cursor=pointer]
+            - generic:
+              - generic:
+                - generic:
+                  - img "Kiro IDE Screenshot"
+        - generic [ref=e230]:
+          - generic:
+            - generic [ref=e232]:
+              - generic [ref=e234]:
+                - heading "Benefits and features" [level=1] [ref=e239]
+                - generic [ref=e245]:
+                  - generic:
+                    - generic [ref=e247]:
+                      - heading "Tame complexity with spec-driven development" [level=3] [ref=e248]
+                      - paragraph [ref=e249]: Kiro gives developers and teams the structure and speed to 10x their output. Build precise context and make your intent explicit with executable specs. Unleash advanced agents to fix bugs in minutes, iterate on features faster, and solve tough technical problems across the most complex codebases.
+                    - generic [ref=e251]:
+                      - heading "Prompt to code to deployment in your favorite terminal" [level=3] [ref=e252]
+                      - paragraph [ref=e253]: Unleash custom agents in a highly interactive CLI experience. Build features in complex codebases. Automate workflows in seconds. Analyze errors and trace bugs with precision.
+                    - generic [ref=e255]:
+                      - heading "Automate tasks with agent hooks" [level=3] [ref=e256]
+                      - paragraph [ref=e257]: Delegate tasks to AI agents that trigger on events such as file save. Agents autonomously execute in the background based on your pre-defined prompts, helping you scale your work by generating documentation, unit tests, or optimizing code performance.
+                    - generic [ref=e259]:
+                      - heading "Advanced context for less repetition" [level=3] [ref=e260]
+                      - paragraph [ref=e261]:
+                        - text: With specs,
+                        - link "steering Opens in a new tab" [ref=e262]:
+                          - /url: https://kiro.dev/docs/steering/
+                          - text: steering
+                          - img "Opens in a new tab" [ref=e264]:
+                            - generic [ref=e265]:
+                              - img
+                        - text: ", and smart context management, Kiro understands the intent behind your prompts and helps you implement complex features on larger codebases, in fewer shots."
+                    - generic [ref=e267]:
+                      - heading "Integrate tools and data with MCP" [level=3] [ref=e268]
+                      - paragraph [ref=e269]:
+                        - text: Connect to docs, databases, APIs, and more with
+                        - link "native MCP integration Opens in a new tab" [ref=e270]:
+                          - /url: https://kiro.dev/docs/mcp/
+                          - text: native MCP integration
+                          - img "Opens in a new tab" [ref=e272]:
+                            - generic [ref=e273]:
+                              - img
+                        - text: so you can bring your world where you work.
+              - generic [ref=e275]:
+                - heading "Use cases" [level=1] [ref=e280]
+                - generic [ref=e286]:
+                  - generic:
+                    - generic [ref=e288]:
+                      - heading "Building net new applications" [level=3] [ref=e289]
+                      - paragraph [ref=e290]: With multi-modal chat for vibe coding and spec-driven development, you can build anything from simple proofs-of-concept to sophisticated software without sacrificing speed and production readiness.
+                    - generic [ref=e292]:
+                      - heading "Refactoring existing apps and retiring tech debt" [level=3] [ref=e293]
+                      - paragraph [ref=e294]: Kiro allows teams to quickly improve their code and implementation by looking at an entire codebase and using specs and tests to ensure changes are precise and well documented.
+                    - generic [ref=e296]:
+                      - heading "Building on top of large codebases" [level=3] [ref=e297]
+                      - paragraph [ref=e298]: With specs, steering, and smart context management, Kiro understands the intent behind your prompts and helps you implement complex features on larger codebases, in fewer shots.
+                    - generic [ref=e300]:
+                      - heading "Ship faster across the entire development lifecycle" [level=3] [ref=e301]
+                      - paragraph [ref=e302]: From onboarding to optimization, your team can rely on AI at every stage. Quickly make sense of legacy code, build cutting-edge features, and troubleshoot bugs with precision.
+              - generic [ref=e304]:
+                - heading "Related services" [level=1] [ref=e309]
+                - generic [ref=e315]:
+                  - generic:
+                    - generic [ref=e317]:
+                      - heading "AWS Lambda" [level=3] [ref=e318]
+                      - paragraph [ref=e319]: Run code without thinking about servers.
+                      - link "Learn more" [ref=e320]:
+                        - /url: https://console.aws.amazon.com/lambda/home
+                        - text: Learn more
+                        - img "Opens in a new tab" [ref=e322]:
+                          - generic [ref=e323]:
+                            - img
+                    - generic [ref=e325]:
+                      - heading "AWS Amplify" [level=3] [ref=e326]
+                      - paragraph [ref=e327]: Build and ship fullstack generative AI applications faster.
+                      - link "Learn more" [ref=e328]:
+                        - /url: https://console.aws.amazon.com/amplify/home
+                        - text: Learn more
+                        - img "Opens in a new tab" [ref=e330]:
+                          - generic [ref=e331]:
+                            - img
+                    - generic [ref=e333]:
+                      - heading "Amazon Bedrock" [level=3] [ref=e334]
+                      - paragraph [ref=e335]: Build and scale generative AI applications with foundation models.
+                      - link "Learn more" [ref=e336]:
+                        - /url: https://console.aws.amazon.com/bedrock/home
+                        - text: Learn more
+                        - img "Opens in a new tab" [ref=e338]:
+                          - generic [ref=e339]:
+                            - img
+            - generic [ref=e341]:
+              - generic [ref=e344]:
+                - generic:
+                  - heading [level=3]
+              - generic [ref=e347]:
+                - generic [ref=e349]:
+                  - heading "Subscription pricing" [level=2] [ref=e352]
+                  - paragraph [ref=e353]: Pricing details for Kiro subcription per user
+                - generic [ref=e356]:
+                  - generic:
+                    - generic [ref=e357]:
+                      - generic:
+                        - generic [ref=e359]: Pro
+                        - generic [ref=e361]: $20 / month
+                    - generic [ref=e362]:
+                      - generic:
+                        - generic [ref=e364]: Pro+
+                        - generic [ref=e366]: $40 / month
+                    - generic [ref=e367]:
+                      - generic:
+                        - generic [ref=e369]: Power
+                        - generic [ref=e371]: $200 / month
+              - generic [ref=e375]:
+                - heading "Getting started resources" [level=2] [ref=e380]:
+                  - generic [ref=e381]:
+                    - text: Getting started resources
+                    - generic [ref=e382]:
+                      - img
+                - generic [ref=e385]:
+                  - link "Download the Kiro IDE and CLI" [ref=e387]:
+                    - /url: https://kiro.dev/downloads/
+                  - link "Kiro starter project" [ref=e389]:
+                    - /url: https://kiro.dev/docs/getting-started/first-project/
+                  - link "Kiro docs" [ref=e391]:
+                    - /url: https://kiro.dev/docs/
+              - generic [ref=e395]:
+                - heading "More resources" [level=2] [ref=e400]:
+                  - generic [ref=e401]:
+                    - text: More resources
+                    - generic [ref=e402]:
+                      - img
+                - generic [ref=e405]:
+                  - link "Kiro guides" [ref=e407]:
+                    - /url: https://kiro.dev/docs/guides/
+                  - link "Kiro blog" [ref=e409]:
+                    - /url: https://kiro.dev/blog/
+                  - link "Intro to spec-driven development" [ref=e411]:
+                    - /url: https://kiro.dev/blog/kiro-and-the-future-of-software-development/
+  - contentinfo [ref=e412]:
+    - generic [ref=e416]:
+      - generic [ref=e417]:
+        - button "CloudShell" [ref=e419] [cursor=pointer]:
+          - generic [ref=e420]:
+            - img
+          - generic [ref=e421]: CloudShell
+        - button "Feedback" [ref=e422] [cursor=pointer]
+        - button "Console Mobile App" [ref=e424] [cursor=pointer]:
+          - img [ref=e426]
+          - generic [ref=e429]: Console Mobile App
+      - generic [ref=e431]: © 2026, Amazon Web Services, Inc. or its affiliates.
+      - list [ref=e433]:
+        - listitem [ref=e434]:
+          - link "Privacy" [ref=e435] [cursor=pointer]:
+            - /url: https://aws.amazon.com/privacy/
+        - listitem [ref=e436]:
+          - link "Terms" [ref=e437] [cursor=pointer]:
+            - /url: https://aws.amazon.com/terms/
+        - listitem [ref=e438]:
+          - button "Cookie preferences" [ref=e439] [cursor=pointer]

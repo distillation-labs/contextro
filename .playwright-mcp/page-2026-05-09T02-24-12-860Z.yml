@@ -1,0 +1,81 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - generic [ref=e7]:
+      - 'img "Account color: Unset" [ref=e8]'
+      - navigation "Global" [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]:
+            - link "AWS Console Home" [ref=e12] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1
+              - img
+            - link "Skip to Main Content" [ref=e13] [cursor=pointer]:
+              - /url: "#c"
+            - button "Services" [ref=e16] [cursor=pointer]:
+              - img [ref=e17]
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - img "Search" [ref=e32]:
+                - generic [ref=e33]:
+                  - img
+              - generic [ref=e34]:
+                - searchbox
+                - combobox "Search" [ref=e35]
+              - button "Ask Amazon Q" [ref=e36]:
+                - img "Ask Amazon Q" [ref=e37]
+              - generic: "[Option+S]"
+            - status [ref=e39]
+          - generic [ref=e40]:
+            - link "CloudShell" [ref=e42] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/cloudshell/home?region=us-east-1
+              - img
+            - generic "Notifications" [ref=e43] [cursor=pointer]:
+              - button "Notifications (none available)" [ref=e47]:
+                - generic [ref=e48]:
+                  - img
+              - generic [ref=e50]:
+                - img
+            - list [ref=e53]:
+              - listitem [ref=e54]:
+                - button "Help & support" [ref=e56] [cursor=pointer]:
+                  - img "Support" [ref=e58]
+              - listitem [ref=e61]:
+                - button "Settings" [ref=e63] [cursor=pointer]:
+                  - generic [ref=e66]:
+                    - img
+              - listitem [ref=e67]:
+                - combobox "Regions (United States (N. Virginia))" [ref=e69] [cursor=pointer]:
+                  - generic [ref=e71]: United States (N. Virginia)
+                  - generic [ref=e72]:
+                    - img
+              - listitem [ref=e73]:
+                - button "japneetkalkat" [ref=e75] [cursor=pointer]:
+                  - generic [ref=e79]:
+                    - 'generic "Account color: Unset" [ref=e81]':
+                      - generic [ref=e82]: japneetkalkat (212541130437)
+                      - generic [ref=e83]:
+                        - img
+                    - generic [ref=e85]: japneetkalkat
+      - generic:
+        - generic:
+          - list
+  - contentinfo [ref=e86]:
+    - generic [ref=e90]:
+      - generic [ref=e91]:
+        - button "CloudShell" [ref=e93] [cursor=pointer]:
+          - generic [ref=e94]:
+            - img
+          - generic [ref=e95]: CloudShell
+        - button "Feedback" [ref=e96] [cursor=pointer]
+        - button "Console Mobile App" [ref=e98] [cursor=pointer]:
+          - img [ref=e100]
+          - generic [ref=e103]: Console Mobile App
+      - generic [ref=e105]: © 2026, Amazon Web Services, Inc. or its affiliates.
+      - list [ref=e107]:
+        - listitem [ref=e108]:
+          - link "Privacy" [ref=e109] [cursor=pointer]:
+            - /url: https://aws.amazon.com/privacy/
+        - listitem [ref=e110]:
+          - link "Terms" [ref=e111] [cursor=pointer]:
+            - /url: https://aws.amazon.com/terms/
+        - listitem [ref=e112]:
+          - button "Cookie preferences" [ref=e113] [cursor=pointer]

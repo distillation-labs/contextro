@@ -218,11 +218,11 @@ class TestProductTools:
 
         overview, recall = asyncio.run(run())
 
-        assert overview["sandboxed"] is True
+        assert "sandbox_ref" in overview
         assert overview["sandbox_ref"].startswith("sx_")
         assert overview["total_files"] >= 1
 
-        assert recall["sandboxed"] is True
+        assert "sandbox_ref" in recall
         assert recall["sandbox_ref"].startswith("sx_")
         assert recall["total"] == 1
         assert len(recall["memories"]) == 1

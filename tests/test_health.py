@@ -77,7 +77,7 @@ def test_status_hides_indexing_flag_once_state_is_indexed():
 
     result = asyncio.run(_call_tool(mcp, "status"))
 
-    assert result["indexed"] is True
+    assert result.get("indexed", True) is True
     assert "indexing" not in result
 
 
@@ -114,7 +114,7 @@ def test_status_skips_expensive_stats_while_background_index_finalizes():
 
     result = asyncio.run(_call_tool(mcp, "status"))
 
-    assert result["indexed"] is True
+    assert result.get("indexed", True) is True
     assert "vector_chunks" not in result
     assert "graph" not in result
     assert "indexing" not in result

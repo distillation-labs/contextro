@@ -9,3 +9,6 @@ FINAL: Incremental reindex = 22ms (instant)
 FINAL: Rust file discovery = 15ms for 3349 files
 FINAL: Rust mtime scan = 2.7ms for 3349 files
 FINAL: Rust xxHash3 = 49,107 files/sec
+
+--- autoresearch session 2 ---
+exp5	0.54s	-34s	keep	reuse pipeline embedding svc in commit indexer (65x speedup, was 34.6s)

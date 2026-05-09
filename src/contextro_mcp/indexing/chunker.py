@@ -87,26 +87,33 @@ def create_chunk_text(symbol: Symbol) -> str:
     # Contextual header: prepend compact chunk-specific context before the symbol
     # body so both embeddings and BM25 see stable module/file/symbol hints.
     parts.extend(build_symbol_context_header(symbol, context_settings))
-
-    parts.append(f"{symbol.type.value}: {symbol.qualified_name}")
     parts.append("")
+
+    # Docstring first — gives BM25 higher weight for exact docstring queries
+    if symbol.docstring:
+        doc = symbol.docstring[:500]
+        snippet_has_doc = symbol.code_snippet and doc[:50] in symbol.code_snippet
+        if not snippet_has_doc:
+            parts.append(doc)
+            parts.append("")
 
     # Signature
     if symbol.signature:
         parts.append(symbol.signature)
         parts.append("")
 
-    # Docstring
-    if symbol.docstring:
-        doc = symbol.docstring[:500]
-        parts.append(doc)
-        parts.append("")
-
-    # Code snippet (truncated)
+    # Code snippet (truncated) — skip first line if it duplicates the signature
     if symbol.code_snippet:
         snippet = symbol.code_snippet[: settings.chunk_max_chars]
-        parts.append(snippet)
-        parts.append("")
+        # Strip leading line if it's the same as the signature (avoids duplication)
+        if symbol.signature:
+            first_line = snippet.split("\n", 1)[0].strip()
+            sig_stripped = symbol.signature.strip()
+            if first_line == sig_stripped or first_line.rstrip(":") == sig_stripped.rstrip(":"):
+                snippet = snippet.split("\n", 1)[1] if "\n" in snippet else ""
+        if snippet.strip():
+            parts.append(snippet)
+            parts.append("")
 
     # Imports
     if symbol.imports:

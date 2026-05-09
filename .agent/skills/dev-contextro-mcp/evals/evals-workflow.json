@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "4.0.0",
+  "version": "0.0.4",
   "eval_set": "workflow-functional-performance",
   "description": "Functional workflow evals for the Contextro skill. Covers the highest-value problem-first flows: orientation, safe refactor, bug investigation, compaction recovery, AST rewrite safety, and output-handling discipline.",
   "categories": {
@@ -54,7 +54,7 @@
           "id": "a3",
           "text": "search happens only after status confirms readiness",
           "type": "workflow",
-          "passing_condition": "search called after status confirms indexed: true"
+          "passing_condition": "search called after status confirms readiness (codebase_path present, or indexed: true if present)"
         }
       ]
     },
@@ -177,7 +177,7 @@
           "id": "a2",
           "text": "sandboxed results are retrieved",
           "type": "workflow",
-          "passing_condition": "If search response contains sandbox_ref, retrieve called with that ref_id"
+          "passing_condition": "If search response contains sandbox_ref, retrieve called with that ref_id (sandbox_ref presence implies sandboxing)"
         }
       ]
     },

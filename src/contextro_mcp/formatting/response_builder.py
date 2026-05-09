@@ -77,24 +77,15 @@ class ResponseBuilder:
             search_results: Related code from vector search.
             analysis: Code analysis metrics.
         """
-        explanation: Dict[str, Any] = {
-            "symbol": symbol_data,
-        }
+        # Flatten: merge symbol fields into top level (saves "symbol" wrapper key)
+        explanation: Dict[str, Any] = dict(symbol_data)
 
         # Add related code (truncated by verbosity)
         if self.verbosity == "summary":
             explanation["related_count"] = len(search_results)
-        elif self.verbosity == "detailed":
-            explanation["related_code"] = [
-                {
-                    "symbol_name": r.get("symbol_name", ""),
-                    "filepath": r.get("filepath", ""),
-                    "score": round(r.get("score", 0.0), 4),
-                }
-                for r in search_results[:5]
-            ]
-        else:  # full
-            explanation["related_code"] = search_results[:10]
+        elif self.verbosity == "full":
+            explanation["related_code"] = search_results[:5]
+        # detailed: omit related_code — callers/callees already show relationships
 
         # Add analysis (filter out zero values to reduce tokens)
         if analysis:
@@ -117,5 +108,5 @@ class ResponseBuilder:
                 if filtered_analysis:
                     explanation["analysis"] = filtered_analysis
 
-        explanation["verbosity"] = self.verbosity
+        # verbosity omitted — agent knows what they requested
         return explanation

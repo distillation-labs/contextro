@@ -1,0 +1,333 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - generic [ref=e7]:
+      - 'img "Account color: Unset" [ref=e8]'
+      - navigation "Global" [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]:
+            - link "AWS Console Home" [ref=e12] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1
+              - img
+            - link "Skip to Main Content" [ref=e13] [cursor=pointer]:
+              - /url: "#c"
+            - button "Amazon Q" [expanded] [ref=e113] [cursor=pointer]:
+              - img [ref=e117]
+            - button "Services" [ref=e16] [cursor=pointer]:
+              - img [ref=e17]
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - img "Search" [ref=e32]:
+                - generic [ref=e33]:
+                  - img
+              - generic [ref=e34]:
+                - searchbox
+                - combobox "Search" [ref=e35]
+              - button "Ask Amazon Q" [ref=e121]:
+                - img "Ask Amazon Q" [ref=e122]
+              - generic: "[Option+S]"
+            - status [ref=e36]
+          - generic [ref=e37]:
+            - link "CloudShell" [ref=e39] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/cloudshell/home?region=us-east-1
+              - img
+            - generic "Notifications" [ref=e40] [cursor=pointer]:
+              - button "Notifications (none available)" [ref=e125]:
+                - generic [ref=e126]:
+                  - img
+              - generic [ref=e44]:
+                - img
+            - list [ref=e47]:
+              - listitem [ref=e48]:
+                - button "Help & support" [ref=e50] [cursor=pointer]:
+                  - img "Support" [ref=e52]
+              - listitem [ref=e55]:
+                - button "Settings" [ref=e57] [cursor=pointer]:
+                  - generic [ref=e60]:
+                    - img
+              - listitem [ref=e61]:
+                - combobox "Regions (United States (N. Virginia))" [ref=e63] [cursor=pointer]:
+                  - generic [ref=e65]: United States (N. Virginia)
+                  - generic [ref=e66]:
+                    - img
+              - listitem [ref=e67]:
+                - button "japneetkalkat" [ref=e69] [cursor=pointer]:
+                  - generic [ref=e73]:
+                    - 'generic "Account color: Unset" [ref=e75]':
+                      - generic [ref=e76]: japneetkalkat (212541130437)
+                      - generic [ref=e77]:
+                        - img
+                    - generic [ref=e79]: japneetkalkat
+      - generic:
+        - generic:
+          - list
+  - generic [ref=e130]:
+    - generic [ref=e132]:
+      - button "Open side navigation" [expanded] [ref=e134] [cursor=pointer]:
+        - generic [ref=e135]:
+          - img
+      - navigation "Breadcrumbs" [ref=e138]:
+        - list [ref=e139]:
+          - listitem [ref=e140]:
+            - generic [ref=e141]:
+              - link "Kiro" [ref=e142] [cursor=pointer]:
+                - /url: /amazonq/developer/?region=us-east-1
+                - generic [ref=e143]: Kiro
+              - generic [ref=e145]:
+                - img
+          - listitem [ref=e146]:
+            - link "Dashboard" [disabled] [ref=e621]:
+              - generic [ref=e149]: Dashboard
+        - list [ref=e150]:
+          - listitem [ref=e151]:
+            - generic [ref=e152]:
+              - link [ref=e153] [cursor=pointer]:
+                - /url: /amazonq/developer/?region=us-east-1
+                - generic [ref=e154]: Kiro
+              - generic [ref=e156]:
+                - img
+          - listitem [ref=e157]:
+            - generic [ref=e160]: Dashboard
+    - complementary "Amazon Q" [ref=e162]:
+      - slider "Resize Amazon Q" [active] [ref=e167]:
+        - generic:
+          - generic:
+            - img
+      - generic [ref=e169]:
+        - generic [ref=e171]:
+          - heading "Amazon Q" [level=4] [ref=e173]
+          - toolbar "Left panel actions" [ref=e175]:
+            - generic [ref=e176]:
+              - group "Actions" [ref=e177]:
+                - button "New conversation" [ref=e180] [cursor=pointer]:
+                  - generic [ref=e181]:
+                    - img
+                - button "Amazon Q prompt library" [ref=e184] [cursor=pointer]:
+                  - img [ref=e188]
+                - button "Conversation history" [ref=e193] [cursor=pointer]:
+                  - generic [ref=e194]:
+                    - img
+                - button "Settings" [ref=e197] [cursor=pointer]:
+                  - generic [ref=e198]:
+                    - img
+              - button "Toggle fullscreen" [ref=e202] [cursor=pointer]:
+                - generic [ref=e203]:
+                  - img
+              - button "Close Amazon Q" [ref=e206] [cursor=pointer]:
+                - generic [ref=e207]:
+                  - img
+        - region "Amazon Q" [ref=e210]:
+          - iframe [ref=e222]:
+            - generic [ref=f18e3]:
+              - generic:
+                - generic:
+                  - generic:
+                    - list
+              - generic [ref=f18e4]:
+                - generic [ref=f18e9]:
+                  - generic [ref=f18e13]:
+                    - img [ref=f18e15]
+                    - generic [ref=f18e18]: How can I help you today?
+                  - generic [ref=f18e21]:
+                    - region "Ask me anything about AWS" [ref=f18e25]:
+                      - generic [ref=f18e26]:
+                        - textbox "Ask me anything about AWS" [ref=f18e27]:
+                          - /placeholder: Describe what you want to do with AWS e.g., 'List all S3 buckets'.
+                        - button "Send message" [disabled] [ref=f18e29]:
+                          - generic [ref=f18e30]:
+                            - img
+                    - generic [ref=f18e32]: Max 10000 characters
+                  - generic [ref=f18e34]:
+                    - generic [ref=f18e36]:
+                      - button "Do I have over-provisioned EC2 instances? Identify rightsizing opportunities to reduce compute waste. Q&A badge" [ref=f18e38]:
+                        - generic [ref=f18e39]:
+                          - generic [ref=f18e40]: Do I have over-provisioned EC2 instances?
+                          - generic [ref=f18e41]: Identify rightsizing opportunities to reduce compute waste.
+                        - generic "Q&A badge" [ref=f18e45] [cursor=pointer]: Q&A
+                      - button "Do I have any credit memos? Check for any credit memos issued to your AWS account. Q&A badge" [ref=f18e47]:
+                        - generic [ref=f18e48]:
+                          - generic [ref=f18e49]: Do I have any credit memos?
+                          - generic [ref=f18e50]: Check for any credit memos issued to your AWS account.
+                        - generic "Q&A badge" [ref=f18e54] [cursor=pointer]: Q&A
+                      - button "How much am I spending on data transfer by component? Break down network costs by inter-AZ, inter-region, and internet egress. Q&A badge" [ref=f18e56]:
+                        - generic [ref=f18e57]:
+                          - generic [ref=f18e58]: How much am I spending on data transfer by component?
+                          - generic [ref=f18e59]: Break down network costs by inter-AZ, inter-region, and internet egress.
+                        - generic "Q&A badge" [ref=f18e63] [cursor=pointer]: Q&A
+                      - button "What is my account's payment status? Get a quick overview of your AWS account payment health. Q&A badge" [ref=f18e65]:
+                        - generic [ref=f18e66]:
+                          - generic [ref=f18e67]: What is my account's payment status?
+                          - generic [ref=f18e68]: Get a quick overview of your AWS account payment health.
+                        - generic "Q&A badge" [ref=f18e72] [cursor=pointer]: Q&A
+                    - toolbar "Chat actions" [ref=f18e74]:
+                      - generic [ref=f18e75]:
+                        - group "Modals toggles" [ref=f18e76]:
+                          - button "Amazon Q prompt library" [ref=f18e79] [cursor=pointer]:
+                            - generic [ref=f18e80]:
+                              - img
+                          - button "Conversation history" [ref=f18e83] [cursor=pointer]:
+                            - generic [ref=f18e84]:
+                              - img
+                        - group "Actions" [ref=f18e86]:
+                          - button "Load new prompts" [ref=f18e89] [cursor=pointer]:
+                            - generic [ref=f18e90]:
+                              - img
+                  - generic [ref=f18e92]:
+                    - generic [ref=f18e95]:
+                      - heading "Additional information" [level=5] [ref=f18e96]:
+                        - generic [ref=f18e97]: Additional information
+                      - link "Free Tier" [ref=f18e101] [cursor=pointer]:
+                        - /url: https://aws.amazon.com/q/developer/pricing/
+                    - generic [ref=f18e102]:
+                      - text: Amazon Q Developer may retain chats to provide and maintain the service. Amazon Q Developer makes cross-region API calls when your requests require it, and may process data across AWS Regions within the geography where your Q Developer Pro tier profile was created or across US Regions for Free tier users. For more information, see the
+                      - link "Amazon Q Developer documentation (opens new tab)" [ref=f18e103]:
+                        - /url: https://aws.amazon.com/machine-learning/responsible-ai/policy/
+                        - text: Amazon Q Developer documentation
+                        - img "(opens new tab)" [ref=f18e105]:
+                          - generic [ref=f18e106]:
+                            - img
+                      - text: .
+                - generic [ref=f18e110]:
+                  - text: Help us improve Amazon Q by
+                  - button "providing feedback." [ref=f18e111] [cursor=pointer]:
+                    - generic [ref=f18e113]: providing feedback.
+    - navigation "Side navigation" [ref=e225]:
+      - button "Close side navigation" [ref=e227] [cursor=pointer]:
+        - generic [ref=e228]:
+          - img
+      - generic [ref=e229]:
+        - heading "Kiro" [level=2] [ref=e230]:
+          - link "Kiro" [ref=e231] [cursor=pointer]:
+            - /url: /?region=us-east-1
+            - generic [ref=e232]: Kiro
+        - generic [ref=e233]:
+          - list [ref=e234]:
+            - listitem [ref=e235]:
+              - link "Dashboard" [ref=e236] [cursor=pointer]:
+                - /url: /kiro/dashboard?region=us-east-1
+            - listitem [ref=e237]:
+              - link "Users & Groups" [ref=e238] [cursor=pointer]:
+                - /url: /kiro/users?region=us-east-1
+          - separator [ref=e241]
+          - list [ref=e242]:
+            - listitem [ref=e243]:
+              - link "Settings" [ref=e244] [cursor=pointer]:
+                - /url: /settings?region=us-east-1
+    - main [ref=e245]:
+      - generic:
+        - region "Notifications":
+          - generic:
+            - list "Notifications"
+      - generic [ref=e248]:
+        - generic [ref=e251]:
+          - generic [ref=e252]:
+            - heading "Dashboard" [level=1] [ref=e622]
+            - button "Delete profile" [ref=e256] [cursor=pointer]
+          - paragraph [ref=e257]: Insights on how your teams are using Kiro
+        - generic [ref=e258]:
+          - generic:
+            - generic [ref=e625]:
+              - generic [ref=e628]:
+                - heading "Kiro subscriptions" [level=2] [ref=e630]
+                - button [ref=e632] [cursor=pointer]:
+                  - generic [ref=e633]:
+                    - img
+              - generic [ref=e638]:
+                - generic [ref=e639]:
+                  - term [ref=e640]:
+                    - generic [ref=e641]: Pending
+                  - definition [ref=e642]
+                - generic [ref=e646]:
+                  - term [ref=e647]:
+                    - generic [ref=e648]: Active
+                  - definition [ref=e649]
+                - generic [ref=e653]:
+                  - term [ref=e654]:
+                    - generic [ref=e655]: Total
+                  - definition [ref=e656]
+            - generic [ref=e662]:
+              - heading "Settings Management account" [level=2] [ref=e667]:
+                - generic [ref=e669]:
+                  - generic [ref=e670]: Settings
+                  - generic [ref=e672]: Management account
+              - generic [ref=e677]:
+                - definition [ref=e679]:
+                  - generic [ref=e680]:
+                    - generic [ref=e681]:
+                      - term [ref=e682]:
+                        - generic [ref=e683]: Profile name
+                      - definition [ref=e684]: KiroProfile-us-east-1
+                    - generic [ref=e685]:
+                      - term [ref=e686]:
+                        - generic [ref=e687]: Sign in URL
+                      - definition [ref=e688]: "-"
+                - definition [ref=e690]:
+                  - generic [ref=e691]:
+                    - generic [ref=e692]:
+                      - term [ref=e693]:
+                        - generic [ref=e694]: Overage
+                      - definition [ref=e695]:
+                        - generic [ref=e699]:
+                          - generic [ref=e701]:
+                            - img
+                          - text: Enabled
+                    - generic [ref=e702]:
+                      - term [ref=e703]:
+                        - generic [ref=e704]: IAM Identity Center region
+                      - definition [ref=e705]: us-east-2
+            - generic [ref=e707]:
+              - heading "Kiro usage" [level=2] [ref=e710]
+              - paragraph [ref=e711]: Metrics showing credits used and usage activity broken down per client, IDE or CLI
+            - generic [ref=e712]:
+              - generic:
+                - generic [ref=e714]:
+                  - generic [ref=e715]: Filter by date
+                  - button "Filter by date Last 7 days" [ref=e722]:
+                    - generic [ref=e723]:
+                      - generic [ref=e725]:
+                        - img
+                      - generic [ref=e727]: Last 7 days
+                - generic [ref=e729]:
+                  - generic [ref=e730]: Granularity
+                  - toolbar [ref=e735]:
+                    - button "Daily" [pressed] [ref=e736]:
+                      - generic [ref=e737]: Daily
+                    - button "Weekly" [ref=e738]:
+                      - generic [ref=e739]: Weekly
+                    - button "Monthly" [disabled] [ref=e740]:
+                      - generic [ref=e741]: Monthly
+            - generic [ref=e744]:
+              - heading "Credit usage by client type" [level=2] [ref=e749]
+              - generic [ref=e757]: Loading chart
+            - generic [ref=e764]:
+              - heading "Credit usage by plan type" [level=2] [ref=e769]
+              - generic [ref=e777]: Loading chart
+            - generic [ref=e784]:
+              - heading "Active users by client type" [level=2] [ref=e789]
+              - generic [ref=e798]: Loading chart
+            - generic [ref=e805]:
+              - heading "Active users by plan type" [level=2] [ref=e810]
+              - generic [ref=e819]: Loading chart
+            - generic [ref=e826]:
+              - heading "Usage per client" [level=2] [ref=e831]
+              - generic [ref=e839]: Loading chart
+  - contentinfo [ref=e87]:
+    - generic [ref=e91]:
+      - generic [ref=e92]:
+        - button "CloudShell" [ref=e618] [cursor=pointer]:
+          - generic [ref=e619]:
+            - img
+          - generic [ref=e620]: CloudShell
+        - button "Feedback" [ref=e93] [cursor=pointer]
+        - button "Console Mobile App" [ref=e95] [cursor=pointer]:
+          - img [ref=e97]
+          - generic [ref=e100]: Console Mobile App
+      - generic [ref=e102]: © 2026, Amazon Web Services, Inc. or its affiliates.
+      - list [ref=e104]:
+        - listitem [ref=e105]:
+          - link "Privacy" [ref=e106] [cursor=pointer]:
+            - /url: https://aws.amazon.com/privacy/
+        - listitem [ref=e107]:
+          - link "Terms" [ref=e108] [cursor=pointer]:
+            - /url: https://aws.amazon.com/terms/
+        - listitem [ref=e109]:
+          - button "Cookie preferences" [ref=e110] [cursor=pointer]

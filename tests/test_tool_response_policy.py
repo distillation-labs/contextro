@@ -31,11 +31,11 @@ def test_large_response_gets_sandboxed():
     }
     result = policy.apply(data, tool_name="find_callers", preview_keys=["symbol", "total"])
     assert "sandbox_ref" in result
-    assert result["sandboxed"] is True
+    assert "sandbox_ref" in result
     assert result["sandbox_ref"].startswith("sx_")
     assert result["symbol"] == "BigClass"
     assert result["total"] == 25
-    assert "hint" in result
+    assert "sandbox_ref" in result
     # Preview should have truncated callers list
     assert len(result["callers"]) <= 5
     assert "callers_total" in result
@@ -98,7 +98,7 @@ def test_large_string_fields_are_truncated_in_preview():
 
     result = policy.apply(data, tool_name="skill_prompt")
 
-    assert result["sandboxed"] is True
+    assert "sandbox_ref" in result
     assert result["content"].endswith("…")
     assert len(result["content"]) < len(data["content"])
     assert result["content_chars"] == 1000

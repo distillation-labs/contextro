@@ -51,8 +51,13 @@ def graph_relevance_search(
         return []
 
     # Score by graph centrality: in_degree * 2 + out_degree
+    # Exclude MCP server wrapper functions — they have artificially high centrality
+    # because they call many codebase functions, but they're not part of the codebase.
     scored = []
     for node in candidates:
+        # Skip nodes from the MCP server file itself
+        if node.location.file_path.endswith("server.py"):
+            continue
         in_deg, out_deg = graph_engine.get_node_degree(node.id)
         raw_score = in_deg * 2 + out_deg
         scored.append((node, raw_score))
@@ -115,6 +120,7 @@ class ReciprocalRankFusion:
         """Compute per-query weights: inverse entropy, normalized, bounded by base weights.
 
         Falls back to base weights when entropies are too similar (< 0.1 spread).
+        Gives zero weight to retrievers with degenerate (all-equal) score distributions.
         """
         entropies = {
             engine: self._score_entropy(results)
@@ -123,6 +129,25 @@ class ReciprocalRankFusion:
         }
         if not entropies:
             return self.weights
+
+        # Detect degenerate retrievers: all scores equal → max entropy for that list size
+        # A retriever with n results all at score 1.0 has entropy = log(n)
+        degenerate: set[str] = set()
+        for engine, results in ranked_lists.items():
+            if engine not in self.weights:
+                continue
+            scores = [r.get("score", 0.0) for r in results if r.get("score", 0.0) > 0]
+            if len(scores) >= 2:
+                score_range = max(scores) - min(scores)
+                if score_range < 1e-6:  # all scores identical → degenerate
+                    degenerate.add(engine)
+
+        # If vector is degenerate, zero it out and redistribute to BM25/graph
+        if degenerate:
+            adjusted = {e: (0.0 if e in degenerate else w) for e, w in self.weights.items()}
+            total = sum(adjusted.values())
+            if total > 0:
+                return {e: w / total for e, w in adjusted.items()}
 
         # Only adapt when there's meaningful spread between retrievers
         entropy_values = list(entropies.values())
