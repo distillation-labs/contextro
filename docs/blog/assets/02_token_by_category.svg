@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 480" font-family="Inter, -apple-system, system-ui, sans-serif">
+  <rect width="1100" height="480" fill="#fafafa"/>
+  <text x="550" y="38" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a2e">Token Consumption by Category</text>
+  <text x="550" y="58" text-anchor="middle" font-size="12" fill="#6b7280">Control (No MCP) vs Treatment (MCP) — tasks with grep equivalents only</text>
+
+  <!-- Y axis label -->
+  <text x="30" y="250" text-anchor="middle" font-size="11" fill="#6b7280" transform="rotate(-90,30,250)">Total Tokens</text>
+
+  <!-- Bars - each category pair -->
+  <!-- Semantic Search: 102,610 vs 1,115 -->
+  <text x="130" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Semantic</text>
+  <text x="130" y="432" text-anchor="middle" font-size="10" fill="#4b5563">Search</text>
+  <rect x="90" y="100" width="35" height="290" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="130" y="387" width="35" height="3" rx="2" fill="#0f3460"/>
+  <text x="130" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">98.9%↓</text>
+
+  <!-- Symbol Discovery: 35,559 vs 407 -->
+  <text x="260" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Symbol</text>
+  <text x="260" y="432" text-anchor="middle" font-size="10" fill="#4b5563">Discovery</text>
+  <rect x="220" y="290" width="35" height="100" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="260" y="388" width="35" height="2" rx="1" fill="#0f3460"/>
+  <text x="260" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">98.9%↓</text>
+
+  <!-- Code Tool: 50,207 vs 1,602 -->
+  <text x="390" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Code Tool</text>
+  <text x="390" y="432" text-anchor="middle" font-size="10" fill="#4b5563">(AST)</text>
+  <rect x="350" y="248" width="35" height="142" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="390" y="385" width="35" height="5" rx="2" fill="#0f3460"/>
+  <text x="390" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">96.8%↓</text>
+
+  <!-- Git History: 44,990 vs 1,744 -->
+  <text x="520" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Git</text>
+  <text x="520" y="432" text-anchor="middle" font-size="10" fill="#4b5563">History</text>
+  <rect x="480" y="263" width="35" height="127" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="520" y="384" width="35" height="6" rx="2" fill="#0f3460"/>
+  <text x="520" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">96.1%↓</text>
+
+  <!-- Focus: 34,193 vs 545 -->
+  <text x="650" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Focus</text>
+  <text x="650" y="432" text-anchor="middle" font-size="10" fill="#4b5563">(File)</text>
+  <rect x="610" y="294" width="35" height="96" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="650" y="388" width="35" height="2" rx="1" fill="#0f3460"/>
+  <text x="650" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">98.4%↓</text>
+
+  <!-- Caller Tracing: 26,449 vs 720 -->
+  <text x="780" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Caller</text>
+  <text x="780" y="432" text-anchor="middle" font-size="10" fill="#4b5563">Tracing</text>
+  <rect x="740" y="316" width="35" height="74" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="780" y="388" width="35" height="2" rx="1" fill="#0f3460"/>
+  <text x="780" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">97.3%↓</text>
+
+  <!-- Impact Analysis: 16,902 vs 392 -->
+  <text x="910" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Impact</text>
+  <text x="910" y="432" text-anchor="middle" font-size="10" fill="#4b5563">Analysis</text>
+  <rect x="870" y="343" width="35" height="47" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="910" y="389" width="35" height="1" rx="1" fill="#0f3460"/>
+  <text x="910" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">97.7%↓</text>
+
+  <!-- Code Understanding: 24,190 vs 927 -->
+  <text x="1030" y="420" text-anchor="middle" font-size="10" fill="#4b5563">Code</text>
+  <text x="1030" y="432" text-anchor="middle" font-size="10" fill="#4b5563">Understanding</text>
+  <rect x="990" y="322" width="35" height="68" rx="3" fill="#dc2626" opacity="0.85"/>
+  <rect x="1030" y="387" width="35" height="3" rx="2" fill="#0f3460"/>
+  <text x="1030" y="445" text-anchor="middle" font-size="9" font-weight="600" fill="#059669">96.2%↓</text>
+
+  <!-- Baseline -->
+  <line x1="70" y1="390" x2="1080" y2="390" stroke="#e5e7eb" stroke-width="1"/>
+
+  <!-- Legend -->
+  <rect x="420" y="460" width="12" height="12" rx="2" fill="#dc2626" opacity="0.85"/>
+  <text x="438" y="471" font-size="11" fill="#4b5563">No MCP (Control)</text>
+  <rect x="570" y="460" width="12" height="12" rx="2" fill="#0f3460"/>
+  <text x="588" y="471" font-size="11" fill="#4b5563">With MCP (Treatment)</text>
+</svg>

@@ -1,0 +1,200 @@
+{
+  "total_tasks": 60,
+  "control_completed": 60,
+  "mcp_completed": 60,
+  "tokens": {
+    "control": {
+      "count": 60,
+      "sum": 335100,
+      "mean": 5585.0,
+      "median": 3066,
+      "p95": 31754
+    },
+    "mcp": {
+      "count": 60,
+      "sum": 14327,
+      "mean": 238.8,
+      "median": 95,
+      "p95": 996
+    },
+    "total_reduction_pct": 95.7
+  },
+  "latency_ms": {
+    "control": {
+      "count": 60,
+      "sum": 20889.64,
+      "mean": 348.2,
+      "median": 470.99,
+      "p95": 661.93
+    },
+    "mcp": {
+      "count": 60,
+      "sum": 22833.22,
+      "mean": 380.6,
+      "median": 5.78,
+      "p95": 1106.48
+    }
+  },
+  "tool_calls": {
+    "control": {
+      "count": 60,
+      "sum": 192,
+      "mean": 3.2,
+      "median": 4,
+      "p95": 6
+    },
+    "mcp": {
+      "count": 60,
+      "sum": 60,
+      "mean": 1.0,
+      "median": 1,
+      "p95": 1
+    }
+  },
+  "files_read": {
+    "control": {
+      "count": 60,
+      "sum": 153,
+      "mean": 2.5,
+      "median": 3,
+      "p95": 5
+    },
+    "mcp": {
+      "count": 60,
+      "sum": 0,
+      "mean": 0.0,
+      "median": 0,
+      "p95": 0
+    }
+  },
+  "by_category": {
+    "caller_tracing": {
+      "tasks": 6,
+      "control_tokens": 26449,
+      "mcp_tokens": 720,
+      "token_reduction_pct": 97.3,
+      "control_mean_ms": 498.1,
+      "mcp_mean_ms": 1.2
+    },
+    "code_tool": {
+      "tasks": 5,
+      "control_tokens": 50207,
+      "mcp_tokens": 1602,
+      "token_reduction_pct": 96.8,
+      "control_mean_ms": 349.5,
+      "mcp_mean_ms": 2319.7
+    },
+    "code_understanding": {
+      "tasks": 6,
+      "control_tokens": 24190,
+      "mcp_tokens": 927,
+      "token_reduction_pct": 96.2,
+      "control_mean_ms": 498.3,
+      "mcp_mean_ms": 7.5
+    },
+    "focus": {
+      "tasks": 2,
+      "control_tokens": 34193,
+      "mcp_tokens": 545,
+      "token_reduction_pct": 98.4,
+      "control_mean_ms": 541.2,
+      "mcp_mean_ms": 4007.6
+    },
+    "git_history": {
+      "tasks": 3,
+      "control_tokens": 44990,
+      "mcp_tokens": 1744,
+      "token_reduction_pct": 96.1,
+      "control_mean_ms": 315.2,
+      "mcp_mean_ms": 41.6
+    },
+    "impact_analysis": {
+      "tasks": 4,
+      "control_tokens": 16902,
+      "mcp_tokens": 392,
+      "token_reduction_pct": 97.7,
+      "control_mean_ms": 494.7,
+      "mcp_mean_ms": 1.5
+    },
+    "introspect": {
+      "tasks": 1,
+      "control_tokens": 0,
+      "mcp_tokens": 50,
+      "token_reduction_pct": -4900.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 0.3
+    },
+    "knowledge": {
+      "tasks": 1,
+      "control_tokens": 0,
+      "mcp_tokens": 7,
+      "token_reduction_pct": -600.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 0.3
+    },
+    "memory": {
+      "tasks": 3,
+      "control_tokens": 0,
+      "mcp_tokens": 122,
+      "token_reduction_pct": -12100.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 7.3
+    },
+    "project_structure": {
+      "tasks": 3,
+      "control_tokens": 0,
+      "mcp_tokens": 2225,
+      "token_reduction_pct": -222400.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 202.1
+    },
+    "repo_mgmt": {
+      "tasks": 1,
+      "control_tokens": 0,
+      "mcp_tokens": 84,
+      "token_reduction_pct": -8300.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 1.1
+    },
+    "semantic_search": {
+      "tasks": 8,
+      "control_tokens": 102610,
+      "mcp_tokens": 1115,
+      "token_reduction_pct": 98.9,
+      "control_mean_ms": 548.6,
+      "mcp_mean_ms": 149.3
+    },
+    "server_ops": {
+      "tasks": 2,
+      "control_tokens": 0,
+      "mcp_tokens": 91,
+      "token_reduction_pct": -9000.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 0.6
+    },
+    "session": {
+      "tasks": 3,
+      "control_tokens": 0,
+      "mcp_tokens": 953,
+      "token_reduction_pct": -95200.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 19.0
+    },
+    "static_analysis": {
+      "tasks": 4,
+      "control_tokens": 0,
+      "mcp_tokens": 3343,
+      "token_reduction_pct": -334200.0,
+      "control_mean_ms": 0.0,
+      "mcp_mean_ms": 282.8
+    },
+    "symbol_discovery": {
+      "tasks": 8,
+      "control_tokens": 35559,
+      "mcp_tokens": 407,
+      "token_reduction_pct": 98.9,
+      "control_mean_ms": 596.0,
+      "mcp_mean_ms": 2.8
+    }
+  }
+}
