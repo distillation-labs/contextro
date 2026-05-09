@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 550" font-family="Inter, -apple-system, system-ui, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="550" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="550" y="40" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a2e">Controlled Experiment Design</text>
+  <text x="550" y="65" text-anchor="middle" font-size="13" fill="#6b7280">Paired comparison · Same codebase · 8,496 files · 60 tasks</text>
+
+  <!-- Shared Task Set (top center) -->
+  <rect x="380" y="95" width="340" height="80" rx="12" fill="#1e293b" filter="url(#shadow)"/>
+  <text x="550" y="130" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">60 Tasks</text>
+  <text x="550" y="152" text-anchor="middle" font-size="12" fill="#94a3b8">Same codebase · Same prompts · Same model</text>
+
+  <!-- Arrows down from task set -->
+  <line x1="430" y1="175" x2="220" y2="240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="670" y1="175" x2="880" y2="240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Control Arm -->
+  <rect x="70" y="245" width="300" height="110" rx="12" fill="#dc2626" filter="url(#shadow)"/>
+  <text x="220" y="285" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">Control Arm</text>
+  <text x="220" y="310" text-anchor="middle" font-size="13" fill="#fecaca">grep + file reads</text>
+  <text x="220" y="332" text-anchor="middle" font-size="13" fill="#fecaca">No MCP</text>
+
+  <!-- Treatment Arm -->
+  <rect x="730" y="245" width="300" height="110" rx="12" fill="#0f3460" filter="url(#shadow)"/>
+  <text x="880" y="285" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">Treatment Arm</text>
+  <text x="880" y="310" text-anchor="middle" font-size="13" fill="#93c5fd">Contextro MCP</text>
+  <text x="880" y="332" text-anchor="middle" font-size="13" fill="#93c5fd">35 tools</text>
+
+  <!-- Arrows down to results -->
+  <line x1="220" y1="355" x2="220" y2="400" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="880" y1="355" x2="880" y2="400" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Control Result -->
+  <rect x="70" y="405" width="300" height="100" rx="12" fill="#fff" stroke="#fca5a5" stroke-width="2" filter="url(#shadow)"/>
+  <text x="220" y="438" text-anchor="middle" font-size="14" font-weight="600" fill="#dc2626">Baseline Result</text>
+  <text x="220" y="463" text-anchor="middle" font-size="13" fill="#4b5563">335,100 tokens</text>
+  <text x="220" y="483" text-anchor="middle" font-size="13" fill="#4b5563">471ms median latency</text>
+
+  <!-- MCP Result -->
+  <rect x="730" y="405" width="300" height="100" rx="12" fill="#fff" stroke="#6ee7b7" stroke-width="2" filter="url(#shadow)"/>
+  <text x="880" y="438" text-anchor="middle" font-size="14" font-weight="600" fill="#059669">MCP Result</text>
+  <text x="880" y="463" text-anchor="middle" font-size="13" fill="#4b5563">14,327 tokens</text>
+  <text x="880" y="483" text-anchor="middle" font-size="13" fill="#4b5563">5.8ms median latency</text>
+
+  <!-- Center comparison box -->
+  <rect x="410" y="415" width="280" height="80" rx="12" fill="#0f3460" filter="url(#shadow)"/>
+  <text x="550" y="450" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">95.7% Reduction</text>
+  <text x="550" y="475" text-anchor="middle" font-size="14" fill="#93c5fd">81× Faster</text>
+
+  <!-- Connecting lines to center -->
+  <line x1="370" y1="455" x2="410" y2="455" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="690" y1="455" x2="730" y2="455" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+</svg>

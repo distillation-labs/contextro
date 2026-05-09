@@ -1,0 +1,38 @@
+{
+  "name": "@contextro/skills",
+  "version": "0.1.0",
+  "description": "Install Contextro agent skills into your project. Teaches AI coding agents how to use Contextro MCP for codebase discovery, search, and navigation.",
+  "license": "MIT",
+  "author": "Contextro <hello@contextro.dev>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/contextro/skills.git"
+  },
+  "keywords": [
+    "contextro",
+    "mcp",
+    "skills",
+    "ai-agent",
+    "claude",
+    "cursor",
+    "copilot",
+    "code-search"
+  ],
+  "type": "module",
+  "bin": {
+    "contextro-skills": "./bin/cli.mjs"
+  },
+  "files": [
+    "bin/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test tests/",
+    "lint": "echo 'no lint configured'"
+  }
+}

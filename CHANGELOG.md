@@ -8,6 +8,21 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+## [0.0.6] - 2026-05-09
+
+### Added
+- **Controlled experiment framework** — Two-arm benchmark (MCP vs no-MCP) with 60 tasks across 16 categories. Validated 98.3% token reduction on 8,496-file production codebase.
+- **npx-installable skills library** (`@contextro/skills`) — Install Contextro agent skills into any project with `npx @contextro/skills install`. Supports Claude Code, Cursor, Copilot, Kiro, and OpenCode.
+- **Experiment runner** — `npx @contextro/skills benchmark` runs the MCP vs no-MCP comparison on any codebase.
+- **New skills: `technical-blog-writer`** — Publication-quality blog writing with senior researcher tone, structured methodology, and honest limitations.
+- **New skills: `svg-diagram-engineer`** — Clean, professional SVG diagram generation with standard palette, typography hierarchy, and no-chartjunk principles.
+- **Blog assets pipeline** — SVG-first visual generation for technical blog posts. Architecture diagrams, data charts, and experiment designs as scalable vector graphics.
+- **Research documentation** — Full experiment methodology, statistical approach, and reproducibility guide in `docs/EXPERIMENT_FRAMEWORK.md`.
+
+### Changed
+- Skills now sync to all 4 platform directories (`.agent/`, `.github/`, `.kiro/`, `.opencode/`) via `scripts/sync-skills.sh`.
+- `dev-contextro-mcp` skill updated to v0.0.6 with latest tool routing and benchmark data.
+
 ## [0.0.5] - 2026-05-09
 
 ### Added

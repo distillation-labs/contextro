@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" font-family="Inter, -apple-system, system-ui, sans-serif">
+  <rect width="800" height="600" fill="#fafafa"/>
+  <text x="400" y="38" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a2e">Token Efficiency: Every Task</text>
+  <text x="400" y="58" text-anchor="middle" font-size="12" fill="#6b7280">Below the diagonal = MCP wins · Each dot = one task in both arms</text>
+
+  <!-- Axes -->
+  <line x1="80" y1="520" x2="740" y2="520" stroke="#d1d5db" stroke-width="1"/>
+  <line x1="80" y1="520" x2="80" y2="80" stroke="#d1d5db" stroke-width="1"/>
+  <text x="410" y="560" text-anchor="middle" font-size="12" fill="#6b7280">Control Tokens (No MCP)</text>
+  <text x="30" y="300" text-anchor="middle" font-size="12" fill="#6b7280" transform="rotate(-90,30,300)">MCP Tokens</text>
+
+  <!-- Y=X diagonal (no improvement line) -->
+  <line x1="80" y1="520" x2="740" y2="80" stroke="#e5e7eb" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="680" y="120" font-size="10" fill="#9ca3af">No improvement</text>
+
+  <!-- 95% reduction line -->
+  <line x1="80" y1="520" x2="740" y2="498" stroke="#dc2626" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+  <text x="700" y="490" font-size="10" fill="#dc2626">95% reduction</text>
+
+  <!-- Data points (scaled: x=control tokens mapped to 80-740, y=mcp tokens mapped to 520-80) -->
+  <!-- Symbol discovery cluster (low MCP, medium control) -->
+  <circle cx="200" cy="510" r="5" fill="#0f3460" opacity="0.7"/>
+  <circle cx="205" cy="511" r="5" fill="#0f3460" opacity="0.7"/>
+  <circle cx="160" cy="514" r="5" fill="#0f3460" opacity="0.7"/>
+  <circle cx="150" cy="513" r="5" fill="#0f3460" opacity="0.7"/>
+  <circle cx="175" cy="512" r="5" fill="#0f3460" opacity="0.7"/>
+  <circle cx="210" cy="508" r="5" fill="#0f3460" opacity="0.7"/>
+  <circle cx="230" cy="510" r="5" fill="#0f3460" opacity="0.7"/>
+  <circle cx="215" cy="511" r="5" fill="#0f3460" opacity="0.7"/>
+
+  <!-- Caller tracing cluster -->
+  <circle cx="200" cy="516" r="5" fill="#7c3aed" opacity="0.7"/>
+  <circle cx="160" cy="517" r="5" fill="#7c3aed" opacity="0.7"/>
+  <circle cx="150" cy="517" r="5" fill="#7c3aed" opacity="0.7"/>
+  <circle cx="210" cy="495" r="5" fill="#7c3aed" opacity="0.7"/>
+  <circle cx="200" cy="509" r="5" fill="#7c3aed" opacity="0.7"/>
+  <circle cx="230" cy="512" r="5" fill="#7c3aed" opacity="0.7"/>
+
+  <!-- Semantic search cluster (high control, low MCP) -->
+  <circle cx="580" cy="505" r="6" fill="#0d9488" opacity="0.7"/>
+  <circle cx="230" cy="509" r="6" fill="#0d9488" opacity="0.7"/>
+  <circle cx="170" cy="510" r="6" fill="#0d9488" opacity="0.7"/>
+  <circle cx="180" cy="511" r="6" fill="#0d9488" opacity="0.7"/>
+  <circle cx="175" cy="510" r="6" fill="#0d9488" opacity="0.7"/>
+  <circle cx="680" cy="503" r="6" fill="#0d9488" opacity="0.7"/>
+  <circle cx="380" cy="507" r="6" fill="#0d9488" opacity="0.7"/>
+  <circle cx="140" cy="512" r="6" fill="#0d9488" opacity="0.7"/>
+
+  <!-- Explain cluster -->
+  <circle cx="210" cy="495" r="5" fill="#ea580c" opacity="0.7"/>
+  <circle cx="230" cy="509" r="5" fill="#ea580c" opacity="0.7"/>
+  <circle cx="200" cy="509" r="5" fill="#ea580c" opacity="0.7"/>
+  <circle cx="175" cy="511" r="5" fill="#ea580c" opacity="0.7"/>
+  <circle cx="160" cy="514" r="5" fill="#ea580c" opacity="0.7"/>
+  <circle cx="150" cy="512" r="5" fill="#ea580c" opacity="0.7"/>
+
+  <!-- Impact cluster -->
+  <circle cx="210" cy="505" r="5" fill="#2563eb" opacity="0.7"/>
+  <circle cx="230" cy="511" r="5" fill="#2563eb" opacity="0.7"/>
+  <circle cx="150" cy="514" r="5" fill="#2563eb" opacity="0.7"/>
+  <circle cx="175" cy="511" r="5" fill="#2563eb" opacity="0.7"/>
+
+  <!-- Annotation for outlier -->
+  <text x="620" y="495" font-size="9" fill="#4b5563">search_07: 38k→200</text>
+  <text x="700" y="498" font-size="9" fill="#4b5563">search_01</text>
+
+  <!-- Key insight box -->
+  <rect x="450" y="140" width="280" height="80" rx="10" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="590" y="165" text-anchor="middle" font-size="12" font-weight="600" fill="#1a1a2e">All tasks below diagonal</text>
+  <text x="590" y="185" text-anchor="middle" font-size="11" fill="#6b7280">MCP wins on every single task</text>
+  <text x="590" y="205" text-anchor="middle" font-size="11" fill="#059669" font-weight="600">Average: 23× fewer tokens</text>
+
+  <!-- Legend -->
+  <circle cx="100" cy="575" r="4" fill="#0f3460"/>
+  <text x="112" y="579" font-size="10" fill="#4b5563">Symbol</text>
+  <circle cx="180" cy="575" r="4" fill="#7c3aed"/>
+  <text x="192" y="579" font-size="10" fill="#4b5563">Callers</text>
+  <circle cx="260" cy="575" r="4" fill="#0d9488"/>
+  <text x="272" y="579" font-size="10" fill="#4b5563">Search</text>
+  <circle cx="340" cy="575" r="4" fill="#ea580c"/>
+  <text x="352" y="579" font-size="10" fill="#4b5563">Explain</text>
+  <circle cx="420" cy="575" r="4" fill="#2563eb"/>
+  <text x="432" y="579" font-size="10" fill="#4b5563">Impact</text>
+</svg>

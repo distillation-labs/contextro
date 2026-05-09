@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="Inter, -apple-system, system-ui, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="700" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="600" y="45" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1a2e">Contextro Architecture</text>
+  <text x="600" y="70" text-anchor="middle" font-size="13" fill="#6b7280">Single local process · No cloud · No API keys · &lt;350MB RAM</text>
+
+  <!-- AI Agent Box -->
+  <rect x="60" y="270" width="200" height="120" rx="12" fill="#1e293b" filter="url(#shadow)"/>
+  <text x="160" y="320" text-anchor="middle" font-size="15" font-weight="600" fill="#fff">AI Agent</text>
+  <text x="160" y="345" text-anchor="middle" font-size="11" fill="#94a3b8">Claude · Cursor</text>
+  <text x="160" y="363" text-anchor="middle" font-size="11" fill="#94a3b8">Copilot · Kiro</text>
+
+  <!-- Arrow: Agent → MCP Protocol -->
+  <line x1="260" y1="330" x2="340" y2="330" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/></marker></defs>
+
+  <!-- MCP Protocol Box -->
+  <rect x="350" y="270" width="200" height="120" rx="12" fill="#7c3aed" filter="url(#shadow)"/>
+  <text x="450" y="320" text-anchor="middle" font-size="15" font-weight="600" fill="#fff">MCP Protocol</text>
+  <text x="450" y="345" text-anchor="middle" font-size="11" fill="#e0d4fc">stdio · HTTP</text>
+  <text x="450" y="363" text-anchor="middle" font-size="11" fill="#e0d4fc">Streamable Transport</text>
+
+  <!-- Arrow: MCP → Contextro -->
+  <line x1="550" y1="330" x2="630" y2="330" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Contextro Server Box -->
+  <rect x="640" y="240" width="220" height="180" rx="12" fill="#0f3460" filter="url(#shadow)"/>
+  <text x="750" y="290" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">Contextro</text>
+  <text x="750" y="312" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">Server</text>
+  <text x="750" y="345" text-anchor="middle" font-size="12" fill="#93c5fd">35 tools</text>
+  <text x="750" y="365" text-anchor="middle" font-size="12" fill="#93c5fd">&lt;350MB RAM</text>
+  <text x="750" y="385" text-anchor="middle" font-size="12" fill="#93c5fd">Local-first</text>
+
+  <!-- Engine boxes -->
+  <!-- Vector Engine -->
+  <rect x="60" y="520" width="190" height="100" rx="10" fill="#0d9488" filter="url(#shadow)"/>
+  <text x="155" y="558" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">Vector Engine</text>
+  <text x="155" y="580" text-anchor="middle" font-size="11" fill="#ccfbf1">LanceDB</text>
+  <text x="155" y="598" text-anchor="middle" font-size="11" fill="#ccfbf1">potion-code-16m</text>
+
+  <!-- BM25 Engine -->
+  <rect x="270" y="520" width="190" height="100" rx="10" fill="#0d9488" filter="url(#shadow)"/>
+  <text x="365" y="558" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">BM25 Engine</text>
+  <text x="365" y="580" text-anchor="middle" font-size="11" fill="#ccfbf1">Keyword Search</text>
+  <text x="365" y="598" text-anchor="middle" font-size="11" fill="#ccfbf1">Exact Match</text>
+
+  <!-- Graph Engine -->
+  <rect x="480" y="520" width="190" height="100" rx="10" fill="#0d9488" filter="url(#shadow)"/>
+  <text x="575" y="558" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">Graph Engine</text>
+  <text x="575" y="580" text-anchor="middle" font-size="11" fill="#ccfbf1">rustworkx</text>
+  <text x="575" y="598" text-anchor="middle" font-size="11" fill="#ccfbf1">O(1) lookups</text>
+
+  <!-- Git Engine -->
+  <rect x="690" y="520" width="190" height="100" rx="10" fill="#0d9488" filter="url(#shadow)"/>
+  <text x="785" y="558" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">Git Engine</text>
+  <text x="785" y="580" text-anchor="middle" font-size="11" fill="#ccfbf1">Semantic Search</text>
+  <text x="785" y="598" text-anchor="middle" font-size="11" fill="#ccfbf1">Commit History</text>
+
+  <!-- Memory Engine -->
+  <rect x="900" y="520" width="190" height="100" rx="10" fill="#0d9488" filter="url(#shadow)"/>
+  <text x="995" y="558" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">Memory Engine</text>
+  <text x="995" y="580" text-anchor="middle" font-size="11" fill="#ccfbf1">Cross-session</text>
+  <text x="995" y="598" text-anchor="middle" font-size="11" fill="#ccfbf1">TTL Store</text>
+
+  <!-- Arrows from Contextro to engines -->
+  <line x1="700" y1="420" x2="155" y2="520" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="720" y1="420" x2="365" y2="520" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="750" y1="420" x2="575" y2="520" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="780" y1="420" x2="785" y2="520" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="800" y1="420" x2="995" y2="520" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Rust extension badge -->
+  <rect x="920" y="270" width="180" height="55" rx="8" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="1010" y="293" text-anchor="middle" font-size="11" font-weight="600" fill="#1a1a2e">ctx_fast (Rust)</text>
+  <text x="1010" y="311" text-anchor="middle" font-size="10" fill="#6b7280">File discovery · Hashing</text>
+
+  <!-- tree-sitter badge -->
+  <rect x="920" y="340" width="180" height="55" rx="8" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="1010" y="363" text-anchor="middle" font-size="11" font-weight="600" fill="#1a1a2e">tree-sitter + ast-grep</text>
+  <text x="1010" y="381" text-anchor="middle" font-size="10" fill="#6b7280">AST Parsing · Symbols</text>
+
+  <!-- Performance stats -->
+  <rect x="60" y="130" width="1080" height="50" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="160" y="160" text-anchor="middle" font-size="11" fill="#166534" font-weight="600">Index: 8,496 files in 4.2s</text>
+  <text x="380" y="160" text-anchor="middle" font-size="11" fill="#166534" font-weight="600">Search: &lt;2ms latency</text>
+  <text x="580" y="160" text-anchor="middle" font-size="11" fill="#166534" font-weight="600">find_symbol: 1ms</text>
+  <text x="780" y="160" text-anchor="middle" font-size="11" fill="#166534" font-weight="600">Token savings: 98%</text>
+  <text x="1000" y="160" text-anchor="middle" font-size="11" fill="#166534" font-weight="600">MRR: 1.000</text>
+</svg>
