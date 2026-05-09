@@ -320,12 +320,13 @@ wheels = [
 
 [[package]]
 name = "contextro"
-version = "2.0.0"
+version = "0.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "ast-grep-py" },
     { name = "fastmcp" },
     { name = "lancedb" },
+    { name = "model2vec" },
     { name = "onnxruntime" },
     { name = "optimum" },
     { name = "pathspec" },
@@ -363,6 +364,7 @@ requires-dist = [
     { name = "flashrank", marker = "extra == 'reranker'", specifier = ">=0.2.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "lancedb", specifier = ">=0.4.0" },
+    { name = "model2vec", specifier = ">=0.3.0" },
     { name = "model2vec", marker = "extra == 'model2vec'", specifier = ">=0.3.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "onnxruntime", specifier = ">=1.17.0" },
