@@ -42,6 +42,58 @@ _compaction_archive_lock = threading.Lock()
 _index_job: dict = {}  # {"status": "indexing"|"done"|"error", "result": ..., "error": ...}
 _index_job_lock = threading.Lock()
 
+# Update check cache: (latest_version_str, checked_at_timestamp)
+_update_cache: tuple[str, float] | None = None
+_update_cache_lock = threading.Lock()
+_UPDATE_CACHE_TTL = 3600.0  # re-check PyPI at most once per hour
+
+
+def _check_for_update() -> str | None:
+    """Return the latest PyPI version if newer than current, else None.
+
+    Result is cached for 1 hour and fetched in a background thread so it
+    never blocks the status() response.
+    """
+    import time
+
+    from contextro_mcp import __version__
+
+    global _update_cache
+
+    with _update_cache_lock:
+        now = time.monotonic()
+        if _update_cache is not None:
+            latest, checked_at = _update_cache
+            if now - checked_at < _UPDATE_CACHE_TTL:
+                # Return cached result
+                try:
+                    from packaging.version import Version
+                    return latest if Version(latest) > Version(__version__) else None
+                except Exception:
+                    return None
+
+    # Fetch from PyPI in a background thread; return None immediately if not ready
+    def _fetch() -> None:
+        global _update_cache
+        try:
+            import json as _json
+            import time as _time
+            import urllib.request
+
+            with urllib.request.urlopen(
+                "https://pypi.org/pypi/contextro/json", timeout=3
+            ) as resp:
+                data = _json.loads(resp.read())
+            latest = data["info"]["version"]
+            with _update_cache_lock:
+                _update_cache = (latest, _time.monotonic())
+        except Exception:
+            pass  # Network unavailable — silently skip
+
+    t = threading.Thread(target=_fetch, daemon=True, name="contextro-update-check")
+    t.start()
+    return None  # First call returns None; subsequent calls use the cache
+
 
 def create_server():
     """Create and configure the FastMCP server."""
@@ -657,6 +709,12 @@ def create_server():
 
         elif job_status != "indexing":
             result.setdefault("hint", "Run 'index' first.")
+
+        # Non-blocking update check — only shown when a newer version is available
+        update = _check_for_update()
+        if update:
+            result["update_available"] = update
+            result["update_hint"] = f"pip install --upgrade contextro  # {update} available"
 
         return _tool_result(result)
 

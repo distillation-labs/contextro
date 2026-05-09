@@ -275,6 +275,17 @@ status()    ← indexed?, chunks, symbols, branch, commits, cache hit rate, memo
 health()    ← readiness check (use in automated pipelines)
 ```
 
+When a newer version of Contextro is available, `status()` will include:
+
+```json
+{
+  "update_available": "0.0.6",
+  "update_hint": "pip install --upgrade contextro  # 0.0.6 available"
+}
+```
+
+Your agent will surface this automatically — no configuration needed.
+
 ---
 
 ### Look up Contextro's own docs

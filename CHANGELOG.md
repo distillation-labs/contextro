@@ -8,6 +8,21 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+## [0.0.5] - 2026-05-09
+
+### Added
+- **Automatic update notifications** — `status()` now checks PyPI in the background (at most once per hour, non-blocking) and surfaces `update_available` and `update_hint` when a newer version of Contextro is available. Agents will automatically inform users with the exact upgrade command. No configuration required.
+
+  Example response when an update is available:
+  ```json
+  {
+    "codebase_path": "myapp",
+    "vector_chunks": 4821,
+    "update_available": "0.0.6",
+    "update_hint": "pip install --upgrade contextro  # 0.0.6 available"
+  }
+  ```
+
 ## [0.0.4] - 2026-05-09
 
 ### Added
