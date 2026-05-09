@@ -27,8 +27,17 @@ local `skills-guide.pdf`.
 - Uses `search` for concepts and `bm25` for exact identifiers.
 - Uses `impact` before rename, delete, or signature-change guidance.
 - Uses `session_snapshot` first after compaction.
-- Uses `retrieve` when `sandbox_ref` is present.
+- Uses `retrieve` when `sandbox_ref` is present (regardless of whether `sandboxed` field appears).
 - Uses AST operations with `dry_run=True` before applying structural rewrites.
+
+### Response Format Interpretation
+
+- Reads compact keys: `n`=name, `f`=file, `l`=line, `c`=code, `t`=type, `lc`=line_count, `doc`=docstring.
+- Treats absent `confidence` as high (the default).
+- Treats absent `sandboxed` field as sandboxed when `sandbox_ref` is present.
+- Treats absent `indexed` field as true when `codebase_path` is present in status.
+- Reads flat single-result `find_symbol` response (no `symbols` wrapper).
+- Reads `{callers: [...]}` and `{callees: [...]}` directly from find_callers/find_callees.
 
 ### Anti-Patterns
 

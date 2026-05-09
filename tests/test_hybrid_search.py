@@ -120,8 +120,12 @@ class TestHybridSearch:
                 },
             )
             assert "error" not in result
+            # When all results share one language, it's hoisted to response level
+            # (python is omitted since it's the default/dominant language)
+            response_lang = result.get("lang", "python")
             for r in result["results"]:
-                assert r.get("language") == "python"
+                r_lang = r.get("language") or response_lang
+                assert r_lang == "python"
 
         asyncio.run(_test())
 

@@ -70,7 +70,7 @@ class TestExplainResponse:
         search = [_make_search_result()]
         analysis = {"quality": {"overall_score": 85}}
         response = builder.build_explain_response(symbol, search, analysis)
-        assert response["symbol"] == symbol
+        assert response["name"] == symbol["name"]  # flattened, no symbol wrapper
         assert response["related_count"] == 1
         assert response["quality_score"] == 85
         assert "related_code" not in response
@@ -81,8 +81,8 @@ class TestExplainResponse:
         search = [_make_search_result()]
         analysis = {"quality": {"overall_score": 85}}
         response = builder.build_explain_response(symbol, search, analysis)
-        assert "related_code" in response
         assert "analysis" in response
+        # related_code omitted in detailed verbosity (callers/callees show relationships)
 
     def test_full_explain(self):
         builder = ResponseBuilder("full")

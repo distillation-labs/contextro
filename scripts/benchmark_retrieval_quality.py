@@ -62,13 +62,21 @@ def collect_docstring_queries(codebase_path: Path, limit: int) -> list[dict[str,
     return queries
 
 
+def _name_matches(result_name: str, expected_symbol: str) -> bool:
+    """Match exact name or qualified name (ClassName.method_name)."""
+    return result_name == expected_symbol or result_name.endswith("." + expected_symbol)
+
+
 def recall_at_k(results: list[dict], expected: dict[str, str], k: int) -> bool:
     """Return True when the expected file or symbol is present in the top-k results."""
     top_results = results[:k]
     for result in top_results:
-        if result.get("name") == expected["expected_symbol"]:
+        # Support both full keys (name/file) and compact keys (n/f)
+        name = result.get("name", result.get("n", ""))
+        file_ = result.get("file", result.get("f", ""))
+        if _name_matches(name, expected["expected_symbol"]):
             return True
-        if result.get("file") == expected["expected_file"]:
+        if file_ == expected["expected_file"]:
             return True
     return False
 
@@ -76,9 +84,11 @@ def recall_at_k(results: list[dict], expected: dict[str, str], k: int) -> bool:
 def reciprocal_rank(results: list[dict], expected: dict[str, str]) -> float:
     """Return the reciprocal rank of the first matching result."""
     for index, result in enumerate(results, start=1):
-        if result.get("name") == expected["expected_symbol"]:
+        name = result.get("name", result.get("n", ""))
+        file_ = result.get("file", result.get("f", ""))
+        if _name_matches(name, expected["expected_symbol"]):
             return 1.0 / index
-        if result.get("file") == expected["expected_file"]:
+        if file_ == expected["expected_file"]:
             return 1.0 / index
     return 0.0
 

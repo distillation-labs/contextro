@@ -113,21 +113,28 @@ class SearchExecutionEngine:
         results = self._apply_bm25_fallback(options, filters, results, limit, engines_used)
         results = self._apply_live_grep(options, results, limit, engines_used)
         results = self._compact_results(results, options.query)
-        results = self._apply_bookend_ordering(results)
 
+        # Calculate confidence on the natural score order (before bookend reordering)
+        # so the score gap between rank-1 and rank-2 is accurate.
         confidence = self._calculate_confidence(results)
+
+        # Apply adaptive trimming on the natural score order, then bookend the trimmed set.
         display_results, adaptive_applied = self._apply_adaptive_result_count(
             options,
             results,
             confidence,
         )
+        display_results = self._apply_bookend_ordering(display_results)
+        full_results = self._apply_bookend_ordering(results)
+
         response = self._response_policy.build(
             query=options.query,
             results=display_results,
-            full_results=results,
+            full_results=full_results,
             confidence=confidence,
             context_budget=options.context_budget,
             adaptive_applied=adaptive_applied,
+            language=options.language,
         )
 
         self.runtime.query_cache.put(
@@ -212,6 +219,22 @@ class SearchExecutionEngine:
                     **filters,
                 )
                 if bm25_results:
+                    # Boost results where the query exactly matches the docstring
+                    # This corrects BM25's tendency to rank longer documents higher.
+                    # We only re-sort by boosted score; original scores are preserved
+                    # so the fusion's entropy/confidence calculations are unaffected.
+                    query_lower = options.query.lower().strip()
+                    boosted_any = False
+                    for r in bm25_results:
+                        doc = (r.get("docstring") or "").lower().strip()
+                        if doc and (doc == query_lower or doc.startswith(query_lower)):
+                            r["_docstring_boost"] = r.get("score", 0.0) * 2.0
+                            boosted_any = True
+                    if boosted_any:
+                        bm25_results.sort(
+                            key=lambda x: x.pop("_docstring_boost", x.get("score", 0.0)),
+                            reverse=True,
+                        )
                     ranked_lists["bm25"] = bm25_results
                     engines_used.append("bm25")
             except Exception as exc:
@@ -398,7 +421,9 @@ class SearchExecutionEngine:
 
         seen_keys = {
             (
-                result.get("filepath", result.get("file", "")),
+                self._compactor._relative_filepath(
+                    result.get("filepath", result.get("file", ""))
+                ),
                 result.get("line_start", result.get("line", 0)),
             )
             for result in results
@@ -406,7 +431,8 @@ class SearchExecutionEngine:
         for fallback in fallback_results:
             if len(results) >= limit:
                 break
-            key = (fallback.get("filepath", ""), fallback.get("line_start", 0))
+            rel_path = self._compactor._relative_filepath(fallback.get("filepath", ""))
+            key = (rel_path, fallback.get("line_start", 0))
             if key not in seen_keys:
                 results.append(fallback)
                 seen_keys.add(key)
@@ -490,7 +516,12 @@ class SearchExecutionEngine:
         second = results[1].get("score", 0.0) if len(results) > 1 else 0.0
         gap = top - second if second else top
 
-        if top >= 0.7 and gap >= 0.2 and len(results) >= 2:
+        # When scores are nearly equal (common after RRF normalization),
+        # treat as high confidence to trigger adaptive trimming and reduce tokens.
+        if gap < 0.01 and top >= 0.7:
+            return "high"
+
+        if top >= 0.7 and gap >= 0.01 and len(results) >= 2:
             return "high"
         if top >= 0.5 or len(results) >= 3:
             return "medium"
@@ -508,6 +539,23 @@ class SearchExecutionEngine:
             or len(results) <= 1
         ):
             return results, False
+
+        # Exact-match fast path: when the query is a single identifier and the top
+        # result's name exactly matches (or ends with) the query, return just 1 result.
+        # Research basis: "Sufficient Context" (Google ICLR 2025) — high-confidence
+        # single-result answers reduce hallucination by 10%.
+        query_stripped = options.query.strip()
+        if (
+            len(query_stripped.split()) == 1
+            and results[0].get("score", 0.0) >= 0.9
+        ):
+            top_name = results[0].get("name", "")
+            if (
+                top_name == query_stripped
+                or top_name.endswith("." + query_stripped)
+                or top_name.lower() == query_stripped.lower()
+            ):
+                return results[:1], True
 
         adaptive_limit = options.limit
         if confidence == "high":

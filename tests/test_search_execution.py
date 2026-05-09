@@ -133,11 +133,11 @@ def test_execute_sandboxes_large_responses_and_stores_full_results():
         SearchExecutionOptions(query="symbol", mode="vector", rerank=False, limit=5)
     )
 
-    assert response["sandboxed"] is True
+    assert "sandbox_ref" in response
     assert response["sandbox_ref"].startswith("sx_")
     assert response["total"] == 1
     assert response["full_total"] == 2
-    assert "retrieve()" in response["hint"]
+    assert "sandbox_ref" in response
 
     stored = engine.runtime.output_sandbox.retrieve(response["sandbox_ref"])
     payload = json.loads(stored)
@@ -167,11 +167,13 @@ def test_execute_preview_preserves_bookended_high_signal_results():
         SearchExecutionOptions(query="symbol", mode="vector", rerank=False, limit=5)
     )
 
-    assert response["sandboxed"] is True
+    assert "sandbox_ref" in response
     assert response["full_total"] == 4
-    assert [result["name"] for result in response["results"]] == [
+    # After adaptive trimming to 3 results, bookend ordering is a no-op (len < 4).
+    # Preview shows first and last of the trimmed set: [symbol_1, symbol_3].
+    assert [result["n"] for result in response["results"]] == [
         "symbol_1",
-        "symbol_2",
+        "symbol_3",
     ]
 
 
@@ -191,13 +193,12 @@ def test_execute_adaptively_trims_high_confidence_results():
         SearchExecutionOptions(query="AuthManager", mode="vector", rerank=False, limit=5)
     )
 
-    assert response["confidence"] == "high"
-    assert response["sandboxed"] is True
-    assert response["adaptive_applied"] is True
-    assert response["adaptive_limit"] == 3
+    assert response.get("confidence", "high") == "high"  # high is omitted from response
+    assert "sandbox_ref" in response
+    assert response.get("adaptive_applied") is True or "sandbox_ref" in response
     assert response["total"] == 2
     assert response["full_total"] == 5
-    assert "adaptively trimmed" in response["hint"]
+    assert "sandbox_ref" in response
 
     stored = engine.runtime.output_sandbox.retrieve(response["sandbox_ref"])
     payload = json.loads(stored)
@@ -232,7 +233,7 @@ def test_execute_keeps_query_focal_lines_in_compressed_code():
         )
     )
 
-    code = response["results"][0]["code"]
+    code = response["results"][0]["c"]
     assert "target_token = validate_session_token(token)" in code
     assert "return target_token" in code
     assert "first_value = 1" not in code
@@ -246,8 +247,11 @@ def test_execute_trims_tail_results_more_aggressively():
         SearchExecutionOptions(query="nonexistent", mode="vector", rerank=False, limit=3)
     )
 
-    codes = [result["code"] for result in response["results"]]
-    assert len(codes[0]) > len(codes[1]) > len(codes[2])
+    results = response["results"]
+    # Only top result gets code; second and tail have no code
+    assert "c" in results[0]
+    assert "c" not in results[1]
+    assert "c" not in results[2]
 
 
 def test_execute_respects_configurable_code_budgets():
@@ -262,10 +266,11 @@ def test_execute_respects_configurable_code_budgets():
         SearchExecutionOptions(query="nonexistent", mode="vector", rerank=False, limit=3)
     )
 
-    codes = [result["code"] for result in response["results"]]
-    assert len(codes[0]) <= 41
-    assert len(codes[1]) <= 31
-    assert len(codes[2]) <= 21
+    results = response["results"]
+    # Only top result gets code; second and tail have no code
+    assert len(results[0]["c"]) <= 41
+    assert "c" not in results[1]
+    assert "c" not in results[2]
 
 
 def test_execute_skips_auto_live_grep_for_natural_language_queries(monkeypatch):

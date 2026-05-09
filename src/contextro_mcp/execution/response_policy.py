@@ -95,10 +95,9 @@ class ToolResponsePolicy:
 
         # Build compact preview
         preview = self._build_preview(response, preview_keys, max_list_items)
-        preview["sandboxed"] = True
+        # sandboxed:True omitted — presence of sandbox_ref implies it
         preview["sandbox_ref"] = ref_id
         preview["full_tokens"] = tokens
-        preview["hint"] = "Call retrieve() with sandbox_ref for full details."
         return preview
 
     def _build_preview(
@@ -245,15 +244,21 @@ class SearchResponsePolicy:
         confidence: str,
         context_budget: int,
         adaptive_applied: bool = False,
+        language: str = "",
     ) -> dict[str, Any]:
         all_results = [dict(result) for result in (full_results or results)]
         response = {
-            "query": query,
             "total": len(results),
-            "confidence": confidence,
             "results": results,
         }
-        response["tokens"] = _estimate_tokens(response)
+        # confidence omitted when "high" — that's the expected/default case
+        if confidence != "high":
+            response["confidence"] = confidence
+        # Surface language at response level when uniform (compactor strips it per-result)
+        # Only include when it adds information (i.e., not already in the search filter)
+        if language and language not in ("python", ""):
+            response["lang"] = language
+        # NOTE: no "tokens" field — self-referential and wastes tokens
 
         response, budget_applied = self._apply_context_budget(response, context_budget)
         return self._maybe_sandbox_response(
@@ -262,6 +267,7 @@ class SearchResponsePolicy:
             full_results=all_results,
             budget_applied=budget_applied,
             adaptive_applied=adaptive_applied,
+            confidence=confidence,
         )
 
     @staticmethod
@@ -287,7 +293,6 @@ class SearchResponsePolicy:
         updated = dict(response)
         updated["results"] = kept
         updated["total"] = len(kept)
-        updated["tokens"] = _estimate_tokens(updated)
         updated["budget_applied"] = True
         return updated, True
 
@@ -299,12 +304,13 @@ class SearchResponsePolicy:
         full_results: list[dict[str, Any]],
         budget_applied: bool,
         adaptive_applied: bool,
+        confidence: str = "high",
     ) -> dict[str, Any]:
         if not full_results:
             return response
 
         should_sandbox = adaptive_applied or budget_applied or (
-            response.get("tokens", 0) > self._settings.sandbox_threshold_tokens
+            _estimate_tokens(response) > self._settings.sandbox_threshold_tokens
         )
         if not should_sandbox:
             return response
@@ -312,7 +318,7 @@ class SearchResponsePolicy:
         payload = _serialize_payload(
             {
                 "query": query,
-                "confidence": response.get("confidence", "low"),
+                "confidence": confidence,
                 "results": full_results,
             },
             pretty=True,
@@ -332,35 +338,13 @@ class SearchResponsePolicy:
         preview["total"] = len(preview_results)
         preview["full_total"] = len(full_results)
         preview["sandbox_ref"] = sandbox_ref
-        preview["sandboxed"] = True
-        if adaptive_applied:
-            preview["adaptive_limit"] = len(response["results"])
-            preview["adaptive_applied"] = True
-        preview["hint"] = self._sandbox_hint(
-            adaptive_applied=adaptive_applied,
-            budget_applied=budget_applied,
-        )
-        preview["tokens"] = _estimate_tokens(preview)
-        return preview
-
-    @staticmethod
-    def _sandbox_hint(*, adaptive_applied: bool, budget_applied: bool) -> str:
-        if adaptive_applied and budget_applied:
-            return (
-                "Inline results were adaptively trimmed and budget-trimmed. "
-                "Call retrieve() with sandbox_ref for the full set."
-            )
-        if adaptive_applied:
-            return (
-                "Inline results were adaptively trimmed for a focused answer. "
-                "Call retrieve() with sandbox_ref for the full set."
-            )
+        # sandboxed:True omitted — presence of sandbox_ref implies it
+        # adaptive_applied omitted — debugging info, not needed by agents
         if budget_applied:
-            return (
-                "Inline results were budget-trimmed. "
-                "Call retrieve() with sandbox_ref for the full set."
-            )
-        return "Call retrieve() with sandbox_ref to inspect the full result set."
+            preview["budget_applied"] = True
+        # Remove self-referential token count
+        preview.pop("tokens", None)
+        return preview
 
     def _preview_results(
         self,

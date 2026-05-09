@@ -1,0 +1,73 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - generic [ref=e7]:
+      - 'img "Account color: Unset" [ref=e8]'
+      - navigation "Global" [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]:
+            - link "AWS Console Home" [ref=e12] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1
+              - img
+            - link "Skip to Main Content" [ref=e13] [cursor=pointer]:
+              - /url: "#c"
+            - button "Services" [ref=e16] [cursor=pointer]:
+              - img [ref=e17]
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - img "Search" [ref=e32]:
+                - generic [ref=e33]:
+                  - img
+              - generic [ref=e34]:
+                - searchbox
+                - combobox "Search" [ref=e35]
+              - generic: "[Option+S]"
+            - status [ref=e36]
+          - generic [ref=e37]:
+            - link "CloudShell" [ref=e39] [cursor=pointer]:
+              - /url: https://us-east-1.console.aws.amazon.com/cloudshell/home?region=us-east-1
+              - img
+            - generic "Notifications" [ref=e40] [cursor=pointer]:
+              - generic [ref=e42]: .
+              - generic [ref=e44]:
+                - img
+            - list [ref=e47]:
+              - listitem [ref=e48]:
+                - button "Help & support" [ref=e50] [cursor=pointer]:
+                  - img "Support" [ref=e52]
+              - listitem [ref=e55]:
+                - button "Settings" [ref=e57] [cursor=pointer]:
+                  - generic [ref=e60]:
+                    - img
+              - listitem [ref=e61]:
+                - combobox "Regions (Global)" [ref=e63] [cursor=pointer]:
+                  - generic [ref=e65]: Global
+                  - generic [ref=e66]:
+                    - img
+              - listitem [ref=e67]:
+                - button "japneetkalkat" [ref=e69] [cursor=pointer]:
+                  - generic [ref=e73]:
+                    - 'generic "Account color: Unset" [ref=e75]':
+                      - generic [ref=e76]: japneetkalkat (212541130437)
+                      - generic [ref=e77]:
+                        - img
+                    - generic [ref=e79]: japneetkalkat
+      - generic:
+        - generic:
+          - list
+  - contentinfo [ref=e80]:
+    - generic [ref=e84]:
+      - generic [ref=e85]:
+        - button "Feedback" [ref=e86] [cursor=pointer]
+        - button "Console Mobile App" [ref=e88] [cursor=pointer]:
+          - img [ref=e90]
+          - generic [ref=e93]: Console Mobile App
+      - generic [ref=e95]: © 2026, Amazon Web Services, Inc. or its affiliates.
+      - list [ref=e97]:
+        - listitem [ref=e98]:
+          - link "Privacy" [ref=e99] [cursor=pointer]:
+            - /url: https://aws.amazon.com/privacy/
+        - listitem [ref=e100]:
+          - link "Terms" [ref=e101] [cursor=pointer]:
+            - /url: https://aws.amazon.com/terms/
+        - listitem [ref=e102]:
+          - button "Cookie preferences" [ref=e103] [cursor=pointer]

@@ -83,6 +83,17 @@ class CodeAnalyzer:
             }
 
         complexities = [f.complexity for f in functions if f.complexity > 0]
+        # Fallback: estimate complexity from line_count when AST complexity is unavailable
+        # (common for TypeScript/JavaScript where tree-sitter doesn't compute cyclomatic
+        # complexity). Heuristic: 1 + floor(lines / 10), capped at 30.
+        complexity_estimated = False
+        if not complexities:
+            complexities = [
+                min(30, 1 + (f.line_count // 10))
+                for f in functions
+                if f.line_count and f.line_count > 0
+            ]
+            complexity_estimated = bool(complexities)
         if not complexities:
             return {
                 "total_functions": len(functions),
@@ -90,6 +101,7 @@ class CodeAnalyzer:
                 "max_complexity": 0,
                 "high_complexity_functions": [],
                 "complexity_distribution": {},
+                "note": "No complexity data available for this language.",
             }
 
         distribution: Dict[str, int] = defaultdict(int)
@@ -103,24 +115,46 @@ class CodeAnalyzer:
             else:
                 distribution["very_complex"] += 1
 
-        high = [
-            {
-                "name": f.name,
-                "complexity": f.complexity,
-                "location": f"{f.location.file_path}:{f.location.start_line}",
-            }
-            for f in functions
-            if f.complexity >= threshold
-        ]
+        if complexity_estimated:
+            # Use estimated complexity (line-count proxy) for high-complexity list
+            func_complexities = [
+                (f, min(30, 1 + (f.line_count // 10)) if f.line_count else 0)
+                for f in functions
+            ]
+            high = [
+                {
+                    "name": f.name,
+                    "complexity": c,
+                    "location": f"{f.location.file_path}:{f.location.start_line}",
+                }
+                for f, c in func_complexities
+                if c >= threshold
+            ]
+        else:
+            high = [
+                {
+                    "name": f.name,
+                    "complexity": f.complexity,
+                    "location": f"{f.location.file_path}:{f.location.start_line}",
+                }
+                for f in functions
+                if f.complexity >= threshold
+            ]
         high.sort(key=lambda x: x["complexity"], reverse=True)
 
-        return {
+        result = {
             "total_functions": len(functions),
-            "average_complexity": sum(complexities) / len(complexities),
+            "average_complexity": round(sum(complexities) / len(complexities), 2),
             "max_complexity": max(complexities),
             "high_complexity_functions": high,
             "complexity_distribution": dict(distribution),
         }
+        if complexity_estimated:
+            result["note"] = (
+                "Complexity estimated from line count "
+                "(AST cyclomatic complexity unavailable for this language)."
+            )
+        return result
 
     def analyze_dependencies(self) -> Dict[str, Any]:
         """Analyze module dependencies and coupling."""
@@ -160,6 +194,13 @@ class CodeAnalyzer:
             }
 
         complexities = [f.complexity for f in functions if f.complexity > 0]
+        if not complexities:
+            # Fallback: estimate from line_count
+            complexities = [
+                min(30, 1 + (f.line_count // 10))
+                for f in functions
+                if f.line_count and f.line_count > 0
+            ]
         avg_complexity = sum(complexities) / len(complexities) if complexities else 1
 
         total_lines = sum(n.line_count for n in self.graph.nodes.values() if n.line_count > 0)

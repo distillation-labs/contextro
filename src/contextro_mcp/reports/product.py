@@ -96,13 +96,28 @@ def build_focus_report(state, target_path: str, *, include_code: bool = True) ->
     symbols.sort(key=lambda item: (item["line"], item["name"]))
 
     direct_impact = sorted(set(module.dependents) | set(module.called_by))
+    resolved_imports = list(module.imports[:10])
+
+    # For alias-heavy TypeScript/JS repos, resolved imports may be empty because
+    # @/ or other path aliases can't be resolved without tsconfig.json paths.
+    # Fall back to raw import specifiers extracted directly from the source file.
+    raw_imports: list[str] = []
+    if not resolved_imports and module.language in ("typescript", "javascript"):
+        try:
+            from contextro_mcp.analysis.repository_map import _extract_js_imports
+
+            source_text = _safe_read(root / relative_path)
+            raw_imports = list(_extract_js_imports(source_text)[:10])
+        except Exception:
+            pass
+
     report = {
         "path": relative_path,
         "role": f"{layer_hint(relative_path)} module",
         "entry_point": module.is_entry,
         "test_file": module.is_test,
         "symbols": symbols[:15],
-        "imports": list(module.imports[:10]),
+        "imports": resolved_imports,
         "imported_by": list(module.dependents[:10]),
         "calls": list(module.calls[:10]),
         "called_by": list(module.called_by[:10]),
@@ -113,6 +128,12 @@ def build_focus_report(state, target_path: str, *, include_code: bool = True) ->
         },
         "architecture_hint": layer_hint(relative_path),
     }
+    if raw_imports:
+        report["raw_imports"] = raw_imports
+        report["imports_note"] = (
+            "Resolved imports empty (alias-heavy TypeScript). "
+            "raw_imports shows specifiers extracted directly from source."
+        )
     if include_code:
         source_text = _safe_read(root / relative_path)
         report["code_preview"] = compress_snippet(source_text[:8000], module.language)

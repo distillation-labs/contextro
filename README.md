@@ -19,9 +19,9 @@ With:     search("authentication flow") → exact result in <2ms
 
 | Task | Without Contextro | With Contextro | Savings |
 |---|---|---|---|
-| Find a function | Read 5 files (~5000 tokens) | `search()` (~265 tokens) | **19x** |
-| Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~16 tokens) | **187x** |
-| Understand a class | Read file + grep (~2000 tokens) | `explain()` (~230 tokens) | **9x** |
+| Find a function | Read 5 files (~5000 tokens) | `search()` (~221 tokens) | **23x** |
+| Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~9 tokens) | **333x** |
+| Understand a class | Read file + grep (~2000 tokens) | `explain()` (~96 tokens) | **21x** |
 | Check what breaks | Manual audit (~8000 tokens) | `impact()` (~300 tokens) | **27x** |
 
 ---
@@ -101,7 +101,7 @@ search("database connection pool", language="python")
 search("TokenBudget", mode="bm25")   ← exact keyword match
 ```
 
-Contextro runs semantic search, keyword search, and graph search in parallel, then fuses the results. You get the code snippet, file path, line number, confidence level, and match type.
+Contextro runs semantic search, keyword search, and graph search in parallel, then fuses the results. You get the code snippet, file path, line number, and confidence level.
 
 If results are large, you'll get a compact preview plus a `sandbox_ref` — call `retrieve(sandbox_ref)` to get the full set.
 
@@ -114,7 +114,7 @@ find_symbol("IndexingPipeline")           ← exact match
 find_symbol("auth", exact=False)          ← fuzzy search
 ```
 
-Returns the definition location, caller count, and top callers.
+Returns the definition location, caller count, and top callers. When multiple definitions share the same name, results are grouped per-definition with file context.
 
 ---
 
@@ -173,8 +173,8 @@ code(operation="pattern_rewrite",
      pattern="logger.info($MSG)",
      replacement="logger.debug($MSG)",
      language="python",
-     file_path="src/server.py",
-     dry_run=True)    ← set dry_run=False to apply
+     file_path="src/server.py",   # or path="src/" to rewrite a whole directory
+     dry_run=True)                 # set dry_run=False to apply
 
 # Explore a directory's structure
 code(operation="search_codebase_map", path="src/auth")
@@ -226,6 +226,7 @@ knowledge(command="add", name="API docs", value="/path/to/docs/")
 knowledge(command="search", query="rate limiting headers")
 knowledge(command="show")     ← list all indexed knowledge bases
 knowledge(command="remove", name="API docs")
+knowledge(command="update", context_id="abc123")   ← refresh by ID
 ```
 
 Index any text, markdown, or code files and search them semantically.
@@ -263,7 +264,7 @@ retrieve("sx_abc12345")
 retrieve("sx_abc12345", query="authentication")
 ```
 
-Tool responses >1200 tokens are automatically sandboxed and return a compact preview with `sandbox_ref`. Use `retrieve` to fetch the full result on demand. This saves ~44% tokens on large responses while keeping your agent unblocked.
+Tool responses >1200 tokens are automatically sandboxed and return a compact preview with `sandbox_ref`. Use `retrieve` to fetch the full result on demand.
 
 ---
 
@@ -285,7 +286,7 @@ introspect(query="how do I use pattern_search")
 
 ---
 
-## All 26 Tools at a Glance
+## All 35 Tools at a Glance
 
 | Tool | What it does |
 |---|---|
@@ -300,6 +301,11 @@ introspect(query="how do I use pattern_search")
 | `analyze` | Code smells, complexity, quality score |
 | `overview` | Project structure: languages, files, directories, symbols |
 | `architecture` | Layers, entry points, hub symbols |
+| `focus` | Low-token context slice for a single file |
+| `dead_code` | Entry-point reachability dead-code analysis |
+| `circular_dependencies` | SCC-based circular dependency detection |
+| `test_coverage_map` | Static test coverage map |
+| `audit` | Packaged audit report |
 | `commit_search` | Semantic search over git commit history |
 | `commit_history` | Browse recent commits |
 | `repo_add` | Register another repo for unified search |
@@ -311,6 +317,10 @@ introspect(query="how do I use pattern_search")
 | `knowledge` | Index and search your own docs/notes/files |
 | `compact` | Archive session content before compaction |
 | `session_snapshot` | Compressed session state for context recovery |
+| `restore` | Project re-entry summary after a break |
+| `docs_bundle` | Generate packaged documentation |
+| `sidecar_export` | Generate/clean file-adjacent `.graph.*` sidecars |
+| `skill_prompt` | Print or update the agent bootstrap block |
 | `introspect` | Look up Contextro's own tool docs and settings |
 | `retrieve` | Fetch sandboxed large output by reference ID |
 | `status` | Server status, index stats, cache hit rate |
@@ -323,15 +333,34 @@ introspect(query="how do I use pattern_search")
 When you call `search("how does auth work")`, Contextro:
 
 1. Checks the query cache for a semantic or exact hit
-2. Runs vector search (semantic), BM25 (keyword), and graph search (connectivity) in parallel
-3. Fuses results with Reciprocal Rank Fusion
-4. Optionally reranks with FlashRank
-5. Filters low-relevance results (threshold: 40% of top score)
-6. Applies diversity penalty (no 5 results from the same file)
-7. Compresses code snippets with AST-aware compression
-8. Returns confidence level (`high`/`medium`/`low`), token count, and `sandbox_ref` if needed
+2. Detects degenerate retrievers (all-equal scores) and zeroes their weight
+3. Runs vector search (semantic), BM25 (keyword), and graph search (connectivity) in parallel
+4. Boosts BM25 results where the query exactly matches a docstring (2× rank boost)
+5. Fuses results with entropy-adaptive Reciprocal Rank Fusion
+6. Optionally reranks with FlashRank
+7. Filters low-relevance results (threshold: 40% of top score)
+8. Applies diversity penalty (no 5 results from the same file)
+9. Compresses code snippets with AST-aware compression
+10. Returns confidence level (`high`/`medium`/`low`) and `sandbox_ref` if needed
 
 Every step is designed to balance relevance, speed, and token efficiency.
+
+---
+
+## Performance
+
+| Metric | Value |
+|---|---|
+| Indexing speed | 3,349 files in 6.8s |
+| Incremental reindex | 22ms (no changes) |
+| Search latency | <2ms (warm index) |
+| File discovery | 15ms for 3,349 files |
+| Hybrid MRR | 0.975 (20-query benchmark) |
+| tokens_per_search | 221 (down from 378 baseline) |
+| tokens_per_explain | 96 (down from 229 baseline) |
+| tokens_per_find_callers | 9 (down from 16 baseline) |
+| Total workflow tokens | 1,918 (16 tool calls) |
+| Memory usage | <350MB |
 
 ---
 
@@ -362,7 +391,7 @@ All settings are environment variables with the `CTX_` prefix. Most users don't 
 | `CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS` | `1200` | Sandbox responses above this size |
 | `CTX_SEARCH_SANDBOX_TTL_SECONDS` | `600` | Sandbox expiry (seconds) |
 | `CTX_SEARCH_PREVIEW_RESULTS` | `4` | Preview results when sandboxing |
-| `CTX_SEARCH_PREVIEW_CODE_CHARS` | `220` | Code preview length |
+| `CTX_SEARCH_PREVIEW_CODE_CHARS` | `200` | Code preview length |
 
 ### Indexing tuning
 
@@ -421,26 +450,11 @@ export CTX_CODEBASE_HOST_PATH=/path/to/your/project
 docker compose up -d
 ```
 
-The image auto-remaps your host path inside the container. Pull it directly:
+The HTTP server auto-enables warm-start so the index is immediately available after restart without calling `index()` again.
 
 ```bash
 docker pull ghcr.io/jassskalkat/contextro-mcp:latest
 ```
-
----
-
-## Performance
-
-| Metric | Value |
-|---|---|
-| Indexing speed | 3,349 files in 8.1s |
-| Incremental reindex | 22ms (no changes) |
-| Search latency | <2ms (warm index) |
-| File discovery | 15ms for 3,349 files |
-| Token reduction | 65–90% vs raw file reading |
-| Memory usage | <350MB |
-| Progressive disclosure savings | ~44% on large responses |
-| AST snippet compression | ~73% on code previews |
 
 ---
 

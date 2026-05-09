@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "4.0.0",
+  "version": "0.0.4",
   "description": "Core trigger and routing evals for the Contextro MCP skill. Aligned to Anthropic skill guidance: concise frontmatter, correct triggering, problem-first routing, and avoidance of token-heavy anti-patterns.",
   "rubric": {
     "source_docs": [
@@ -12,13 +12,15 @@
       "triggering on relevant requests",
       "not triggering on unrelated requests",
       "correct tool routing",
-      "anti-pattern avoidance"
+      "anti-pattern avoidance",
+      "compact response format interpretation"
     ]
   },
   "categories": {
     "triggering": "Skill loads on obvious and paraphrased Contextro requests",
     "routing": "Correct Contextro tool chosen for the user task",
-    "anti_pattern": "Agent avoids wasteful or unsafe alternatives when Contextro fits"
+    "anti_pattern": "Agent avoids wasteful or unsafe alternatives when Contextro fits",
+    "response_format": "Agent correctly interprets compact response keys and implicit fields"
   },
   "evals": [
     {
@@ -337,11 +339,108 @@
           "passing_condition": "Agent uses compact, not remember, for pre-compaction archiving"
         }
       ]
+    },
+    {
+      "id": 19,
+      "name": "response-format-compact-keys",
+      "category": "response_format",
+      "prompt": "Search for the authentication middleware.",
+      "expected_behavior": "Agent correctly reads compact keys n/f/l/c from search results and presents them as name/file/line/code to the user.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "agent reads n as symbol name",
+          "type": "output_quality",
+          "passing_condition": "Agent presents the value of 'n' as the symbol name in its response"
+        },
+        {
+          "id": "a2",
+          "text": "agent reads f as file path",
+          "type": "output_quality",
+          "passing_condition": "Agent presents the value of 'f' as the file location"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "response-format-sandbox-ref-implies-sandboxed",
+      "category": "response_format",
+      "prompt": "Find all callers of the search function.",
+      "expected_behavior": "If the response contains sandbox_ref but no sandboxed field, agent still treats it as sandboxed and calls retrieve.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "agent calls retrieve when sandbox_ref is present",
+          "type": "workflow",
+          "passing_condition": "retrieve called with sandbox_ref value when sandbox_ref appears in response, regardless of whether sandboxed field is present"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "response-format-confidence-omitted-means-high",
+      "category": "response_format",
+      "prompt": "Find the IndexingPipeline class.",
+      "expected_behavior": "If search response has no confidence field, agent treats it as high confidence and does not ask for clarification.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "missing confidence is treated as high",
+          "type": "output_quality",
+          "passing_condition": "Agent does not ask for clarification or re-search when confidence field is absent from response"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "response-format-indexed-omitted-means-true",
+      "category": "response_format",
+      "prompt": "Check if the codebase is indexed.",
+      "expected_behavior": "If status response has no indexed field but has codebase_path, agent treats it as indexed.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "missing indexed field with codebase_path means indexed",
+          "type": "output_quality",
+          "passing_condition": "Agent reports the codebase as indexed when codebase_path is present even if indexed field is absent"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "response-format-find-symbol-flat",
+      "category": "response_format",
+      "prompt": "Find the AuthManager class.",
+      "expected_behavior": "When find_symbol returns a single result as a flat object (no symbols wrapper), agent reads it directly.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "agent reads flat single-result find_symbol response",
+          "type": "output_quality",
+          "passing_condition": "Agent correctly extracts name, file, line from a flat find_symbol response without expecting a symbols array"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "response-format-callers-list",
+      "category": "response_format",
+      "prompt": "Who calls authenticate?",
+      "expected_behavior": "find_callers returns {callers: [...]} — agent reads the callers list directly.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "agent reads callers from {callers: [...]} format",
+          "type": "output_quality",
+          "passing_condition": "Agent presents callers from the callers array without expecting a total field"
+        }
+      ]
     }
   ],
   "targets": {
     "trigger_rate_relevant": 0.9,
     "non_trigger_rate_irrelevant": 1.0,
-    "impact_before_refactor": 1.0
+    "impact_before_refactor": 1.0,
+    "response_format_accuracy": 1.0
   }
 }
