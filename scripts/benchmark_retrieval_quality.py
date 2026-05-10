@@ -21,6 +21,8 @@ from benchmark_utils import (
     sync_vector_engine,
 )
 
+from contextro_mcp.token_counting import tokenizer_metadata
+
 
 def _first_sentence(text: str) -> str:
     sentence = text.strip().split(".")[0].strip()
@@ -111,6 +113,7 @@ async def run_benchmark(
     metrics = {
         "codebase": str(codebase_path),
         "queries": len(queries),
+        "tokenizer": tokenizer_metadata(),
         "modes": {},
     }
 
