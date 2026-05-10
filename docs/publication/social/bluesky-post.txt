@@ -1,0 +1,5 @@
+Published a revised paper on Contextro, a local MCP server for code intelligence. In a fresh rerun on an 8,496-file monorepo, the full 60-task inventory cut tokens by 95.6%. On the stricter 39-task comparable subset, the reduction was 98.0%, and 100 bootstrap task subsets all stayed above 97.24%.
+
+PDF: [[PDF_URL]]
+
+Suggested image: docs/publication/social/contextro-social-hero.png
