@@ -11,33 +11,25 @@ MODE=${1:-"all"}
 # Function to get commit message for a file
 get_commit_message() {
     local file=$1
-    echo "Commit changes to: $file"
-    echo "Enter commit message (or press Enter for default):"
-    read -r message
-    
-    if [ -z "$message" ]; then
-        # Default message based on file type
-        local extension="${file##*.}"
-        case "$extension" in
-            py)
-                echo "Update $file"
-                ;;
-            js|ts|tsx|jsx)
-                echo "Update $file"
-                ;;
-            md)
-                echo "Update documentation in $file"
-                ;;
-            sh)
-                echo "Update script $file"
-                ;;
-            *)
-                echo "Update $file"
-                ;;
-        esac
-    else
-        echo "$message"
-    fi
+    # Default message based on file type
+    local extension="${file##*.}"
+    case "$extension" in
+        py)
+            echo "Update $file"
+            ;;
+        js|ts|tsx|jsx)
+            echo "Update $file"
+            ;;
+        md)
+            echo "Update documentation in $file"
+            ;;
+        sh)
+            echo "Update script $file"
+            ;;
+        *)
+            echo "Update $file"
+            ;;
+    esac
 }
 
 # Function to commit a single file
@@ -45,6 +37,8 @@ commit_file() {
     local file=$1
     local message=$(get_commit_message "$file")
     
+    # Clear staging area first to ensure only this file gets committed
+    git reset HEAD -- . 2>/dev/null
     echo "Adding $file..."
     git add "$file"
     
