@@ -160,3 +160,10 @@ class DebouncedFileWatcher:
             "debounce_delay": self.debounce_delay,
             "recent_changes_count": len(self._recent_changes),
         }
+
+    def consume_recent_changes(self) -> list[Path]:
+        """Return and clear the recent change set accumulated since the last callback."""
+        changes = [Path(path) for path in sorted(self._recent_changes)]
+        self._recent_changes.clear()
+        self._change_cleanup_timer = None
+        return changes
