@@ -8,6 +8,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+## [0.0.7] - 2026-05-09
+
+### Added
+- **Publication documentation** — Complete publication package with paper HTML/PDF, evaluation guide, study design and system overview diagrams, and open benchmark data (retrieval quality, token efficiency).
+- **Social media assets** — LinkedIn card, Bluesky/Twitter thread templates for launch announcements.
+- **Research paper draft** — `docs/research/contextro-launch-paper.md` with full methodology and results.
+- **New scripts** — `token_counting.py`, `experiment_tasks.py`, and `task_subset_robustness.py` for continued experiment analysis.
+- **Paper revision checklist** — Checklist for paper publication workflow.
+
+### Changed
+- Updated benchmark scripts with new analysis capabilities.
+- Removed deprecated experiment results directory (cleanup for re-run capability).
+
 ## [0.0.6] - 2026-05-09
 
 ### Added

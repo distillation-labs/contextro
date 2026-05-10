@@ -279,8 +279,8 @@ When a newer version of Contextro is available, `status()` will include:
 
 ```json
 {
-  "update_available": "0.0.6",
-  "update_hint": "pip install --upgrade contextro  # 0.0.6 available"
+  "update_available": "0.0.7",
+  "update_hint": "pip install --upgrade contextro  # 0.0.7 available"
 }
 ```
 
