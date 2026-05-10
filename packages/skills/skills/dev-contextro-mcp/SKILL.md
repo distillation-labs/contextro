@@ -18,7 +18,7 @@ metadata:
   mcp-server: contextro
   category: mcp-enhancement
   tags: [contextro, mcp, code-search, code-graph, ast, git, memory, cross-repo]
-license: MIT
+license: Proprietary
 ---
 
 # Contextro MCP
