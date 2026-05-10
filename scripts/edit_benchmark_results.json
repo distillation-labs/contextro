@@ -1,0 +1,906 @@
+{
+  "summary": {
+    "tasks": 6,
+    "passed": 6,
+    "failed": 0,
+    "mean_score": 100.0
+  },
+  "results": [
+    {
+      "task": {
+        "id": "plan_01",
+        "title": "Plan single-file print replacement",
+        "phase": "phase1",
+        "mode": "plan",
+        "category": "single_file_call_replacement",
+        "language": "python",
+        "scope": "single_file",
+        "instruction": "Plan a replacement of print('old') with print('new') in utils.py",
+        "control_grep_patterns": [],
+        "control_seed_paths": [],
+        "max_control_reads": 0,
+        "operation": {
+          "tool": "code",
+          "name": "edit_plan",
+          "symbol_name": "",
+          "file_path": "src/utils.py",
+          "path": "",
+          "pattern": "print(\"old\")",
+          "replacement": "print(\"new\")",
+          "language": "python",
+          "goal": "Replace the helper print call",
+          "edit_kind": "",
+          "dry_run": null
+        },
+        "constraints": {
+          "allow_apply": false,
+          "require_dry_run": false,
+          "require_impact": false,
+          "allowed_paths": [],
+          "forbidden_paths": [],
+          "must_use_relative_paths": true
+        },
+        "expected": {
+          "primary_target_file": "src/utils.py",
+          "target_files": [
+            "src/utils.py"
+          ],
+          "target_symbols": [],
+          "impacted_files": [],
+          "order_constraints": [],
+          "preview_files": [],
+          "apply_files": [],
+          "expected_change_count": null,
+          "verify_labels": [
+            "syntax",
+            "lint",
+            "unit_tests"
+          ],
+          "acceptable_commands": [],
+          "risk_labels": [],
+          "must_not_touch": [],
+          "preview_assertions": [],
+          "post_apply_assertions": []
+        },
+        "score_profile": "plan_only"
+      },
+      "result": {
+        "operation": "edit_plan",
+        "goal": "Replace the helper print call",
+        "edit_kind": "replace",
+        "scope": "single_file",
+        "primary_target_file": "src/utils.py",
+        "target_files": [
+          "src/utils.py"
+        ],
+        "target_symbols": [],
+        "impact": {
+          "required": false,
+          "impacted_files": [],
+          "total_impacted": 0
+        },
+        "related_tests": [
+          "tests/test_main.py"
+        ],
+        "verify": {
+          "labels": [
+            "syntax",
+            "lint",
+            "unit_tests"
+          ],
+          "commands": [
+            "python -m py_compile src/utils.py",
+            "ruff check src/utils.py",
+            "pytest -q tests/test_main.py"
+          ]
+        },
+        "risks": [],
+        "allowed_paths": [
+          "src/utils.py"
+        ],
+        "recommended_operation": "pattern_rewrite",
+        "requires_preview": true,
+        "apply_sequence": [
+          "src/utils.py"
+        ],
+        "rollback": "Review git diff and restore touched files if needed. Candidate restore set: git restore -- src/utils.py",
+        "confidence": 0.85
+      },
+      "run": {
+        "task_id": "plan_01",
+        "arm": "mcp",
+        "ranked_target_files": [
+          "src/utils.py"
+        ],
+        "predicted_impacted_files": [],
+        "predicted_verify_labels": [
+          "syntax",
+          "lint",
+          "unit_tests"
+        ],
+        "predicted_risk_labels": [],
+        "preview_files": [],
+        "preview_change_count": null,
+        "apply_files": [],
+        "apply_change_count": null,
+        "passed_preview_assertions": 0,
+        "total_preview_assertions": 0,
+        "passed_post_apply_assertions": 0,
+        "total_post_apply_assertions": 0,
+        "rollback_present": true,
+        "syntax_passed": null,
+        "invariant_violations": [],
+        "tokens": 164,
+        "latency_ms": 66.4,
+        "tool_calls": 1,
+        "file_reads": 0,
+        "wasted_reads": 0
+      },
+      "score": {
+        "profile": "plan_only",
+        "score": 100.0,
+        "threshold": 85.0,
+        "passed": true,
+        "components": {
+          "impact_file_set": 1.0,
+          "risk_label": 1.0,
+          "rollback_present": 1.0,
+          "target_file_set": 1.0,
+          "target_rank": 1.0,
+          "verify_label": 1.0
+        },
+        "invariant_violations": []
+      }
+    },
+    {
+      "task": {
+        "id": "preview_01",
+        "title": "Preview single-file print replacement",
+        "phase": "phase2",
+        "mode": "preview",
+        "category": "single_file_call_replacement",
+        "language": "python",
+        "scope": "single_file",
+        "instruction": "Preview a replacement of print('old') with print('new') in utils.py",
+        "control_grep_patterns": [],
+        "control_seed_paths": [],
+        "max_control_reads": 0,
+        "operation": {
+          "tool": "code",
+          "name": "pattern_rewrite",
+          "symbol_name": "",
+          "file_path": "src/utils.py",
+          "path": "",
+          "pattern": "print(\"old\")",
+          "replacement": "print(\"new\")",
+          "language": "python",
+          "goal": "",
+          "edit_kind": "",
+          "dry_run": true
+        },
+        "constraints": {
+          "allow_apply": false,
+          "require_dry_run": true,
+          "require_impact": false,
+          "allowed_paths": [],
+          "forbidden_paths": [],
+          "must_use_relative_paths": true
+        },
+        "expected": {
+          "primary_target_file": "src/utils.py",
+          "target_files": [],
+          "target_symbols": [],
+          "impacted_files": [],
+          "order_constraints": [],
+          "preview_files": [
+            "src/utils.py"
+          ],
+          "apply_files": [],
+          "expected_change_count": 1,
+          "verify_labels": [
+            "syntax"
+          ],
+          "acceptable_commands": [],
+          "risk_labels": [],
+          "must_not_touch": [],
+          "preview_assertions": [
+            {
+              "kind": "contains",
+              "text": "@@",
+              "source": "preview",
+              "path": ""
+            },
+            {
+              "kind": "contains",
+              "text": "print(\"new\")",
+              "source": "preview",
+              "path": ""
+            }
+          ],
+          "post_apply_assertions": []
+        },
+        "score_profile": "preview"
+      },
+      "result": {
+        "operation": "pattern_rewrite",
+        "file": "src/utils.py",
+        "changes": 1,
+        "touched_lines": [
+          2
+        ],
+        "changed_symbols": [
+          {
+            "name": "helper",
+            "type": "function",
+            "file": "src/utils.py",
+            "line": 1
+          }
+        ],
+        "dry_run": true,
+        "diff": "--- src/utils.py\n+++ src/utils.py\n@@ -1,5 +1,5 @@\n def helper():\n-    print(\"old\")\n+    print(\"new\")\n \n def helper_alias():\n     return helper()",
+        "diff_line_count": 9,
+        "hint": "Set dry_run=false to apply changes",
+        "preview_signature": "33d6a1ddd015"
+      },
+      "run": {
+        "task_id": "preview_01",
+        "arm": "mcp",
+        "ranked_target_files": [
+          "src/utils.py"
+        ],
+        "predicted_impacted_files": [],
+        "predicted_verify_labels": [
+          "syntax"
+        ],
+        "predicted_risk_labels": [],
+        "preview_files": [
+          "src/utils.py"
+        ],
+        "preview_change_count": 1,
+        "apply_files": [],
+        "apply_change_count": null,
+        "passed_preview_assertions": 2,
+        "total_preview_assertions": 2,
+        "passed_post_apply_assertions": 0,
+        "total_post_apply_assertions": 0,
+        "rollback_present": false,
+        "syntax_passed": null,
+        "invariant_violations": [],
+        "tokens": 134,
+        "latency_ms": 0.97,
+        "tool_calls": 1,
+        "file_reads": 0,
+        "wasted_reads": 0
+      },
+      "score": {
+        "profile": "preview",
+        "score": 100.0,
+        "threshold": 90.0,
+        "passed": true,
+        "components": {
+          "change_count": 1.0,
+          "preview_assertion": 1.0,
+          "preview_file_set": 1.0,
+          "target_rank": 1.0,
+          "verify_label": 1.0
+        },
+        "invariant_violations": []
+      }
+    },
+    {
+      "task": {
+        "id": "plan_02",
+        "title": "Plan directory-scoped replacement",
+        "phase": "phase3",
+        "mode": "plan",
+        "category": "directory_scoped_rewrite",
+        "language": "python",
+        "scope": "multi_file",
+        "instruction": "Plan a scoped replacement of print('old') with print('new') across src",
+        "control_grep_patterns": [],
+        "control_seed_paths": [],
+        "max_control_reads": 0,
+        "operation": {
+          "tool": "code",
+          "name": "edit_plan",
+          "symbol_name": "",
+          "file_path": "",
+          "path": "src",
+          "pattern": "print(\"old\")",
+          "replacement": "print(\"new\")",
+          "language": "python",
+          "goal": "Replace print calls across src",
+          "edit_kind": "",
+          "dry_run": null
+        },
+        "constraints": {
+          "allow_apply": false,
+          "require_dry_run": false,
+          "require_impact": false,
+          "allowed_paths": [],
+          "forbidden_paths": [],
+          "must_use_relative_paths": true
+        },
+        "expected": {
+          "primary_target_file": "src/secondary.py",
+          "target_files": [
+            "src/secondary.py",
+            "src/utils.py"
+          ],
+          "target_symbols": [],
+          "impacted_files": [],
+          "order_constraints": [],
+          "preview_files": [],
+          "apply_files": [],
+          "expected_change_count": null,
+          "verify_labels": [
+            "syntax",
+            "lint",
+            "unit_tests"
+          ],
+          "acceptable_commands": [],
+          "risk_labels": [
+            "broad_rewrite"
+          ],
+          "must_not_touch": [],
+          "preview_assertions": [],
+          "post_apply_assertions": []
+        },
+        "score_profile": "multi_file_plan"
+      },
+      "result": {
+        "operation": "edit_plan",
+        "goal": "Replace print calls across src",
+        "edit_kind": "multi_file",
+        "scope": "directory",
+        "primary_target_file": "src/secondary.py",
+        "target_files": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "target_symbols": [],
+        "impact": {
+          "required": false,
+          "impacted_files": [],
+          "total_impacted": 0
+        },
+        "related_tests": [
+          "tests/test_main.py"
+        ],
+        "verify": {
+          "labels": [
+            "syntax",
+            "lint",
+            "unit_tests"
+          ],
+          "commands": [
+            "python -m py_compile src/secondary.py src/utils.py",
+            "ruff check src/secondary.py src/utils.py",
+            "pytest -q tests/test_main.py"
+          ]
+        },
+        "risks": [
+          "broad_rewrite"
+        ],
+        "allowed_paths": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "recommended_operation": "pattern_rewrite",
+        "requires_preview": true,
+        "apply_sequence": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "rollback": "Review git diff and restore touched files if needed. Candidate restore set: git restore -- src/secondary.py src/utils.py",
+        "confidence": 0.85
+      },
+      "run": {
+        "task_id": "plan_02",
+        "arm": "mcp",
+        "ranked_target_files": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "predicted_impacted_files": [],
+        "predicted_verify_labels": [
+          "syntax",
+          "lint",
+          "unit_tests"
+        ],
+        "predicted_risk_labels": [
+          "broad_rewrite"
+        ],
+        "preview_files": [],
+        "preview_change_count": null,
+        "apply_files": [],
+        "apply_change_count": null,
+        "passed_preview_assertions": 0,
+        "total_preview_assertions": 0,
+        "passed_post_apply_assertions": 0,
+        "total_post_apply_assertions": 0,
+        "rollback_present": true,
+        "syntax_passed": null,
+        "invariant_violations": [],
+        "tokens": 195,
+        "latency_ms": 4.49,
+        "tool_calls": 1,
+        "file_reads": 0,
+        "wasted_reads": 0
+      },
+      "score": {
+        "profile": "multi_file_plan",
+        "score": 100.0,
+        "threshold": 85.0,
+        "passed": true,
+        "components": {
+          "impact_file_set": 1.0,
+          "order": 1.0,
+          "risk_label": 1.0,
+          "rollback_present": 1.0,
+          "target_file_set": 1.0,
+          "verify_label": 1.0
+        },
+        "invariant_violations": []
+      }
+    },
+    {
+      "task": {
+        "id": "preview_02",
+        "title": "Preview directory-scoped replacement",
+        "phase": "phase2",
+        "mode": "preview",
+        "category": "directory_scoped_rewrite",
+        "language": "python",
+        "scope": "multi_file",
+        "instruction": "Preview a replacement of print('old') with print('new') across src",
+        "control_grep_patterns": [],
+        "control_seed_paths": [],
+        "max_control_reads": 0,
+        "operation": {
+          "tool": "code",
+          "name": "pattern_rewrite",
+          "symbol_name": "",
+          "file_path": "",
+          "path": "src",
+          "pattern": "print(\"old\")",
+          "replacement": "print(\"new\")",
+          "language": "python",
+          "goal": "",
+          "edit_kind": "",
+          "dry_run": true
+        },
+        "constraints": {
+          "allow_apply": false,
+          "require_dry_run": true,
+          "require_impact": false,
+          "allowed_paths": [],
+          "forbidden_paths": [],
+          "must_use_relative_paths": true
+        },
+        "expected": {
+          "primary_target_file": "src/secondary.py",
+          "target_files": [],
+          "target_symbols": [],
+          "impacted_files": [],
+          "order_constraints": [],
+          "preview_files": [
+            "src/secondary.py",
+            "src/utils.py"
+          ],
+          "apply_files": [],
+          "expected_change_count": 2,
+          "verify_labels": [
+            "syntax"
+          ],
+          "acceptable_commands": [],
+          "risk_labels": [],
+          "must_not_touch": [],
+          "preview_assertions": [
+            {
+              "kind": "contains",
+              "text": "print(\"new\")",
+              "source": "preview",
+              "path": ""
+            }
+          ],
+          "post_apply_assertions": []
+        },
+        "score_profile": "preview"
+      },
+      "result": {
+        "operation": "pattern_rewrite",
+        "total_changes": 2,
+        "files_modified": 2,
+        "dry_run": true,
+        "results": [
+          {
+            "file": "src/secondary.py",
+            "changes": 1,
+            "touched_lines": [
+              2
+            ],
+            "changed_symbols": [
+              {
+                "name": "alternate",
+                "type": "function",
+                "file": "src/secondary.py",
+                "line": 1
+              }
+            ],
+            "dry_run": true,
+            "diff": "--- src/secondary.py\n+++ src/secondary.py\n@@ -1,2 +1,2 @@\n def alternate():\n-    print(\"old\")\n+    print(\"new\")",
+            "diff_line_count": 6
+          },
+          {
+            "file": "src/utils.py",
+            "changes": 1,
+            "touched_lines": [
+              2
+            ],
+            "changed_symbols": [
+              {
+                "name": "helper",
+                "type": "function",
+                "file": "src/utils.py",
+                "line": 1
+              }
+            ],
+            "dry_run": true,
+            "diff": "--- src/utils.py\n+++ src/utils.py\n@@ -1,5 +1,5 @@\n def helper():\n-    print(\"old\")\n+    print(\"new\")\n \n def helper_alias():\n     return helper()",
+            "diff_line_count": 9
+          }
+        ],
+        "hint": "Set dry_run=false to apply changes",
+        "preview_signature": "33ab032d8dde"
+      },
+      "run": {
+        "task_id": "preview_02",
+        "arm": "mcp",
+        "ranked_target_files": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "predicted_impacted_files": [],
+        "predicted_verify_labels": [
+          "syntax"
+        ],
+        "predicted_risk_labels": [],
+        "preview_files": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "preview_change_count": 2,
+        "apply_files": [],
+        "apply_change_count": null,
+        "passed_preview_assertions": 1,
+        "total_preview_assertions": 1,
+        "passed_post_apply_assertions": 0,
+        "total_post_apply_assertions": 0,
+        "rollback_present": false,
+        "syntax_passed": null,
+        "invariant_violations": [],
+        "tokens": 248,
+        "latency_ms": 0.93,
+        "tool_calls": 1,
+        "file_reads": 0,
+        "wasted_reads": 0
+      },
+      "score": {
+        "profile": "preview",
+        "score": 100.0,
+        "threshold": 90.0,
+        "passed": true,
+        "components": {
+          "change_count": 1.0,
+          "preview_assertion": 1.0,
+          "preview_file_set": 1.0,
+          "target_rank": 1.0,
+          "verify_label": 1.0
+        },
+        "invariant_violations": []
+      }
+    },
+    {
+      "task": {
+        "id": "apply_01",
+        "title": "Apply single-file print replacement",
+        "phase": "phase2",
+        "mode": "apply",
+        "category": "single_file_call_replacement",
+        "language": "python",
+        "scope": "single_file",
+        "instruction": "Apply a replacement of print('old') with print('new') in utils.py",
+        "control_grep_patterns": [],
+        "control_seed_paths": [],
+        "max_control_reads": 0,
+        "operation": {
+          "tool": "code",
+          "name": "pattern_rewrite",
+          "symbol_name": "",
+          "file_path": "src/utils.py",
+          "path": "",
+          "pattern": "print(\"old\")",
+          "replacement": "print(\"new\")",
+          "language": "python",
+          "goal": "",
+          "edit_kind": "",
+          "dry_run": false
+        },
+        "constraints": {
+          "allow_apply": true,
+          "require_dry_run": true,
+          "require_impact": false,
+          "allowed_paths": [],
+          "forbidden_paths": [],
+          "must_use_relative_paths": true
+        },
+        "expected": {
+          "primary_target_file": "src/utils.py",
+          "target_files": [],
+          "target_symbols": [],
+          "impacted_files": [],
+          "order_constraints": [],
+          "preview_files": [],
+          "apply_files": [
+            "src/utils.py"
+          ],
+          "expected_change_count": 1,
+          "verify_labels": [
+            "syntax"
+          ],
+          "acceptable_commands": [],
+          "risk_labels": [],
+          "must_not_touch": [],
+          "preview_assertions": [],
+          "post_apply_assertions": [
+            {
+              "kind": "contains",
+              "text": "print(\"new\")",
+              "source": "file",
+              "path": "src/utils.py"
+            },
+            {
+              "kind": "not_contains",
+              "text": "print(\"old\")",
+              "source": "file",
+              "path": "src/utils.py"
+            }
+          ]
+        },
+        "score_profile": "apply"
+      },
+      "result": {
+        "operation": "pattern_rewrite",
+        "file": "src/utils.py",
+        "changes": 1,
+        "touched_lines": [
+          2
+        ],
+        "changed_symbols": [
+          {
+            "name": "helper",
+            "type": "function",
+            "file": "src/utils.py",
+            "line": 1
+          }
+        ],
+        "applied": true,
+        "preview_signature": "33d6a1ddd015",
+        "index_hint": "If downstream symbol results look stale, run index() or wait for realtime indexing to refresh."
+      },
+      "run": {
+        "task_id": "apply_01",
+        "arm": "mcp",
+        "ranked_target_files": [
+          "src/utils.py"
+        ],
+        "predicted_impacted_files": [],
+        "predicted_verify_labels": [
+          "syntax"
+        ],
+        "predicted_risk_labels": [],
+        "preview_files": [
+          "src/utils.py"
+        ],
+        "preview_change_count": 1,
+        "apply_files": [
+          "src/utils.py"
+        ],
+        "apply_change_count": 1,
+        "passed_preview_assertions": 0,
+        "total_preview_assertions": 0,
+        "passed_post_apply_assertions": 2,
+        "total_post_apply_assertions": 2,
+        "rollback_present": false,
+        "syntax_passed": true,
+        "invariant_violations": [],
+        "tokens": 82,
+        "latency_ms": 1.13,
+        "tool_calls": 2,
+        "file_reads": 0,
+        "wasted_reads": 0
+      },
+      "score": {
+        "profile": "apply",
+        "score": 100.0,
+        "threshold": 95.0,
+        "passed": true,
+        "components": {
+          "apply_assertion": 1.0,
+          "apply_file_set": 1.0,
+          "change_count": 1.0,
+          "parity": 1.0,
+          "syntax": 1.0,
+          "target_rank": 1.0,
+          "verify_label": 1.0
+        },
+        "invariant_violations": []
+      }
+    },
+    {
+      "task": {
+        "id": "apply_02",
+        "title": "Apply directory-scoped replacement",
+        "phase": "phase2",
+        "mode": "apply",
+        "category": "directory_scoped_rewrite",
+        "language": "python",
+        "scope": "multi_file",
+        "instruction": "Apply a replacement of print('old') with print('new') across src",
+        "control_grep_patterns": [],
+        "control_seed_paths": [],
+        "max_control_reads": 0,
+        "operation": {
+          "tool": "code",
+          "name": "pattern_rewrite",
+          "symbol_name": "",
+          "file_path": "",
+          "path": "src",
+          "pattern": "print(\"old\")",
+          "replacement": "print(\"new\")",
+          "language": "python",
+          "goal": "",
+          "edit_kind": "",
+          "dry_run": false
+        },
+        "constraints": {
+          "allow_apply": true,
+          "require_dry_run": true,
+          "require_impact": false,
+          "allowed_paths": [],
+          "forbidden_paths": [],
+          "must_use_relative_paths": true
+        },
+        "expected": {
+          "primary_target_file": "src/secondary.py",
+          "target_files": [],
+          "target_symbols": [],
+          "impacted_files": [],
+          "order_constraints": [],
+          "preview_files": [],
+          "apply_files": [
+            "src/secondary.py",
+            "src/utils.py"
+          ],
+          "expected_change_count": 2,
+          "verify_labels": [
+            "syntax"
+          ],
+          "acceptable_commands": [],
+          "risk_labels": [],
+          "must_not_touch": [],
+          "preview_assertions": [],
+          "post_apply_assertions": [
+            {
+              "kind": "contains",
+              "text": "print(\"new\")",
+              "source": "file",
+              "path": "src/secondary.py"
+            },
+            {
+              "kind": "contains",
+              "text": "print(\"new\")",
+              "source": "file",
+              "path": "src/utils.py"
+            }
+          ]
+        },
+        "score_profile": "apply"
+      },
+      "result": {
+        "operation": "pattern_rewrite",
+        "total_changes": 2,
+        "files_modified": 2,
+        "dry_run": false,
+        "results": [
+          {
+            "file": "src/secondary.py",
+            "changes": 1,
+            "touched_lines": [
+              2
+            ],
+            "changed_symbols": [
+              {
+                "name": "alternate",
+                "type": "function",
+                "file": "src/secondary.py",
+                "line": 1
+              }
+            ],
+            "applied": true
+          },
+          {
+            "file": "src/utils.py",
+            "changes": 1,
+            "touched_lines": [
+              2
+            ],
+            "changed_symbols": [
+              {
+                "name": "helper",
+                "type": "function",
+                "file": "src/utils.py",
+                "line": 1
+              }
+            ],
+            "applied": true
+          }
+        ],
+        "preview_signature": "33ab032d8dde",
+        "index_hint": "If downstream symbol results look stale, run index() or wait for realtime indexing to refresh."
+      },
+      "run": {
+        "task_id": "apply_02",
+        "arm": "mcp",
+        "ranked_target_files": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "predicted_impacted_files": [],
+        "predicted_verify_labels": [
+          "syntax"
+        ],
+        "predicted_risk_labels": [],
+        "preview_files": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "preview_change_count": 2,
+        "apply_files": [
+          "src/secondary.py",
+          "src/utils.py"
+        ],
+        "apply_change_count": 2,
+        "passed_preview_assertions": 0,
+        "total_preview_assertions": 0,
+        "passed_post_apply_assertions": 2,
+        "total_post_apply_assertions": 2,
+        "rollback_present": false,
+        "syntax_passed": true,
+        "invariant_violations": [],
+        "tokens": 144,
+        "latency_ms": 1.73,
+        "tool_calls": 2,
+        "file_reads": 0,
+        "wasted_reads": 0
+      },
+      "score": {
+        "profile": "apply",
+        "score": 100.0,
+        "threshold": 95.0,
+        "passed": true,
+        "components": {
+          "apply_assertion": 1.0,
+          "apply_file_set": 1.0,
+          "change_count": 1.0,
+          "parity": 1.0,
+          "syntax": 1.0,
+          "target_rank": 1.0,
+          "verify_label": 1.0
+        },
+        "invariant_violations": []
+      }
+    }
+  ]
+}
