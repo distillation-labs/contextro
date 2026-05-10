@@ -1,12 +1,12 @@
 # Contextro: How We Built a Local Code Intelligence MCP That Cuts Agent Token Usage by 98%
 
-*Published: [FILL: date] · Research & Engineering Team*
+*Published: [FILL: date] · Distillation Labs*
 
 ---
 
 ## TL;DR
 
-We built Contextro, an open-source MCP server that gives AI coding agents a brain. Instead of reading files and guessing, agents search by meaning, trace call graphs, and check what breaks — all locally, in milliseconds.
+We built Contextro, a local MCP server that gives AI coding agents a brain. Instead of reading files and guessing, agents search by meaning, trace call graphs, and check what breaks — all locally, in milliseconds.
 
 We ran controlled experiments on a production monorepo (8,496 files). The results:
 
@@ -310,14 +310,14 @@ All benchmarks run against the same codebase with fixed query sets for reproduci
 
 ---
 
-## Open Source
+## Availability
 
-Contextro is released under the MIT license. Everything is open:
+Contextro is proprietary software developed by Distillation Labs. The research package includes:
 
-- **Source code**: Full MCP server implementation
-- **Benchmark suite**: All scripts used in this research
-- **Experiment data**: Raw results from the controlled experiments
-- **Skills library**: `npx @contextro/skills install` to teach your agent
+- **Paper artifacts**: manuscript, figures, and aggregate benchmark summaries
+- **Benchmark suite**: scripts used for the reported measurements
+- **Sanitized inventories**: public task catalogs and robustness summaries
+- **Skills library**: internal packaging for agent setup
 
 ### Install
 
@@ -383,7 +383,7 @@ Contextro achieves this with:
 - Sub-10ms latency for most operations
 - A self-improving research loop that continuously optimizes every metric
 
-The code is open source. The research is reproducible. The experiment can be run on any codebase.
+The research is reproducible at the benchmark level, and the experiment design can be adapted to any codebase with local access.
 
 **We believe this is how AI coding agents should work: with a brain, not a blindfold.**
 
@@ -434,7 +434,7 @@ The code is open source. The research is reproducible. The experiment can be run
 
 ---
 
-*Contextro is open source under the MIT license. Star us on GitHub: [FILL: GitHub URL]*
+*Presented by Distillation Labs.*
 
 ![Autoresearch Improvements](assets/08_autoresearch_improvements.png)
 
