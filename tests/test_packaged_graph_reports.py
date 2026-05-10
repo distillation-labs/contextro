@@ -88,14 +88,24 @@ def test_build_docs_sections_include_navigation_and_first_class_audit_content(tm
     assert tuple(sections.keys()) == DOCS_SECTION_ORDER
     assert "# Contextro Docs Bundle" in sections["index.md"]
     assert "[Architecture](architecture.md)" in sections["index.md"]
+    assert "[Workflow](workflow.md)" in sections["index.md"]
     assert "[Audit](audit.md)" in sections["index.md"]
+    assert "[Dead Code](dead-code.md)" in sections["index.md"]
+    assert "[Test Coverage](test-coverage.md)" in sections["index.md"]
+    assert "[Circular Dependencies](circular-dependencies.md)" in sections["index.md"]
     assert "## Audit Snapshot" in sections["index.md"]
     assert "## Layer Breakdown" in sections["architecture.md"]
     assert "## Hub Files" in sections["architecture.md"]
+    assert "contextro graph watch" in sections["workflow.md"]
+    assert "[analysis]" in sections["workflow.md"]
     assert "## Prioritized Recommendations" in sections["audit.md"]
     assert "## Blast Radius Hotspots" in sections["audit.md"]
+    assert "## Unused Files" in sections["dead-code.md"]
+    assert "## Covered File Samples" in sections["test-coverage.md"]
+    assert "## Cycles" in sections["circular-dependencies.md"]
     assert "Read order:" in sections["llms.txt"]
     assert "index.md - bundle overview" in sections["llms.txt"]
+    assert "workflow.md - how to use `.graph.*` sidecars" in sections["llms.txt"]
 
 
 def test_write_docs_bundle_returns_stable_manifest(tmp_path):
