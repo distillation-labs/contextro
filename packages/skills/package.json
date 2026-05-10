@@ -2,12 +2,8 @@
   "name": "@contextro/skills",
   "version": "0.1.0",
   "description": "Install Contextro agent skills into your project. Teaches AI coding agents how to use Contextro MCP for codebase discovery, search, and navigation.",
-  "license": "MIT",
-  "author": "Contextro <hello@contextro.dev>",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/contextro/skills.git"
-  },
+  "license": "UNLICENSED",
+  "author": "Distillation Labs",
   "keywords": [
     "contextro",
     "mcp",
