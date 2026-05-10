@@ -1,0 +1,115 @@
+{
+  "paper": {
+    "source": "docs/publication/contextro-paper.html",
+    "output": "docs/publication/contextro-paper.pdf",
+    "format": "html-to-pdf"
+  },
+  "artifacts": [
+    {
+      "id": "paired-study-tasks",
+      "file": "docs/publication/paired-study-tasks.json",
+      "caption": "Sanitized machine-readable full 60-task paired-study inventory"
+    },
+    {
+      "id": "paired-study-comparable-tasks",
+      "file": "docs/publication/paired-study-comparable-tasks.json",
+      "caption": "Sanitized machine-readable 39-task comparable subset"
+    },
+    {
+      "id": "paired-study-rerun-summary",
+      "file": "docs/publication/paired-study-rerun-summary.json",
+      "caption": "Fresh 60-task paired-study rerun summary"
+    },
+    {
+      "id": "paired-study-rerun-config",
+      "file": "docs/publication/paired-study-rerun-config.json",
+      "caption": "Fresh paired-study rerun aggregate configuration"
+    },
+    {
+      "id": "paired-study-subset-robustness",
+      "file": "docs/publication/paired-study-subset-robustness.json",
+      "caption": "Deterministic 100-subset robustness analysis"
+    },
+    {
+      "id": "open-token-benchmark",
+      "file": "docs/publication/open-token-benchmark.json",
+      "caption": "Fresh public token-efficiency benchmark"
+    },
+    {
+      "id": "open-retrieval-quality",
+      "file": "docs/publication/open-retrieval-quality.json",
+      "caption": "Fresh public retrieval-quality benchmark"
+    },
+    {
+      "id": "public-proxy-repo",
+      "file": "docs/publication/public_proxy_repo",
+      "caption": "Tracked 1,179-file redistributable proxy repository for supplemental public reruns"
+    },
+    {
+      "id": "public-proxy-comparable-tasks",
+      "file": "docs/publication/public-proxy-comparable-tasks.json",
+      "caption": "Machine-readable 39-task public proxy discovery suite"
+    },
+    {
+      "id": "public-proxy-edit-tasks",
+      "file": "docs/publication/public-proxy-edit-tasks.json",
+      "caption": "Machine-readable 8-task deterministic discovery-plus-edit suite"
+    },
+    {
+      "id": "public-proxy-strong-baseline",
+      "file": "docs/publication/public-proxy-strong-baseline.json",
+      "caption": "Stronger local-tools versus Contextro rerun on the public proxy repository"
+    },
+    {
+      "id": "edit-correctness-benchmark",
+      "file": "docs/publication/edit-correctness-benchmark.json",
+      "caption": "Deterministic discovery-plus-edit correctness benchmark results"
+    },
+    {
+      "id": "contextro-tool-api-schemas",
+      "file": "docs/publication/contextro-tool-api-schemas.json",
+      "caption": "Exact request/response schemas and example payloads for 30 tools"
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-1",
+      "file": "docs/publication/figures/contextro-system-overview.svg",
+      "caption": "System overview"
+    },
+    {
+      "id": "fig-2",
+      "file": "docs/publication/figures/contextro-study-design.svg",
+      "caption": "Study design"
+    },
+    {
+      "id": "fig-3",
+      "file": "docs/blog/assets/01_headline_metrics.svg",
+      "caption": "Headline outcomes"
+    },
+    {
+      "id": "fig-4",
+      "file": "docs/blog/assets/02_token_by_category.svg",
+      "caption": "Results by category"
+    },
+    {
+      "id": "fig-5",
+      "file": "docs/blog/assets/06_autoresearch_loop.png",
+      "caption": "Iterative optimization loop"
+    }
+  ],
+  "social": {
+    "twitter": {
+      "copy": "docs/publication/social/twitter-thread.txt",
+      "image": "docs/publication/social/contextro-social-hero.png"
+    },
+    "linkedin": {
+      "copy": "docs/publication/social/linkedin-post.txt",
+      "image": "docs/publication/social/contextro-linkedin-card.png"
+    },
+    "bluesky": {
+      "copy": "docs/publication/social/bluesky-post.txt",
+      "image": "docs/publication/social/contextro-social-hero.png"
+    }
+  }
+}
