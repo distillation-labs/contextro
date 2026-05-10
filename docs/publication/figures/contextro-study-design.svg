@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 640" font-family="Georgia, 'Times New Roman', serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#444444"/>
+    </marker>
+  </defs>
+
+  <rect width="1100" height="640" fill="#ffffff"/>
+  <text x="550" y="42" text-anchor="middle" font-size="24" font-weight="700" fill="#111111">Paired Evaluation Design</text>
+  <text x="550" y="66" text-anchor="middle" font-size="13" fill="#555555">The same task set is run through both pipelines on the same repository</text>
+
+  <rect x="350" y="110" width="400" height="92" rx="4" fill="#ffffff" stroke="#111111" stroke-width="1.2" filter="url(#shadow)"/>
+  <text x="550" y="146" text-anchor="middle" font-size="18" font-weight="700" fill="#111111">Shared task set</text>
+  <text x="550" y="170" text-anchor="middle" font-size="12" fill="#555555">60 tasks, same repository, same ordering, same tokenizer</text>
+
+  <line x1="470" y1="202" x2="255" y2="280" stroke="#444444" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="630" y1="202" x2="845" y2="280" stroke="#444444" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <rect x="90" y="282" width="330" height="128" rx="4" fill="#ffffff" stroke="#444444" filter="url(#shadow)"/>
+  <text x="255" y="322" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">Grep-based pipeline</text>
+  <text x="255" y="350" text-anchor="middle" font-size="12" fill="#555555">grep + file reads</text>
+  <text x="255" y="372" text-anchor="middle" font-size="12" fill="#555555">manual file-by-file discovery</text>
+
+  <rect x="680" y="282" width="330" height="128" rx="4" fill="#ffffff" stroke="#444444" filter="url(#shadow)"/>
+  <text x="845" y="322" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">Contextro pipeline</text>
+  <text x="845" y="350" text-anchor="middle" font-size="12" fill="#555555">Contextro MCP tools</text>
+  <text x="845" y="372" text-anchor="middle" font-size="12" fill="#555555">symbol, graph, impact, search, history, memory</text>
+
+  <line x1="255" y1="410" x2="255" y2="474" stroke="#444444" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="845" y1="410" x2="845" y2="474" stroke="#444444" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <rect x="70" y="476" width="370" height="104" rx="4" fill="#ffffff" stroke="#777777" filter="url(#shadow)"/>
+  <text x="255" y="514" text-anchor="middle" font-size="18" font-weight="700" fill="#111111">Grep-based outcome</text>
+  <text x="255" y="540" text-anchor="middle" font-size="12" fill="#555555">328,272 tokens total</text>
+  <text x="255" y="562" text-anchor="middle" font-size="12" fill="#555555">448.35 ms median latency</text>
+
+  <rect x="660" y="476" width="370" height="104" rx="4" fill="#ffffff" stroke="#777777" filter="url(#shadow)"/>
+  <text x="845" y="514" text-anchor="middle" font-size="18" font-weight="700" fill="#111111">Contextro outcome</text>
+  <text x="845" y="540" text-anchor="middle" font-size="12" fill="#555555">14,407 tokens total</text>
+  <text x="845" y="562" text-anchor="middle" font-size="12" fill="#555555">5.21 ms median latency</text>
+
+  <rect x="450" y="500" width="200" height="64" rx="4" fill="#ffffff" stroke="#111111" stroke-width="1.1" filter="url(#shadow)"/>
+  <text x="550" y="528" text-anchor="middle" font-size="18" font-weight="700" fill="#111111">95.6% reduction</text>
+  <text x="550" y="550" text-anchor="middle" font-size="12" fill="#555555">86x faster median discovery</text>
+</svg>
