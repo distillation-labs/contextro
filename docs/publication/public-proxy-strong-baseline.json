@@ -1,0 +1,1348 @@
+{
+  "tasks": 39,
+  "tokenizer": {
+    "library": "tiktoken",
+    "encoding": "cl100k_base"
+  },
+  "arms": {
+    "stronger_local": {
+      "completed": 39,
+      "successful": 39,
+      "success_rate": 1.0,
+      "tokens": {
+        "count": 39,
+        "sum": 13400,
+        "mean": 343.59,
+        "median": 338,
+        "p95": 656
+      },
+      "latency_ms": {
+        "count": 39,
+        "sum": 1435.87,
+        "mean": 36.82,
+        "median": 36.82,
+        "p95": 48.92
+      },
+      "tool_calls": {
+        "count": 39,
+        "sum": 115,
+        "mean": 2.95,
+        "median": 3,
+        "p95": 5
+      },
+      "files_read": {
+        "count": 39,
+        "sum": 76,
+        "mean": 1.95,
+        "median": 2,
+        "p95": 4
+      }
+    },
+    "contextro": {
+      "completed": 39,
+      "successful": 39,
+      "success_rate": 1.0,
+      "tokens": {
+        "count": 39,
+        "sum": 4141,
+        "mean": 106.18,
+        "median": 104,
+        "p95": 237
+      },
+      "latency_ms": {
+        "count": 39,
+        "sum": 346.83,
+        "mean": 8.89,
+        "median": 1.94,
+        "p95": 13.87
+      },
+      "tool_calls": {
+        "count": 39,
+        "sum": 39,
+        "mean": 1.0,
+        "median": 1,
+        "p95": 1
+      },
+      "files_read": {
+        "count": 39,
+        "sum": 0,
+        "mean": 0.0,
+        "median": 0,
+        "p95": 0
+      }
+    }
+  },
+  "overall_token_reduction_pct": 69.1,
+  "by_category": {
+    "caller_tracing": {
+      "tasks": 6,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 2507,
+      "contextro_tokens": 254,
+      "token_reduction_pct": 89.9
+    },
+    "code_tool": {
+      "tasks": 3,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 456,
+      "contextro_tokens": 263,
+      "token_reduction_pct": 42.3
+    },
+    "code_understanding": {
+      "tasks": 6,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 2408,
+      "contextro_tokens": 573,
+      "token_reduction_pct": 76.2
+    },
+    "focus": {
+      "tasks": 2,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 370,
+      "contextro_tokens": 527,
+      "token_reduction_pct": -42.4
+    },
+    "git_history": {
+      "tasks": 2,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 32,
+      "contextro_tokens": 288,
+      "token_reduction_pct": -800.0
+    },
+    "impact_analysis": {
+      "tasks": 4,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 1687,
+      "contextro_tokens": 623,
+      "token_reduction_pct": 63.1
+    },
+    "semantic_search": {
+      "tasks": 8,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 2734,
+      "contextro_tokens": 1193,
+      "token_reduction_pct": 56.4
+    },
+    "symbol_discovery": {
+      "tasks": 8,
+      "stronger_local_success_rate": 1.0,
+      "contextro_success_rate": 1.0,
+      "stronger_local_tokens": 3206,
+      "contextro_tokens": 420,
+      "token_reduction_pct": 86.9
+    }
+  },
+  "results": [
+    {
+      "task_id": "sym_01",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 118.14,
+      "tokens_estimate": 350,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/catalog/src/catalog/profile_projector.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_01",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 7.18,
+      "tokens_estimate": 57,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/catalog/src/catalog/profile_projector.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_02",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 37.46,
+      "tokens_estimate": 414,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/notifications/src/notifications/digest_scheduler.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_02",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.59,
+      "tokens_estimate": 56,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/notifications/src/notifications/digest_scheduler.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_03",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.69,
+      "tokens_estimate": 338,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/partners/src/partners/aliases.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_03",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.75,
+      "tokens_estimate": 46,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/aliases.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_04",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 35.68,
+      "tokens_estimate": 300,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/search/src/search/projections.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_04",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.69,
+      "tokens_estimate": 53,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/search/src/search/projections.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_05",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 37.31,
+      "tokens_estimate": 270,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_05",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.11,
+      "tokens_estimate": 53,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_06",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.3,
+      "tokens_estimate": 436,
+      "tool_calls": 4,
+      "files_read": 3,
+      "evidence": [
+        "packages/notifications/src/notifications/preferences.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_06",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.09,
+      "tokens_estimate": 47,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/notifications/src/notifications/preferences.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_07",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 35.49,
+      "tokens_estimate": 375,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/experiments/src/experiments/rollouts.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_07",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.47,
+      "tokens_estimate": 50,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/experiments/src/experiments/rollouts.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_08",
+      "arm": "stronger_local",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.86,
+      "tokens_estimate": 723,
+      "tool_calls": 5,
+      "files_read": 4,
+      "evidence": [
+        "packages/analytics/src/analytics/reporter.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "sym_08",
+      "arm": "contextro",
+      "category": "symbol_discovery",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.18,
+      "tokens_estimate": 58,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/analytics/src/analytics/reporter.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_01",
+      "arm": "stronger_local",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.59,
+      "tokens_estimate": 278,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "apps/worker/src/worker/search_projection.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_01",
+      "arm": "contextro",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 0.92,
+      "tokens_estimate": 21,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "apps/worker/src/worker/search_projection.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_02",
+      "arm": "stronger_local",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.92,
+      "tokens_estimate": 391,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_02",
+      "arm": "contextro",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 0.93,
+      "tokens_estimate": 25,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_03",
+      "arm": "stronger_local",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.82,
+      "tokens_estimate": 317,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_03",
+      "arm": "contextro",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.05,
+      "tokens_estimate": 23,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_04",
+      "arm": "stronger_local",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.99,
+      "tokens_estimate": 656,
+      "tool_calls": 5,
+      "files_read": 4,
+      "evidence": [
+        "apps/worker/src/worker/audit_fanout.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_04",
+      "arm": "contextro",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.13,
+      "tokens_estimate": 61,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "apps/worker/src/worker/audit_fanout.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_05",
+      "arm": "stronger_local",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 35.99,
+      "tokens_estimate": 426,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "build_actor_context",
+        "load_partner_profile"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_05",
+      "arm": "contextro",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.11,
+      "tokens_estimate": 65,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "build_actor_context",
+        "load_partner_profile"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_06",
+      "arm": "stronger_local",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.35,
+      "tokens_estimate": 439,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "schedule_digest_delivery",
+        "build_invoice_reminder_message"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "call_06",
+      "arm": "contextro",
+      "category": "caller_tracing",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.13,
+      "tokens_estimate": 59,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "schedule_digest_delivery",
+        "build_invoice_reminder_message"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_01",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.49,
+      "tokens_estimate": 354,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_01",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 13.87,
+      "tokens_estimate": 160,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_02",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 37.31,
+      "tokens_estimate": 240,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_02",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 8.11,
+      "tokens_estimate": 147,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_03",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 37.02,
+      "tokens_estimate": 580,
+      "tool_calls": 4,
+      "files_read": 3,
+      "evidence": [
+        "packages/notifications/src/notifications/preferences.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_03",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 6.24,
+      "tokens_estimate": 143,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/notifications/src/notifications/preferences.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_04",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 39.94,
+      "tokens_estimate": 113,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "packages/partners/src/partners/aliases.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_04",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 6.58,
+      "tokens_estimate": 147,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/aliases.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_05",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 38.09,
+      "tokens_estimate": 291,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/search/src/search/projections.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_05",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 8.34,
+      "tokens_estimate": 115,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/search/src/search/projections.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_06",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 39.65,
+      "tokens_estimate": 211,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "packages/search/src/search/ranking.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_06",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 6.34,
+      "tokens_estimate": 165,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/search/src/search/ranking.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_07",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 34.97,
+      "tokens_estimate": 443,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/experiments/src/experiments/rollouts.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_07",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 6.23,
+      "tokens_estimate": 153,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/experiments/src/experiments/rollouts.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_08",
+      "arm": "stronger_local",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 34.95,
+      "tokens_estimate": 502,
+      "tool_calls": 4,
+      "files_read": 3,
+      "evidence": [
+        "packages/shared/src/shared/serializers.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "search_08",
+      "arm": "contextro",
+      "category": "semantic_search",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 6.25,
+      "tokens_estimate": 163,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/shared/src/shared/serializers.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_01",
+      "arm": "stronger_local",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 38.85,
+      "tokens_estimate": 350,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/catalog/src/catalog/profile_projector.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_01",
+      "arm": "contextro",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 5.08,
+      "tokens_estimate": 79,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/catalog/src/catalog/profile_projector.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_02",
+      "arm": "stronger_local",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 36.29,
+      "tokens_estimate": 426,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_02",
+      "arm": "contextro",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 4.35,
+      "tokens_estimate": 123,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_03",
+      "arm": "stronger_local",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 41.95,
+      "tokens_estimate": 318,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/workflows/src/workflows/retry_policies.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_03",
+      "arm": "contextro",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 4.38,
+      "tokens_estimate": 63,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/workflows/src/workflows/retry_policies.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_04",
+      "arm": "stronger_local",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 35.67,
+      "tokens_estimate": 439,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_04",
+      "arm": "contextro",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 4.16,
+      "tokens_estimate": 126,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/billing/src/billing/invoice_reminders.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_05",
+      "arm": "stronger_local",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 37.02,
+      "tokens_estimate": 300,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/search/src/search/projections.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_05",
+      "arm": "contextro",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 4.25,
+      "tokens_estimate": 78,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/search/src/search/projections.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_06",
+      "arm": "stronger_local",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 49.34,
+      "tokens_estimate": 575,
+      "tool_calls": 4,
+      "files_read": 3,
+      "evidence": [
+        "packages/auth/src/auth/audit_bridge.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "explain_06",
+      "arm": "contextro",
+      "category": "code_understanding",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 4.29,
+      "tokens_estimate": 104,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/auth/src/auth/audit_bridge.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_01",
+      "arm": "stronger_local",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 38.25,
+      "tokens_estimate": 317,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_01",
+      "arm": "contextro",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 0.99,
+      "tokens_estimate": 110,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_02",
+      "arm": "stronger_local",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 39.87,
+      "tokens_estimate": 396,
+      "tool_calls": 4,
+      "files_read": 3,
+      "evidence": [
+        "apps/worker/src/worker/invoice_digests.py",
+        "apps/console/src/console/preferences_view.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_02",
+      "arm": "contextro",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.33,
+      "tokens_estimate": 114,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "apps/worker/src/worker/invoice_digests.py",
+        "apps/console/src/console/preferences_view.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_03",
+      "arm": "stronger_local",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 48.92,
+      "tokens_estimate": 656,
+      "tool_calls": 5,
+      "files_read": 4,
+      "evidence": [
+        "apps/worker/src/worker/audit_fanout.py",
+        "packages/auth/src/auth/audit_bridge.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_03",
+      "arm": "contextro",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.28,
+      "tokens_estimate": 289,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "apps/worker/src/worker/audit_fanout.py",
+        "packages/auth/src/auth/audit_bridge.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_04",
+      "arm": "stronger_local",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 41.88,
+      "tokens_estimate": 318,
+      "tool_calls": 3,
+      "files_read": 2,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "impact_04",
+      "arm": "contextro",
+      "category": "impact_analysis",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.58,
+      "tokens_estimate": 110,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "git_01",
+      "arm": "stronger_local",
+      "category": "git_history",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 19.96,
+      "tokens_estimate": 16,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "Adjust digest delay handling for billing alerts"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "git_01",
+      "arm": "contextro",
+      "category": "git_history",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 17.56,
+      "tokens_estimate": 143,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "Adjust digest delay handling for billing alerts"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "git_02",
+      "arm": "stronger_local",
+      "category": "git_history",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 20.16,
+      "tokens_estimate": 16,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "Normalize partner alias keys before onboarding lookup"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "git_02",
+      "arm": "contextro",
+      "category": "git_history",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 4.8,
+      "tokens_estimate": 145,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "Normalize partner alias keys before onboarding lookup"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "code_01",
+      "arm": "stronger_local",
+      "category": "code_tool",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 23.45,
+      "tokens_estimate": 138,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "packages/catalog/src/catalog/profile_projector.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "code_01",
+      "arm": "contextro",
+      "category": "code_tool",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.54,
+      "tokens_estimate": 54,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/catalog/src/catalog/profile_projector.py"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "code_02",
+      "arm": "stronger_local",
+      "category": "code_tool",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 19.11,
+      "tokens_estimate": 157,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "schedule_digest_delivery"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "code_02",
+      "arm": "contextro",
+      "category": "code_tool",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.54,
+      "tokens_estimate": 74,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "schedule_digest_delivery"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "code_03",
+      "arm": "stronger_local",
+      "category": "code_tool",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 17.67,
+      "tokens_estimate": 161,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "invoice_digests",
+        "run_invoice_digest"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "code_03",
+      "arm": "contextro",
+      "category": "code_tool",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 1.94,
+      "tokens_estimate": 135,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "invoice_digests",
+        "run_invoice_digest"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "focus_01",
+      "arm": "stronger_local",
+      "category": "focus",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 17.43,
+      "tokens_estimate": 209,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py",
+        "normalize_partner_alias"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "focus_01",
+      "arm": "contextro",
+      "category": "focus",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 200.18,
+      "tokens_estimate": 290,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "packages/partners/src/partners/onboarding.py",
+        "normalize_partner_alias"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "focus_02",
+      "arm": "stronger_local",
+      "category": "focus",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 18.04,
+      "tokens_estimate": 161,
+      "tool_calls": 2,
+      "files_read": 1,
+      "evidence": [
+        "apps/worker/src/worker/invoice_digests.py",
+        "queue_invoice_reminder_job"
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "focus_02",
+      "arm": "contextro",
+      "category": "focus",
+      "completed": true,
+      "success": true,
+      "wall_clock_ms": 2.29,
+      "tokens_estimate": 237,
+      "tool_calls": 1,
+      "files_read": 0,
+      "evidence": [
+        "apps/worker/src/worker/invoice_digests.py",
+        "queue_invoice_reminder_job"
+      ],
+      "error": ""
+    }
+  ],
+  "proxy_repo": {
+    "tracked_files": 1180,
+    "working_files": 2426,
+    "python_files": 1177,
+    "commit_messages": [
+      "Initial public proxy benchmark repository",
+      "Adjust digest delay handling for billing alerts",
+      "Normalize partner alias keys before onboarding lookup"
+    ],
+    "index": {
+      "total_files": 1177,
+      "total_symbols": 1656,
+      "total_chunks": 3183,
+      "status": "done",
+      "graph_files": 693,
+      "branch": "main",
+      "commits_indexed": 3,
+      "realtime_watching": true
+    }
+  }
+}

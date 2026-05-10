@@ -25,7 +25,7 @@
   <text x="690" y="286" text-anchor="middle" font-size="13" fill="#6b7280">during discovery workflows</text>
 
   <text x="940" y="218" text-anchor="middle" font-size="20" font-weight="600" fill="#4b5563">Toolset</text>
-  <text x="940" y="260" text-anchor="middle" font-size="42" font-weight="700" fill="#7c3aed">35 tools</text>
+  <text x="940" y="260" text-anchor="middle" font-size="42" font-weight="700" fill="#7c3aed">30 tools</text>
   <text x="940" y="286" text-anchor="middle" font-size="13" fill="#6b7280">semantic search, graph traversal, memory</text>
 
   <line x1="120" y1="340" x2="1080" y2="340" stroke="#e5e7eb" stroke-width="1"/>
