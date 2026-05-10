@@ -14,7 +14,7 @@ metadata:
   version: "1.0.0"
   category: mcp-development
   tags: [python, typing, refactor, dataclasses, exceptions, interfaces, maintainability]
-license: MIT
+license: Proprietary
 ---
 
 # Python Systems Engineer
