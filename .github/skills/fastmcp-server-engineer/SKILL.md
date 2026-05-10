@@ -14,7 +14,7 @@ metadata:
   version: "1.0.0"
   category: mcp-development
   tags: [fastmcp, server, tools, validation, annotations, toolresult, middleware]
-license: MIT
+license: Proprietary
 ---
 
 # FastMCP Server Engineer
