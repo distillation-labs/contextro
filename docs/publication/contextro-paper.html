@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contextro: Token-Efficient Repository Discovery for MCP-Based Coding Workflows</title>
+  <style>
+    :root {
+      --page-bg: #f3f0ea;
+      --paper-bg: #ffffff;
+      --ink: #111111;
+      --muted: #555555;
+      --rule: #444444;
+      --light-rule: #cfcfcf;
+      --accent: #1f3a5f;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    @page {
+      size: 8.5in 11in;
+      margin: 1in;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--page-bg);
+      color: var(--ink);
+    }
+
+    body {
+      font-family: Georgia, "Times New Roman", Times, serif;
+      font-size: 11pt;
+      line-height: 1.68;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .sheet,
+    .manuscript {
+      width: 8.5in;
+      margin: 16px auto;
+      background: var(--paper-bg);
+      box-shadow: var(--shadow);
+      padding: 0.95in 1in;
+    }
+
+    .sheet {
+      min-height: 11in;
+      break-after: page;
+      page-break-after: always;
+    }
+
+    .manuscript {
+      break-after: page;
+      page-break-after: always;
+    }
+
+    .title-page {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      text-align: center;
+      padding-top: 1.45in;
+    }
+
+    .report-type {
+      font-size: 11pt;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+      color: var(--muted);
+    }
+
+    .title-page h1 {
+      margin: 0 auto;
+      max-width: 6.1in;
+      font-size: 26pt;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+
+    .title-subtitle {
+      margin: 18px auto 0;
+      max-width: 5.8in;
+      font-size: 13.2pt;
+      line-height: 1.55;
+      color: #333333;
+    }
+
+    .title-meta {
+      margin-top: 40px;
+      font-size: 11pt;
+      line-height: 1.75;
+      color: var(--muted);
+    }
+
+    .title-note {
+      max-width: 6in;
+      margin: 34px auto 0;
+      padding-top: 14px;
+      border-top: 1px solid var(--light-rule);
+      font-size: 10pt;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .cover-page {
+      max-width: 6.5in;
+      padding-top: 0.45in;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .paper-title {
+      margin: 0 auto;
+      max-width: 6.2in;
+      text-align: center;
+      font-size: 22pt;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+
+    .paper-subtitle {
+      margin: 10px auto 0;
+      max-width: 5.9in;
+      text-align: center;
+      font-size: 12.4pt;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .paper-authors {
+      margin: 18px 0 26px;
+      text-align: center;
+      font-size: 10.8pt;
+      color: var(--muted);
+    }
+
+    .front-page {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      max-width: 6.4in;
+    }
+
+    .abstract-page {
+      max-width: 6.4in;
+    }
+
+    .front-title {
+      margin: 0 0 18px;
+      text-align: center;
+      font-size: 11pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .front-page p {
+      margin: 0 0 12px;
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    .front-page p + p {
+      text-indent: 1.25em;
+    }
+
+    .abstract-label,
+    .keywords-label {
+      font-weight: 700;
+    }
+
+    .keywords {
+      margin-top: 16px;
+      font-size: 10.5pt;
+      color: var(--muted);
+    }
+
+    .toc,
+    .front-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .toc li,
+    .front-list li {
+      margin: 0 0 10px;
+      line-height: 1.55;
+    }
+
+    .toc .sub,
+    .front-list .sub {
+      margin-left: 20px;
+      font-size: 11pt;
+    }
+
+    .manuscript h2,
+    .manuscript h3 {
+      margin: 0;
+      font-weight: 700;
+      line-height: 1.3;
+      page-break-after: avoid;
+    }
+
+    .manuscript h2 {
+      margin-top: 34px;
+      margin-bottom: 12px;
+      font-size: 14.5pt;
+      border-bottom: 1px solid var(--light-rule);
+      padding-bottom: 6px;
+    }
+
+    .manuscript h3 {
+      margin-top: 22px;
+      margin-bottom: 8px;
+      font-size: 11.2pt;
+    }
+
+    .manuscript p {
+      margin: 0 0 11px;
+      text-align: justify;
+      hyphens: auto;
+    }
+
+    .manuscript p + p {
+      text-indent: 1.25em;
+    }
+
+    .manuscript ul,
+    .manuscript ol {
+      margin: 0 0 14px 22px;
+      padding: 0;
+    }
+
+    .manuscript li {
+      margin-bottom: 8px;
+    }
+
+    .figure {
+      margin: 22px 0 20px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .figure img {
+      width: 100%;
+      display: block;
+      height: auto;
+      border: 1px solid var(--light-rule);
+      background: #ffffff;
+    }
+
+    figcaption,
+    .table-caption {
+      margin-top: 8px;
+      font-size: 9.8pt;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .table-caption {
+      margin-bottom: 5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 18px;
+      font-size: 10.15pt;
+      line-height: 1.42;
+      border-top: 1.5px solid var(--rule);
+      border-bottom: 1.5px solid var(--rule);
+    }
+
+    tbody tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .table-compact td,
+    .table-compact th {
+      padding: 5px 8px;
+      font-size: 9.65pt;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 7px 8px;
+      border-bottom: 1px solid var(--rule);
+      font-weight: 700;
+      vertical-align: bottom;
+      background: #f7f5f2;
+    }
+
+    tbody td {
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+
+    tbody tr + tr td {
+      border-top: 1px solid #e6e6e6;
+    }
+
+    .num {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    code,
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 10pt;
+    }
+
+    pre {
+      margin: 12px 0 16px;
+      padding: 11px 13px;
+      border: 1px solid var(--light-rule);
+      background: #f8f7f5;
+      line-height: 1.45;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 9.35pt;
+    }
+
+    .index-grid {
+      column-count: 2;
+      column-gap: 28px;
+      font-size: 10.75pt;
+      line-height: 1.55;
+    }
+
+    .index-grid p {
+      margin: 0 0 10px;
+      text-indent: 0;
+      text-align: left;
+      break-inside: avoid;
+    }
+
+    .small-note {
+      font-size: 10pt;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .appendix-note {
+      margin: 0 0 12px;
+      font-size: 10.2pt;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .artifact-summary td:first-child {
+      width: 27%;
+      font-weight: 700;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      .sheet,
+      .manuscript {
+        margin: 0;
+        box-shadow: none;
+        width: auto;
+        padding: 0.3in 0.45in;
+      }
+
+      .cover-page,
+      .front-page,
+      .abstract-page {
+        max-width: none;
+      }
+
+      .paper-title,
+      .paper-subtitle,
+      .title-note {
+        max-width: none;
+      }
+
+      .cover-page {
+        padding-top: 0.35in;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="sheet cover-page" id="front-page">
+    <h1 class="paper-title">Contextro: Token-Efficient Repository Discovery for MCP-Based Coding Workflows</h1>
+    <div class="paper-subtitle">Paired evaluation on an 8,496-file production monorepo</div>
+    <div class="paper-authors">Distillation Labs</div>
+    <h2 class="front-title">Abstract</h2>
+    <p>Repository discovery is a major source of token overhead in MCP-based coding workflows. This report evaluates Contextro, a proprietary local code-intelligence server for repository search, symbol navigation, structural analysis, and persistent memory, using a 60-task paired study on an 8,496-file production TypeScript monorepo. Relative to a lexical baseline based on grep plus bounded file reads, the Contextro pipeline reduced total token consumption from 328,272 to 14,407, reduced median latency from 448.35 ms to 5.21 ms, and eliminated file reads. On the directly comparable 39-task subset, token consumption fell to 6,638, a 98.0% reduction; across 100 deterministic bootstrap subsets, reduction remained between 97.24% and 98.48%. Public reruns on the open <code>src/</code> tree reproduced low-token and high-retrieval-quality behavior. These results describe discovery efficiency rather than end-to-end coding correctness.</p>
+    <p class="keywords"><span class="keywords-label">Keywords:</span> Model Context Protocol, repository discovery, code intelligence, semantic retrieval, structural search, technical evaluation</p>
+  </section>
+
+  <article class="manuscript">
+    <section id="introduction">
+      <h2>1. Introduction</h2>
+      <p>Repository discovery remains a costly phase in MCP-based coding workflows. Before a client can act on the correct symbol, file, or interface, it typically executes multiple broad searches, opens several files, and accumulates context that is only partially relevant to the task. In the paired study reported here, a representative lexical workflow consumed 5,524 tokens and took 1.11 s, whereas the corresponding indexed <code>find_symbol</code> call returned in 5.66 ms with 65 tokens.</p>
+      <p>Contextro addresses this inefficiency by replacing file-by-file exploration with structured repository access. It exposes repository search, symbol navigation, relationship tracing, impact analysis, structural search, history lookup, and persistent memory through a local MCP server. The operating premise is straightforward: when discovery tasks can be answered directly, the client does not need to spend context budget reconstructing repository structure from raw files.</p>
+      <p>This report makes three bounded claims. First, a local code-intelligence layer can materially reduce the token cost of repository discovery. Second, the resulting interface can deliver low latency on a production-scale repository for common lookup tasks. Third, the effect remains visible under stricter analysis that separates directly comparable discovery tasks from MCP-native capabilities with no lexical analogue.</p>
+    </section>
+
+    <section id="related-work">
+      <h2>2. Related Work</h2>
+      <p>This work sits within a broader literature on contextual retrieval, hybrid search, and prompt-budget management. Prior work from Anthropic, NVIDIA, Liu et al., and OpenAI argues that retrieval systems perform best when they combine multiple signals, rank relevant evidence near the top of the context window, and avoid transmitting unnecessary text. The present report applies that general logic to repository discovery, where the cost of locating the right code often dominates the cost of reasoning over it.</p>
+    </section>
+
+    <section id="system-design">
+      <h2>3. System Design</h2>
+      <p>Contextro operates as a local MCP service positioned between the coding client and the repository. Rather than requiring exploratory file reads, it returns structured answers to discovery questions, including identifiers, locations, relationships, and compact supporting excerpts. The objective is to shift discovery from file traversal toward targeted retrieval.</p>
+
+      <figure class="figure" id="fig-1">
+        <img src="figures/contextro-system-overview.svg" alt="System overview showing an MCP client connected through the Model Context Protocol to Contextro and its local engines." />
+        <figcaption><strong>Figure 1.</strong> System overview. Contextro exposes a unified local interface for repository search, structural analysis, history lookup, and memory.</figcaption>
+      </figure>
+
+      <h3 id="system-components">3.1. System Components</h3>
+      <div class="table-caption" id="table-1"><strong>Table 1.</strong> Capability map.</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Representative tools</th>
+            <th>Returned information</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Search by meaning</td><td><code>search</code></td><td>Exact snippet, file, and line</td></tr>
+          <tr><td>Find a symbol</td><td><code>find_symbol</code></td><td>Definition location and caller count</td></tr>
+          <tr><td>Trace relationships</td><td><code>find_callers</code>, <code>find_callees</code>, <code>explain</code></td><td>Callers, callees, and local context</td></tr>
+          <tr><td>Assess blast radius</td><td><code>impact</code></td><td>Transitive impact set</td></tr>
+          <tr><td>Search structure</td><td><code>code(pattern_search, ...)</code></td><td>AST-level matches</td></tr>
+          <tr><td>Analyze reachability</td><td><code>dead_code</code>, <code>circular_dependencies</code></td><td>Structural analysis results</td></tr>
+          <tr><td>Search history</td><td><code>commit_search</code></td><td>Semantically relevant commits</td></tr>
+          <tr><td>Persist context</td><td><code>remember</code>, <code>recall</code></td><td>Durable memory across sessions</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="retrieval-design">3.2. Retrieval and Response Design</h3>
+      <p>The retrieval layer combines semantic, lexical, and structural signals. Semantic retrieval supports concept-level matching, lexical retrieval supports exact identifiers and strings, and graph-based traversal supports questions about callers, callees, and impact. Returned material is filtered and abbreviated so that the interface favors direct answers over large context transfers.</p>
+      <p>The implementation is local and single-process. It integrates vector indexing, lexical retrieval, structural analysis, syntax-aware search, history lookup, and memory in one service boundary. That integration matters operationally because it eliminates the need to orchestrate several external systems during interactive discovery.</p>
+    </section>
+
+    <section id="methodology">
+      <h2>4. Methodology</h2>
+      <p>The evaluation uses a paired two-condition design on a single production repository. Each task is executed once with a lexical discovery workflow and once with the Contextro interface. The full task inventory contains 60 tasks across 16 categories. Among these, 39 tasks have direct lexical analogues and therefore support strict paired comparison; the remaining 21 tasks represent MCP-native capabilities with no meaningful file-centric baseline.</p>
+
+      <figure class="figure" id="fig-2">
+        <img src="figures/contextro-study-design.svg" alt="Study design showing one shared task set run through both a lexical baseline and the Contextro condition on the same repository." />
+        <figcaption><strong>Figure 2.</strong> Study design. The same task set is evaluated under both conditions on the same repository, preserving a paired comparison.</figcaption>
+      </figure>
+
+      <h3 id="study-design">4.1. Study Design</h3>
+      <p>The lexical baseline uses repository-wide grep plus bounded follow-up file inspection. For each directly comparable task, the baseline includes grep output and the contents of up to five matching files in the token estimate. The Contextro condition executes one MCP tool call against a pre-indexed repository state. Tasks without a meaningful lexical analogue are retained in the full inventory as MCP-native capabilities, but they are excluded from the directly comparable subset and from the bootstrap robustness analysis.</p>
+      <p>This design isolates discovery cost rather than downstream coding quality. It compares a file-centric lexical workflow with a structured retrieval interface under a fixed task inventory, shared repository, and common token accounting rule.</p>
+
+      <h3 id="repository-under-test">4.2. Repository Under Test</h3>
+      <div class="table-caption" id="table-2"><strong>Table 2.</strong> Repository under test.</div>
+      <table>
+        <thead>
+          <tr><th>Property</th><th>Value</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Repository</td><td>Private production TypeScript monorepo</td></tr>
+          <tr><td>Indexed files</td><td class="num">8,496 files in the private production monorepo</td></tr>
+          <tr><td>Languages</td><td>TypeScript and JavaScript</td></tr>
+          <tr><td>Task inventory</td><td>60 tasks across 16 categories</td></tr>
+          <tr><td>Directly comparable subset</td><td>39 tasks across 8 categories</td></tr>
+          <tr><td>MCP-native tasks</td><td>21 tasks without meaningful lexical analogues</td></tr>
+          <tr><td>Indexing observation</td><td>21.1 s full indexing time in the fresh rerun</td></tr>
+          <tr><td>Verification host</td><td>Apple M4, 16 GB RAM, macOS 26.4.1, Python 3.12.13</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="metrics-reporting">4.3. Metrics and Reporting</h3>
+      <div class="table-caption" id="table-3"><strong>Table 3.</strong> Metrics and reporting.</div>
+      <table>
+        <thead>
+          <tr><th>Measurement</th><th>Definition</th><th>Artifact</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Token estimate</td><td>Common tokenizer applied to baseline outputs and Contextro responses</td><td>Aggregate study summary and rerun summary</td></tr>
+          <tr><td>Latency</td><td>Wall-clock milliseconds measured around each task invocation</td><td>Aggregate study summary and rerun summary</td></tr>
+          <tr><td>Tool calls and files read</td><td>Count of baseline grep/read steps versus one MCP tool call</td><td>Aggregate study summary and rerun summary</td></tr>
+          <tr><td>Comparable subset</td><td>All tasks with a direct lexical analogue</td><td>Comparable-task catalog and subset robustness analysis</td></tr>
+          <tr><td>Robustness analysis</td><td>100 bootstrap task subsets of size 39 with replacement</td><td>Subset robustness analysis</td></tr>
+          <tr><td>Open benchmark verification</td><td>Public reruns on the open <code>src/</code> tree for token and retrieval checks</td><td>Public benchmark artifacts</td></tr>
+        </tbody>
+      </table>
+      <p>The study is deterministic rather than stochastic in the usual machine-learning sense, so reporting emphasizes medians, ranges, and subset robustness rather than significance testing. The bootstrap analysis is used as a sensitivity check on task composition, not as a population-level inference over repositories.</p>
+    </section>
+
+    <section id="results">
+      <h2>5. Results</h2>
+
+      <h3 id="headline-outcomes">5.1. Headline Outcomes</h3>
+      <p>Across the full 60-task inventory, total token consumption fell from 328,272 in the lexical baseline to 14,407 in the Contextro condition. Mean tokens per task fell from 5,471.2 to 240.1, median latency fell from 448.35 ms to 5.21 ms, and mean files read fell from 2.5 per task to 0. <strong>The lexical baseline models bounded file-centric discovery rather than a full autonomous agent policy. The reported gains therefore characterize discovery efficiency, not end-to-end coding correctness.</strong></p>
+      <p>The stricter comparison is the 39-task subset with direct lexical analogues. On that subset, token use fell to 6,638, a 98.0% reduction, while median latency fell from 498.89 ms to 4.89 ms and mean tool calls fell from 4.9 to 1.0. The gap between the 60-task and 39-task summaries reflects the presence of 21 MCP-native tasks that expose analysis surfaces absent from the lexical baseline.</p>
+
+      <figure class="figure" id="fig-3">
+        <img src="../blog/assets/01_headline_metrics.svg" alt="Bar chart comparing total tokens, latency, tool calls, and files read in the lexical baseline and the Contextro condition." />
+        <figcaption><strong>Figure 3.</strong> Headline outcomes from the paired study. The figure summarizes the full task inventory; the stricter directly comparable subset is reported separately in Table 4.</figcaption>
+      </figure>
+
+      <div class="table-caption" id="table-4"><strong>Table 4.</strong> Headline outcomes.</div>
+      <table>
+        <thead>
+          <tr><th>Analysis set</th><th class="num">Tasks</th><th class="num">MCP-native tasks</th><th class="num">Lexical tokens</th><th class="num">Contextro tokens</th><th>Token result</th><th>Median latency</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Full task inventory</td><td class="num">60</td><td class="num">21</td><td class="num">328,272</td><td class="num">14,407</td><td>95.6% reduction</td><td>448.35 ms → 5.21 ms</td></tr>
+          <tr><td>Directly comparable subset</td><td class="num">39</td><td class="num">0</td><td class="num">328,272</td><td class="num">6,638</td><td>98.0% reduction</td><td>498.89 ms → 4.89 ms</td></tr>
+          <tr><td>100 bootstrap subsets</td><td class="num">100 × 39</td><td class="num">0</td><td class="num">—</td><td class="num">—</td><td>median 97.87%<br>97.24%-98.48%</td><td>lexical 458.28-525.76 ms<br>Contextro 2.15-7.00 ms</td></tr>
+        </tbody>
+      </table>
+      <p>No bootstrap subset fell below 97.24% token reduction. The effect therefore remains stable across many task mixtures drawn from the directly comparable subset.</p>
+
+      <h3 id="results-by-category">5.2. Results by Category</h3>
+      <p>Table 5 reports the eight categories with direct lexical analogues. Semantic search and symbol discovery show the largest reductions at 98.8%. Caller tracing, impact analysis, code understanding, git history search, and the comparable portion of the <code>code</code> tool remain above 96%.</p>
+      <p>Tail latency is concentrated in a small number of heavier operations. The <code>focus</code> category is bimodal because one request returns in 4.81 ms while another deep file-context request takes 7.01 s. The comparable <code>code</code> category also contains a repository-wide <code>pattern_search</code> outlier at 11.22 s.</p>
+
+      <figure class="figure" id="fig-4">
+        <img src="../blog/assets/02_token_by_category.svg" alt="Token consumption by category for the lexical baseline and the Contextro condition." />
+        <figcaption><strong>Figure 4.</strong> Results by task category. The visualization focuses on discovery categories with direct lexical analogues.</figcaption>
+      </figure>
+
+      <div class="table-caption" id="table-5"><strong>Table 5.</strong> Results by category.</div>
+      <table>
+        <thead>
+          <tr><th>Category</th><th class="num">Comparable tasks</th><th class="num">Lexical tokens</th><th class="num">Contextro tokens</th><th>Reduction</th><th>Contextro latency</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Semantic search</td><td class="num">8</td><td class="num">96,366</td><td class="num">1,199</td><td>98.8%</td><td>131.53 ms median<br>95.19-138.31 ms</td></tr>
+          <tr><td>Symbol discovery</td><td class="num">8</td><td class="num">34,481</td><td class="num">413</td><td>98.8%</td><td>1.81 ms median<br>1.37-9.13 ms</td></tr>
+          <tr><td>Caller/callee tracing</td><td class="num">6</td><td class="num">25,915</td><td class="num">730</td><td>97.2%</td><td>1.46 ms median<br>0.92-4.89 ms</td></tr>
+          <tr><td>Impact analysis</td><td class="num">4</td><td class="num">16,225</td><td class="num">377</td><td>97.7%</td><td>0.93 ms median<br>0.90-3.68 ms</td></tr>
+          <tr><td>Code understanding</td><td class="num">6</td><td class="num">23,526</td><td class="num">944</td><td>96.0%</td><td>6.68 ms median<br>6.22-8.26 ms</td></tr>
+          <tr><td>Git history search</td><td class="num">2</td><td class="num">46,106</td><td class="num">1,117</td><td>97.6%</td><td>6.51 ms median<br>5.21-7.80 ms</td></tr>
+          <tr><td>Code tool (comparable slice)</td><td class="num">3</td><td class="num">51,459</td><td class="num">1,318</td><td>97.4%</td><td>1.92 ms median<br>0.97 ms-11.22 s</td></tr>
+          <tr><td>Focus / file context</td><td class="num">2</td><td class="num">34,194</td><td class="num">540</td><td>98.4%</td><td>3.51 s median<br>4.81 ms-7.01 s</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="tool-latency">5.3. Tool Latency</h3>
+      <p>Most lookup and graph operations remain in the low-millisecond range. The long tail is composed of a small number of deliberately heavier analyses rather than broad slowness. In the fresh rerun, <code>focus_01</code> took 7.01 s and repository-wide <code>code(pattern_search, ...)</code> took 11.22 s; both are preserved explicitly in Appendix C rather than absorbed into category means.</p>
+
+      <div class="table-caption" id="table-6"><strong>Table 6.</strong> Representative tool latencies.</div>
+      <table>
+        <thead>
+          <tr><th>Tool</th><th class="num">Fresh rerun latency</th><th>Role</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>health</code></td><td class="num">0.88 ms</td><td>Server status</td></tr>
+          <tr><td><code>status</code></td><td class="num">1.47 ms</td><td>Server status</td></tr>
+          <tr><td><code>find_callers</code></td><td class="num">1.97 ms median</td><td>Graph lookup</td></tr>
+          <tr><td><code>find_symbol</code></td><td class="num">1.81 ms median</td><td>Symbol lookup</td></tr>
+          <tr><td><code>impact</code></td><td class="num">0.93 ms median</td><td>Blast radius analysis</td></tr>
+          <tr><td><code>explain</code></td><td class="num">6.68 ms median</td><td>Local understanding</td></tr>
+          <tr><td><code>commit_search</code></td><td class="num">6.51 ms median</td><td>History search</td></tr>
+          <tr><td><code>overview</code></td><td class="num">93.24 ms</td><td>Project summary</td></tr>
+          <tr><td><code>search</code></td><td class="num">131.53 ms median</td><td>Hybrid retrieval</td></tr>
+          <tr><td><code>architecture</code></td><td class="num">436.75 ms</td><td>Deep structural summary</td></tr>
+          <tr><td><code>dead_code</code></td><td class="num">1,307.18 ms</td><td>Reachability analysis</td></tr>
+          <tr><td><code>code(pattern_search, ...)</code></td><td class="num">11.22 s</td><td>Repository-wide AST search outlier</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="iterative-optimization">5.4. Public Verification</h3>
+      <p>Public benchmark reruns on the open <code>src/</code> tree reproduce the low-token and high-retrieval-quality behavior reported in the paired study. These public checks do not substitute for the private monorepo evaluation, but they do provide an observable external reference for token output and retrieval quality on a redistributable codebase.</p>
+
+      <div class="table-caption" id="table-7"><strong>Table 7.</strong> Optimization and verification artifacts.</div>
+      <table>
+        <thead>
+          <tr><th>Artifact</th><th>Measurement</th><th>Result</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Historical workflow benchmark</td><td>16-call workflow token budget</td><td>2,552 → 1,043 total output tokens (-59.1%)</td><td>Historical tuning log</td></tr>
+          <tr><td>Historical indexing benchmark</td><td>Full index and no-change incremental reindex</td><td>279 s → 6.8 s full index; 22 ms no-change incremental</td><td>Historical tuning log</td></tr>
+          <tr><td>Public token rerun</td><td>16-call public workflow benchmark</td><td>1,286 total output tokens; 16 calls; 7.5% token reduction</td><td>Public benchmark artifact</td></tr>
+          <tr><td>Public retrieval rerun</td><td>20 query retrieval benchmark on <code>src/</code></td><td>Hybrid MRR 1.0, Recall@1 1.0, Recall@5 1.0, 169.2 avg tokens</td><td>Public benchmark artifact</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="discussion">
+      <h2>6. Discussion</h2>
+      <p>The most important interpretive point is that the result becomes stronger, not weaker, under the stricter directly comparable subset. The full 60-task inventory shows a 95.6% token reduction, while the 39-task subset shows a 98.0% reduction because it excludes MCP-native capabilities that have no lexical baseline. This separation clarifies the distinction between replacing file-centric discovery and adding entirely new analysis surfaces.</p>
+      <p>The bootstrap robustness analysis strengthens that interpretation. Across 100 deterministic task subsets, reduction never fell below 97.24% and the median remained 97.87%. These values do not establish universal generalization across repositories, but they do indicate that the result is not driven by a small number of unusually favorable tasks.</p>
+      <p>Latency should be interpreted similarly. Common lookup operations are effectively instantaneous, while a few repository-wide analyses remain expensive. The practical result is not uniform sub-10 ms performance; it is that routine discovery operations remain fast while deeper structural queries continue to return structured answers at substantially lower token cost than exploratory file reads.</p>
+    </section>
+
+    <section id="limitations">
+      <h2>7. Limitations</h2>
+      <p>The findings in this report are bounded. They describe repository discovery efficiency under a paired task protocol, not general-purpose coding quality under all workflows or repositories.</p>
+
+      <div class="table-caption" id="table-8"><strong>Table 8.</strong> Study limitations.</div>
+      <table>
+        <thead>
+          <tr><th>Area</th><th>Issue</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Paired-study codebase availability</td><td>The original 8,496-file monorepo is private and cannot be redistributed with the paper</td><td>Mitigated by shipping the harness, sanitized task inventory, rerun summary, and public benchmark reruns</td></tr>
+          <tr><td>Control baseline approximation</td><td>The lexical baseline models bounded file-centric discovery with grep plus up to five file reads, not a full autonomous agent policy</td><td>Interpret as a discovery-cost baseline rather than a universal baseline for agent quality; end-to-end correctness benchmark is future work</td></tr>
+          <tr><td>Tail latency</td><td><code>focus_01</code> and repository-wide <code>pattern_search</code> dominate the latency tail at 7.01 s and 11.22 s</td><td>Reported explicitly in Appendix C and excluded from any misleading latency simplification</td></tr>
+          <tr><td>Public proxy repository</td><td>The paired study corpus is a private monorepo; the public benchmark reruns use only the 78-file <code>src/</code> tree</td><td>A public proxy repository (≥1,000 files) for full rerun reproducibility is planned as future work</td></tr>
+          <tr><td>End-to-end correctness</td><td>The study measures discovery cost (tokens, latency, file reads), not downstream coding correctness</td><td>An end-to-end edit-task correctness benchmark is future work</td></tr>
+          <tr><td>Next.js App Router reachability</td><td><code>dead_code</code> flags live routes as unreachable</td><td>Known limitation</td></tr>
+          <tr><td>Duplicate symbol disambiguation</td><td>Multiple definitions with the same name can conflate callees</td><td>Under investigation</td></tr>
+          <tr><td>Complexity metrics</td><td><code>maintainability_index</code> reports 0 for TypeScript</td><td>Not yet implemented for TS</td></tr>
+        </tbody>
+      </table>
+
+      <p>The study evaluates one production TypeScript monorepo and focuses on discovery efficiency, latency, and file-read behavior. It does not report an end-to-end correctness benchmark for code changes, nor does it compare against stronger alternatives such as LSP-backed discovery or syntax-aware lexical tooling. The claims in this report should therefore be read as claims about discovery performance and interface quality.</p>
+    </section>
+
+    <section id="availability">
+      <h2>8. Availability and Reproducibility</h2>
+      <p>The public artifact package distinguishes between materials that can be rerun on public code and materials that remain conditional because the study corpus is private. It includes sanitized task catalogs, aggregate study summaries, subset robustness outputs, and public benchmark reruns. <strong>Contextro is a proprietary product of Distillation Labs and is not distributed as open-source software.</strong></p>
+
+      <h3>8.1. Artifact Package</h3>
+      <table class="artifact-summary">
+        <thead>
+          <tr><th>Artifact class</th><th>Public contents</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Task definitions</td><td>Sanitized machine-readable catalogs for the 60-task full inventory and the 39-task directly comparable subset</td></tr>
+          <tr><td>Aggregate study outputs</td><td>Archived and fresh paired-study summaries, plus the 100-subset robustness analysis</td></tr>
+          <tr><td>Public reruns</td><td>Token-efficiency and retrieval-quality reruns on the public <code>src/</code> tree</td></tr>
+          <tr><td>Evaluation harness</td><td>Scripts required to reproduce public benchmarks and to rerun the paired study where an equivalent private repository is available</td></tr>
+        </tbody>
+      </table>
+
+      <h3>8.2. Rerunnable Commands (Public Benchmarks)</h3>
+      <pre>pip install -e .[dev]
+
+python scripts/benchmark_token_efficiency.py
+python scripts/benchmark_retrieval_quality.py --path src --query-limit 20 --output docs/publication/open-retrieval-quality.json
+
+ruff check .
+pytest -v -m "not slow"</pre>
+
+      <h3>8.3. Conditional Paired-Study Rerun</h3>
+      <p>The full paired study requires access to the original private monorepo or to an adapted equivalent repository. The published catalogs preserve task counts, categories, and tool coverage without disclosing private repository identifiers. Where an equivalent repository is available locally, the rerun protocol is:</p>
+      <pre>python scripts/experiment_platform.py --output-dir docs/publication --export-task-catalogs-only
+python scripts/experiment_platform.py --codebase /path/to/private-monorepo --output-dir /secure/local-output
+python scripts/task_subset_robustness.py --results /secure/local-output/results.json --subsets 100 --output docs/publication/paired-study-subset-robustness.json</pre>
+
+      <h3>8.4. Verification Environment</h3>
+      <p>The reruns cited in this report were executed on Apple silicon hardware using macOS 26.4.1, an Apple M4 CPU, 16 GB RAM, and Python 3.12.13. The public benchmark harness supports Python 3.10-3.12.</p>
+    </section>
+
+    <section id="conclusion">
+      <h2>9. Conclusion</h2>
+      <p>Contextro demonstrates that a local code-intelligence layer can reduce the token and latency cost of repository discovery in MCP-based coding workflows. In the paired evaluation reported here, the full 60-task inventory reduced total tokens by 95.6%, while the stricter 39-task directly comparable subset reduced them by 98.0% and remained above 97.24% across 100 bootstrap task subsets. The primary conclusion is narrow but durable: structured repository access can materially outperform bounded file-centric discovery for repository search and navigation.</p>
+    </section>
+
+    <section id="references">
+      <h2>References</h2>
+      <ol>
+        <li>Anthropic. "Contextual Retrieval." 2024. https://www.anthropic.com/engineering/contextual-retrieval</li>
+        <li>Liu et al. "Lost in the Middle." 2023. https://arxiv.org/abs/2307.03172</li>
+        <li>NVIDIA. "RAG 101: Retrieval-Augmented Generation Questions Answered." 2023. https://developer.nvidia.com/blog/rag-101-retrieval-augmented-generation-questions-answered/</li>
+        <li>NVIDIA. "Finding the Best Chunking Strategy for Accurate AI Responses." 2025. https://developer.nvidia.com/blog/finding-the-best-chunking-strategy-for-accurate-ai-responses/</li>
+        <li>OpenAI. "Prompt Caching in the API." 2024. https://openai.com/index/api-prompt-caching/</li>
+      </ol>
+    </section>
+
+    <section id="appendix-a">
+      <h2>Appendix A. Experiment Configuration</h2>
+      <p class="appendix-note">Appendix A summarizes the paired-study configuration at a high level. It is included to document study scope and reporting parameters without exposing implementation details beyond what is necessary for interpretation.</p>
+      <table class="artifact-summary">
+        <thead>
+          <tr><th>Parameter</th><th>Value</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Total task inventory</td><td>60 tasks across 16 categories</td></tr>
+          <tr><td>Directly comparable subset</td><td>39 tasks with lexical analogues</td></tr>
+          <tr><td>MCP-native tasks</td><td>21 tasks with no meaningful lexical baseline</td></tr>
+          <tr><td>Token accounting</td><td>Common tokenizer applied to baseline outputs and Contextro responses</td></tr>
+          <tr><td>Lexical baseline</td><td>Repository-wide grep plus bounded follow-up file inspection</td></tr>
+          <tr><td>Robustness procedure</td><td>100 bootstrap task subsets of size 39 with replacement</td></tr>
+          <tr><td>Verification host</td><td>macOS 26.4.1, Apple M4, 16 GB RAM, Python 3.12.13</td></tr>
+          <tr><td>Public supporting artifacts</td><td>Sanitized task catalogs, aggregate summaries, robustness outputs, and public benchmark reruns</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-b">
+      <h2>Appendix B. MCP Tool API Contracts</h2>
+      <p class="appendix-note">This appendix summarizes the externally visible MCP tool contracts used by the evaluation. Parameter lists and response fields are described at the interface level. All tools return an MCP <code>ToolResult</code> whose <code>structured_content</code> field carries the JSON payload summarized below; errors are returned as <code>{"error": "…message…"}</code>.</p>
+
+      <h3>B.1. Discovery and Navigation</h3>
+      <p><code>search(...)</code> returns ranked retrieval results with file locations, symbol labels, and compact code excerpts.</p>
+      <p><code>find_symbol(...)</code> returns exact or fuzzy symbol matches, including definition metadata and local relationship counts.</p>
+      <p><code>find_callers(...)</code> and <code>find_callees(...)</code> return direct relationship sets for the requested symbol.</p>
+      <p><code>explain(...)</code> returns symbol metadata together with explanatory prose and supporting snippets.</p>
+      <p><code>impact(...)</code> returns a transitive impact set summarizing affected symbols, files, and directories.</p>
+
+      <h3>B.2. Project Intelligence</h3>
+      <p><code>overview()</code>, <code>architecture()</code>, <code>focus(...)</code>, and <code>restore()</code> return project- or file-level summaries intended to orient the client within the repository.</p>
+      <p><code>analyze(...)</code>, <code>dead_code()</code>, <code>circular_dependencies()</code>, <code>test_coverage_map()</code>, and <code>audit()</code> return higher-level analysis summaries rather than direct retrieval results.</p>
+
+      <h3>B.3. Git and History</h3>
+      <p><code>commit_search(...)</code> returns ranked commit matches for a query, while <code>commit_history(...)</code> returns chronological commit lists. <code>repo_status()</code> summarizes the multi-repository registry state.</p>
+
+      <h3>B.4. Code Intelligence</h3>
+      <p><code>code(operation, ...)</code> dispatches syntax-aware operations such as symbol lookup, pattern search, and codebase overview generation. Output structure varies by operation but consistently returns result or match collections.</p>
+
+      <h3>B.5. Memory and Session</h3>
+      <p><code>remember(...)</code>, <code>recall(...)</code>, and <code>forget(...)</code> manage persistent memory entries. <code>knowledge(...)</code>, <code>session_snapshot()</code>, and <code>compact(...)</code> manage broader session and knowledge state.</p>
+
+      <h3>B.6. Server Utilities</h3>
+      <p><code>status()</code>, <code>health()</code>, and <code>index(...)</code> expose operational server state. <code>retrieve(...)</code> fetches sandboxed large responses by reference, and <code>introspect(...)</code> returns runtime tool schemas and settings.</p>
+
+      <div class="table-caption" id="table-9"><strong>Table 9.</strong> MCP tool API contracts summary.</div>
+      <table class="table-compact">
+        <thead>
+          <tr><th>Tool</th><th>Category</th><th>Primary inputs</th><th>Primary outputs</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>search</code></td><td>Discovery</td><td>query, limit, mode, language, symbol_type</td><td>total, results[symbol_name, score, filepath, line_start, code]</td></tr>
+          <tr><td><code>find_symbol</code></td><td>Discovery</td><td>name, exact</td><td>n, f, l, t, callers, callees (single) / total, symbols (multi)</td></tr>
+          <tr><td><code>find_callers</code></td><td>Discovery</td><td>symbol_name</td><td>callers[] (single) / definitions[{definition, callers}] (multi)</td></tr>
+          <tr><td><code>find_callees</code></td><td>Discovery</td><td>symbol_name</td><td>callees[]</td></tr>
+          <tr><td><code>explain</code></td><td>Discovery</td><td>symbol_name, verbosity</td><td>merged symbol fields, analysis, related_code</td></tr>
+          <tr><td><code>impact</code></td><td>Discovery</td><td>symbol_name, max_depth</td><td>total_impacted, impacted_symbols, impacted_files, impacted_dirs</td></tr>
+          <tr><td><code>overview</code></td><td>Intelligence</td><td>(none)</td><td>total_files, total_symbols, total_relationships, languages, directories</td></tr>
+          <tr><td><code>architecture</code></td><td>Intelligence</td><td>(none)</td><td>layers, entry_points, hub_symbols, top_classes</td></tr>
+          <tr><td><code>focus</code></td><td>Intelligence</td><td>path, include_code</td><td>role, symbols, imports, nearby_tests, blast_radius</td></tr>
+          <tr><td><code>restore</code></td><td>Intelligence</td><td>(none)</td><td>project, entry_points, layers, risk_summary</td></tr>
+          <tr><td><code>analyze</code></td><td>Intelligence</td><td>path</td><td>complexity, code_smells, quality</td></tr>
+          <tr><td><code>dead_code</code></td><td>Intelligence</td><td>(none)</td><td>summary, unused_files, unused_symbols</td></tr>
+          <tr><td><code>circular_dependencies</code></td><td>Intelligence</td><td>(none)</td><td>summary, cycles</td></tr>
+          <tr><td><code>test_coverage_map</code></td><td>Intelligence</td><td>(none)</td><td>summary, uncovered_files, uncovered_symbols</td></tr>
+          <tr><td><code>audit</code></td><td>Intelligence</td><td>(none)</td><td>summary, recommendations</td></tr>
+          <tr><td><code>commit_search</code></td><td>Git</td><td>query, limit, branch, author</td><td>total, results[hash, author, date, message, top_files]</td></tr>
+          <tr><td><code>commit_history</code></td><td>Git</td><td>path, limit, since</td><td>total, branch, commits[hash, author, date, message]</td></tr>
+          <tr><td><code>repo_status</code></td><td>Git</td><td>(none)</td><td>total_repos, total_files, repos, watcher</td></tr>
+          <tr><td><code>code</code></td><td>AST</td><td>operation, query/pattern/…</td><td>results or matches (shape varies by operation)</td></tr>
+          <tr><td><code>remember</code></td><td>Memory</td><td>content, memory_type, tags, ttl</td><td>id, status</td></tr>
+          <tr><td><code>recall</code></td><td>Memory</td><td>query, limit, memory_type, tags</td><td>total, memories[]</td></tr>
+          <tr><td><code>forget</code></td><td>Memory</td><td>memory_id, tags, memory_type</td><td>deleted_count</td></tr>
+          <tr><td><code>session_snapshot</code></td><td>Session</td><td>(none)</td><td>codebase, branch, head, vector_chunks, symbols, events</td></tr>
+          <tr><td><code>compact</code></td><td>Session</td><td>content</td><td>archived, archive_ref, chars, hint</td></tr>
+          <tr><td><code>status</code></td><td>Server</td><td>(none)</td><td>codebase_path, indexed, graph{n,r,f}</td></tr>
+          <tr><td><code>health</code></td><td>Server</td><td>(none)</td><td>status, uptime_seconds, indexed, engines</td></tr>
+          <tr><td><code>index</code></td><td>Server</td><td>path, paths</td><td>status, message, path</td></tr>
+          <tr><td><code>retrieve</code></td><td>Server</td><td>ref_id, query</td><td>ref_id, content</td></tr>
+          <tr><td><code>introspect</code></td><td>Server</td><td>query, doc_path</td><td>tools, settings (full runtime schemas)</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="appendix-c">
+      <h2>Appendix C. Paired-Study Results by Tool Family</h2>
+      <p class="appendix-note">Table 10 reports aggregate token and latency measurements grouped by tool family. Rows marked <em>No</em> in the lexical-equivalent column represent MCP-native capabilities and are excluded from the directly comparable subset and bootstrap analyses discussed in Section 5.</p>
+      <div class="table-caption" id="table-10"><strong>Table 10.</strong> Paired-study results by tool family.</div>
+      <table class="table-compact">
+        <thead>
+          <tr><th>Tool family</th><th>Category</th><th>Lexical equivalent?</th><th class="num">Lexical tokens</th><th class="num">Contextro tokens</th><th>Contextro latency (ms)</th><th>Reduction</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>find_symbol ×8</td><td>Symbol discovery</td><td>Yes</td><td class="num">34,481</td><td class="num">413</td><td>1.37–9.13</td><td>98.8%</td></tr>
+          <tr><td>find_callers/find_callees ×6</td><td>Caller tracing</td><td>Yes</td><td class="num">25,915</td><td class="num">730</td><td>0.92–4.89</td><td>97.2%</td></tr>
+          <tr><td>search ×8</td><td>Semantic search</td><td>Yes</td><td class="num">96,366</td><td class="num">1,199</td><td>95.19–138.31</td><td>98.8%</td></tr>
+          <tr><td>explain ×6</td><td>Code understanding</td><td>Yes</td><td class="num">23,526</td><td class="num">944</td><td>6.22–8.26</td><td>96.0%</td></tr>
+          <tr><td>impact ×4</td><td>Impact analysis</td><td>Yes</td><td class="num">16,225</td><td class="num">377</td><td>0.90–3.68</td><td>97.7%</td></tr>
+          <tr><td>focus ×2</td><td>File context</td><td>Yes</td><td class="num">34,194</td><td class="num">540</td><td>4.81–7,009.60</td><td>98.4%</td></tr>
+          <tr><td>commit_search ×2</td><td>Git history</td><td>Yes</td><td class="num">46,106</td><td class="num">1,117</td><td>5.21–7.80</td><td>97.6%</td></tr>
+          <tr><td>code ×5 (3 comparable / 2 native)</td><td>AST operations</td><td>Mixed</td><td class="num">51,459</td><td class="num">1,627</td><td>0.97–11,222.49</td><td>96.8%</td></tr>
+          <tr><td>commit_history ×1</td><td>Git history</td><td>No</td><td class="num">—</td><td class="num">919</td><td>93.18</td><td>N/A</td></tr>
+          <tr><td>overview</td><td>Project structure</td><td>No</td><td class="num">—</td><td class="num">85</td><td>93.24</td><td>N/A</td></tr>
+          <tr><td>architecture</td><td>Project structure</td><td>No</td><td class="num">—</td><td class="num">893</td><td>436.75</td><td>N/A</td></tr>
+          <tr><td>analyze</td><td>Code quality</td><td>No</td><td class="num">—</td><td class="num">1,128</td><td>29.21</td><td>N/A</td></tr>
+          <tr><td>dead_code</td><td>Static analysis</td><td>No</td><td class="num">—</td><td class="num">933</td><td>1,307.18</td><td>N/A</td></tr>
+          <tr><td>circular_dependencies</td><td>Static analysis</td><td>No</td><td class="num">—</td><td class="num">545</td><td>0.77</td><td>N/A</td></tr>
+          <tr><td>test_coverage_map</td><td>Static analysis</td><td>No</td><td class="num">—</td><td class="num">555</td><td>11.16</td><td>N/A</td></tr>
+          <tr><td>audit</td><td>Full report</td><td>No</td><td class="num">—</td><td class="num">994</td><td>72.52</td><td>N/A</td></tr>
+          <tr><td>remember/recall/forget</td><td>Memory</td><td>No</td><td class="num">—</td><td class="num">161</td><td>4.04–13.35</td><td>N/A</td></tr>
+          <tr><td>session_snapshot/restore/compact</td><td>Session</td><td>No</td><td class="num">—</td><td class="num">984</td><td>0.86–53.54</td><td>N/A</td></tr>
+          <tr><td>status/health</td><td>Server ops</td><td>No</td><td class="num">—</td><td class="num">107</td><td>0.88–1.47</td><td>N/A</td></tr>
+          <tr><td>introspect</td><td>Self-documentation</td><td>No</td><td class="num">—</td><td class="num">46</td><td>0.31</td><td>N/A</td></tr>
+          <tr><td>repo_status</td><td>Multi-repo</td><td>No</td><td class="num">—</td><td class="num">102</td><td>1.40</td><td>N/A</td></tr>
+          <tr><td>knowledge (show)</td><td>Knowledge base</td><td>No</td><td class="num">—</td><td class="num">8</td><td>0.47</td><td>N/A</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </article>
+</body>
+</html>

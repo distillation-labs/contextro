@@ -1,0 +1,33 @@
+Tweet 1
+We turned Contextro into a local code-intelligence layer for AI agents. On an 8,496-file production monorepo, a fresh paired-study rerun found 95.6% fewer tokens across the full 60-task inventory. On the 39 directly comparable tasks, the reduction was 98.0%. Paper + artifacts below.
+
+Tweet 2
+The problem is familiar: agents spend too much context on grep, file reads, and manual inference just to find a symbol, trace callers, or understand impact. That discovery cost dominates many workflows.
+
+Tweet 3
+Contextro is a local MCP server. It indexes once, then exposes tools for semantic search, symbol lookup, caller/callee tracing, impact analysis, AST search, git history search, and persistent memory.
+
+Tweet 4
+We ran a paired two-arm experiment. Control = grep + file reads. Treatment = Contextro tools. Same codebase, same 60 tasks, same token estimation method.
+
+Tweet 5
+Fresh rerun results with a real tokenizer (`tiktoken`, `cl100k_base`): 328,272 -> 14,407 total tokens. 5,471 -> 240 mean tokens/task. 448.35ms -> 5.21ms median latency. 2.5 files read/task -> 0.
+
+Tweet 6
+For the stricter 39-task comparable subset, tokens dropped to 6,638 (98.0% reduction). We also ran 100 deterministic bootstrap task subsets; every subset stayed above 97.24% token reduction.
+
+Tweet 7
+By category, semantic search and symbol discovery both dropped 98.9% in token use. Caller tracing, impact analysis, code understanding, and git history search all stayed above 96%.
+
+Tweet 8
+We also report limitations: dead_code can misclassify some Next.js routes, duplicate symbols still need better disambiguation, and repository-wide AST pattern search is still a long-tail operation.
+
+Tweet 9
+Paper: [[PDF_URL]]
+Presented by Distillation Labs. Local-first, no cloud, no API keys. If you build agents, this is the shape we think they should have.
+
+Image plan:
+1 -> social/contextro-social-hero.png
+3 -> assets/05_architecture.svg or .png
+5 -> assets/01_headline_metrics.svg or .png
+7 -> assets/04_token_scatter.svg or .png

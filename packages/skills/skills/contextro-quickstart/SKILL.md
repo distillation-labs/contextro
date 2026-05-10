@@ -11,7 +11,7 @@ metadata:
   mcp-server: contextro
   category: mcp-enhancement
   tags: [contextro, mcp, quickstart]
-license: MIT
+license: Proprietary
 ---
 
 # Contextro Quickstart

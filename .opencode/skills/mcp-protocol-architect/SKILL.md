@@ -14,7 +14,7 @@ metadata:
   version: "1.0.0"
   category: mcp-development
   tags: [mcp, protocol, tools, resources, prompts, transport, architecture]
-license: MIT
+license: Proprietary
 ---
 
 # MCP Protocol Architect

@@ -10,21 +10,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-CHARS_PER_TOKEN = 4
+from contextro_mcp.token_counting import count_serialized_tokens
 
 
 def estimate_tokens(obj: object) -> int:
-    """Estimate token count for a JSON-serializable object."""
-    if isinstance(obj, str):
-        return len(obj) // CHARS_PER_TOKEN
-    return len(json.dumps(obj, default=str)) // CHARS_PER_TOKEN
+    """Count tokens for a JSON-serializable object using tiktoken."""
+    return count_serialized_tokens(obj)
 
 
 def estimate_tokens_toon(obj: object) -> int:
-    """Estimate token count using TOON encoding."""
+    """Count tokens after TOON encoding using the same tokenizer."""
     from contextro_mcp.formatting.toon_encoder import toon_encode
 
-    return len(toon_encode(obj)) // CHARS_PER_TOKEN
+    return count_serialized_tokens(toon_encode(obj))
 
 
 def create_mock_embedding_service(dims: int = 384) -> MagicMock:

@@ -3,13 +3,15 @@
 import pytest
 
 from contextro_mcp.formatting.token_budget import TokenBudget
+from contextro_mcp.token_counting import count_text_tokens
 
 
 class TestEstimation:
     def test_estimate_tokens(self):
         budget = TokenBudget("detailed")
         assert budget.estimate_tokens("abcd") == 1
-        assert budget.estimate_tokens("abcdefgh") == 2
+        assert budget.estimate_tokens("abcdefgh") >= 1
+        assert budget.estimate_tokens("abcdefgh") == count_text_tokens("abcdefgh")
 
     def test_estimate_empty(self):
         budget = TokenBudget("detailed")
@@ -23,11 +25,13 @@ class TestFits:
 
     def test_fits_at_budget(self):
         budget = TokenBudget("summary")
-        assert budget.fits("x" * 2000) is True
+        text = "x" * 4000
+        assert budget.estimate_tokens(text) == budget.budget_tokens
+        assert budget.fits(text) is True
 
     def test_does_not_fit_over_budget(self):
         budget = TokenBudget("summary")
-        assert budget.fits("x" * 2001) is False
+        assert budget.fits("x" * 4001) is False
 
 
 class TestTruncation:
@@ -37,17 +41,18 @@ class TestTruncation:
         assert budget.truncate(text) == text
 
     def test_truncate_long_text(self):
-        budget = TokenBudget("summary")  # 2000 chars
-        text = "word " * 500  # 2500 chars
+        budget = TokenBudget("summary")
+        text = "word " * 500
         result = budget.truncate(text)
-        assert len(result) <= 2003  # budget + "..."
+        assert budget.estimate_tokens(result) <= budget.budget_tokens
         assert result.endswith("...")
 
     def test_truncate_with_reserve(self):
         budget = TokenBudget("summary")
-        text = "x" * 2000
-        result = budget.truncate(text, reserve=1500)
-        assert len(result) <= 503  # 500 + "..."
+        text = "word " * 500
+        result = budget.truncate(text, reserve=450)
+        assert budget.estimate_tokens(result) <= 50
+        assert result.endswith("...")
 
     def test_truncate_zero_budget(self):
         budget = TokenBudget("summary")
@@ -58,15 +63,15 @@ class TestTruncation:
 class TestVerbosityLevels:
     def test_summary_budget(self):
         budget = TokenBudget("summary")
-        assert budget.budget_chars == 2000
+        assert budget.budget_tokens == 500
 
     def test_detailed_budget(self):
         budget = TokenBudget("detailed")
-        assert budget.budget_chars == 8000
+        assert budget.budget_tokens == 2000
 
     def test_full_budget(self):
         budget = TokenBudget("full")
-        assert budget.budget_chars == 32000
+        assert budget.budget_tokens == 8000
 
     def test_invalid_verbosity(self):
         with pytest.raises(ValueError, match="verbosity must be one of"):
@@ -76,18 +81,18 @@ class TestVerbosityLevels:
         s = TokenBudget("summary")
         d = TokenBudget("detailed")
         f = TokenBudget("full")
-        assert s.budget_chars < d.budget_chars < f.budget_chars
+        assert s.budget_tokens < d.budget_tokens < f.budget_tokens
 
 
 class TestRemaining:
     def test_remaining_positive(self):
         budget = TokenBudget("summary")
-        assert budget.remaining(1000) == 1000
+        assert budget.remaining(100) == 400
 
     def test_remaining_zero(self):
         budget = TokenBudget("summary")
-        assert budget.remaining(2000) == 0
+        assert budget.remaining(500) == 0
 
     def test_remaining_negative_clamps(self):
         budget = TokenBudget("summary")
-        assert budget.remaining(3000) == 0
+        assert budget.remaining(600) == 0

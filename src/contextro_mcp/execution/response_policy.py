@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from contextro_mcp.engines.output_sandbox import OutputSandbox
+from contextro_mcp.token_counting import count_serialized_tokens
 
 
 def _serialize_payload(payload: dict[str, Any] | list | str, *, pretty: bool = False) -> str:
@@ -24,7 +25,7 @@ def _serialize_payload(payload: dict[str, Any] | list | str, *, pretty: bool = F
 
 
 def _estimate_tokens(payload: dict[str, Any] | list | str) -> int:
-    return len(_serialize_payload(payload)) // 4
+    return count_serialized_tokens(payload)
 
 
 _PREVIEW_STRING_CHARS = 280
@@ -82,8 +83,7 @@ class ToolResponsePolicy:
             Either the original response (if small enough) or a compact
             preview with sandbox_ref for full retrieval.
         """
-        payload = _serialize_payload(response)
-        tokens = len(payload) // 4
+        tokens = _estimate_tokens(response)
         if tokens <= self._threshold:
             return response
 
@@ -277,12 +277,12 @@ class SearchResponsePolicy:
         if context_budget <= 0 or not response["results"]:
             return response, False
 
-        budget_chars = context_budget * 4
+        budget_tokens = context_budget
         kept: list[dict[str, Any]] = []
         used = 0
         for result in response["results"]:
-            result_size = len(json.dumps(result, default=str))
-            if used + result_size > budget_chars and kept:
+            result_size = count_serialized_tokens(result)
+            if used + result_size > budget_tokens and kept:
                 break
             kept.append(result)
             used += result_size

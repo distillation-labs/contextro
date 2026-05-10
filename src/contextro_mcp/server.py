@@ -706,6 +706,10 @@ def create_server():
                         "hit_rate": round(cache.hit_rate, 3),
                         "size": cache.size,
                     }
+            if hasattr(state, "_session_tracker") and state._session_tracker is not None:
+                edit_metrics = state._session_tracker.edit_metrics
+                if any(edit_metrics.values()):
+                    result["edit"] = edit_metrics
 
         elif job_status != "indexing":
             result.setdefault("hint", "Run 'index' first.")
@@ -846,6 +850,7 @@ def create_server():
                 state.graph_engine = _pipeline.graph_engine
                 if hasattr(state, "_query_cache") and state._query_cache:
                     state._query_cache.invalidate()
+                state.clear_derived_caches()
                 index_result = result.to_dict()
                 index_result["status"] = "done"
                 index_result.pop("time_seconds", None)  # rarely needed by agents
@@ -994,6 +999,7 @@ def create_server():
                 state.graph_engine = _pipeline.graph_engine
                 if hasattr(state, "_query_cache") and state._query_cache:
                     state._query_cache.invalidate()
+                state.clear_derived_caches()
 
                 index_result = result.to_dict()
                 index_result["status"] = "done"
@@ -3052,8 +3058,10 @@ def create_server():
     def code(
         operation: Annotated[
             str,
-            "Operation: search_symbols, lookup_symbols, get_document_symbols, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map",
+            "Operation: search_symbols, lookup_symbols, get_document_symbols, edit_plan, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map",
         ],
+        goal: Annotated[str, "Goal for edit_plan or rewrite planning (optional)"] = "",
+        edit_kind: Annotated[str, "Edit category for edit_plan (optional)"] = "",
         symbol_name: Annotated[str, "Symbol name (required for search_symbols)"] = "",
         symbols: Annotated[
             str, "Comma-separated symbol names (required for lookup_symbols, max 10)"
@@ -3095,6 +3103,7 @@ def create_server():
         - search_symbols: Find symbol definitions by name
         - lookup_symbols: Batch lookup specific symbols
         - get_document_symbols: List all symbols in a file
+        - edit_plan: Plan a scoped edit with targets, risks, and verify steps
         - pattern_search: AST-based structural search
         - pattern_rewrite: AST-based code transformation
         - generate_codebase_overview: High-level codebase structure
@@ -3252,6 +3261,49 @@ def create_server():
                 return {"error": str(e)}
 
         # --- pattern_search ---
+        elif operation == "edit_plan":
+            state, err = _require_indexed()
+            if err:
+                return err
+
+            from contextro_mcp.editing.planner import build_edit_plan
+
+            try:
+                result = build_edit_plan(
+                    state,
+                    goal=goal,
+                    edit_kind=edit_kind,
+                    symbol_name=symbol_name,
+                    file_path=file_path,
+                    path=path,
+                    pattern=pattern,
+                    replacement=replacement,
+                    language=language,
+                    limit=min(limit, max(1, _settings.edit_plan_max_targets)),
+                )
+            except ValueError as e:
+                return {"error": str(e)}
+
+            _get_tracker().track_edit_plan(
+                result.get("goal", goal or symbol_name),
+                list(result.get("target_files", [])),
+                float(result.get("confidence", 0.0)),
+            )
+            return _apply_disclosure(
+                result,
+                tool_name="code",
+                preview_keys=[
+                    "operation",
+                    "goal",
+                    "edit_kind",
+                    "scope",
+                    "primary_target_file",
+                    "confidence",
+                ],
+                max_list_items=6,
+            )
+
+        # --- pattern_search ---
         elif operation == "pattern_search":
             if not pattern:
                 return {"error": "pattern required for pattern_search"}
@@ -3353,128 +3405,77 @@ def create_server():
             if not file_path and not path:
                 return {"error": "file_path (single file) or path (directory) required for pattern_rewrite"}
 
+            from contextro_mcp.editing.rewrite import (
+                build_rewrite_signature,
+                execute_pattern_rewrite,
+                has_fresh_preview,
+                remember_preview,
+            )
+
+            rewrite_signature = build_rewrite_signature(
+                pattern=pattern,
+                replacement=replacement,
+                language=language,
+                file_path=file_path,
+                path=path,
+            )
+            if (
+                not dry_run
+                and _settings.edit_require_preview_before_apply
+                and not has_fresh_preview(
+                    state,
+                    rewrite_signature,
+                    ttl_seconds=_settings.edit_preview_ttl_seconds,
+                )
+            ):
+                return {
+                    "error": "Preview required before apply. Run pattern_rewrite with dry_run=true first.",
+                    "preview_required": True,
+                }
+
             try:
-                from ast_grep_py import SgRoot
+                result = execute_pattern_rewrite(
+                    state=state,
+                    pattern=pattern,
+                    replacement=replacement,
+                    language=language,
+                    file_path=file_path,
+                    path=path,
+                    dry_run=dry_run,
+                    skip_dirs=SKIP_DIRS,
+                    preview_context_lines=_settings.edit_preview_context_lines,
+                    preview_max_diff_lines=_settings.edit_preview_max_diff_lines,
+                )
             except ImportError:
                 return {"error": "ast-grep not installed"}
-
-            # Determine target: single file or directory
-            ext_map = {
-                "python": [".py"],
-                "javascript": [".js", ".jsx", ".mjs"],
-                "typescript": [".ts", ".tsx"],
-                "rust": [".rs"],
-                "go": [".go"],
-                "java": [".java"],
-                "cpp": [".cpp", ".cc", ".cxx", ".h", ".hpp"],
-                "c": [".c", ".h"],
-                "ruby": [".rb"],
-                "php": [".php"],
-                "swift": [".swift"],
-                "kotlin": [".kt"],
-                "csharp": [".cs"],
-            }
-            extensions = ext_map.get(language.lower(), [f".{language}"])
-
-            target_files: list[Path] = []
-            if file_path:
-                fp = Path(file_path)
-                if not fp.is_absolute() and state.codebase_path:
-                    fp = state.codebase_path / file_path
-                if not fp.exists():
-                    return {"error": f"File not found: {file_path}"}
-                target_files = [fp]
-            else:
-                # path is a directory — collect all matching files
-                dir_path = Path(path)
-                if not dir_path.is_absolute() and state.codebase_path:
-                    dir_path = state.codebase_path / path
-                if not dir_path.exists():
-                    return {"error": f"Path not found: {path}"}
-                if dir_path.is_file():
-                    target_files = [dir_path]
-                else:
-                    for ext in extensions:
-                        for fp in dir_path.rglob(f"*{ext}"):
-                            if any(skip in fp.parts for skip in SKIP_DIRS):
-                                continue
-                            target_files.append(fp)
-
-            if not target_files:
-                return {"operation": "pattern_rewrite", "changes": 0, "message": "No matching files found"}
-
-            all_results = []
-            total_changes = 0
-            try:
-                for fp in target_files:
-                    source = fp.read_text(errors="replace")
-                    root_node = SgRoot(source, language.lower())
-                    node = root_node.root()
-                    edits = node.find_all(pattern=pattern)
-                    if not edits:
-                        continue
-                    new_source = node.commit_edits([m.replace(replacement) for m in edits])
-                    changes = len(edits)
-                    total_changes += changes
-                    rel = str(fp)
-                    if state.codebase_path:
-                        try:
-                            rel = str(fp.relative_to(state.codebase_path))
-                        except ValueError:
-                            pass
-                    if dry_run:
-                        old_lines = source.splitlines()
-                        new_lines = new_source.splitlines()
-                        diff_lines = []
-                        for i, (old, new) in enumerate(zip(old_lines, new_lines)):
-                            if old != new:
-                                diff_lines.append(f"L{i + 1}: -{old}")
-                                diff_lines.append(f"L{i + 1}: +{new}")
-                        all_results.append({
-                            "file": rel,
-                            "changes": changes,
-                            "diff_preview": "\n".join(diff_lines[:20]),
-                        })
-                    else:
-                        fp.write_text(new_source)
-                        all_results.append({"file": rel, "changes": changes, "applied": True})
             except Exception as e:
                 return {"error": f"Pattern rewrite failed: {e}"}
 
-            if len(all_results) == 1 and file_path:
-                # Single-file response (original compact format)
-                result_entry = all_results[0]
-                if dry_run:
-                    return _apply_disclosure(
-                        {
-                            "operation": "pattern_rewrite",
-                            "file": result_entry["file"],
-                            "changes": result_entry["changes"],
-                            "dry_run": True,
-                            "diff_preview": result_entry.get("diff_preview", ""),
-                            "hint": "Set dry_run=false to apply changes",
-                        },
-                        tool_name="code",
-                        preview_keys=["operation", "file", "changes", "dry_run"],
-                    )
-                return {
-                    "operation": "pattern_rewrite",
-                    "file": result_entry["file"],
-                    "changes": result_entry["changes"],
-                    "applied": True,
-                }
+            if result.get("error"):
+                return result
+
+            touched_files = []
+            if result.get("file"):
+                touched_files = [result["file"]]
+            else:
+                touched_files = [entry.get("file", "") for entry in result.get("results", []) if entry.get("file")]
+            change_count = int(result.get("changes", result.get("total_changes", 0)) or 0)
+            result["preview_signature"] = rewrite_signature
+            if dry_run:
+                remember_preview(state, rewrite_signature)
+                _get_tracker().track_edit_preview(touched_files, change_count)
+            else:
+                if hasattr(state, "clear_derived_caches"):
+                    state.clear_derived_caches()
+                _get_tracker().track_edit_apply(touched_files, change_count)
+                result["index_hint"] = (
+                    "If downstream symbol results look stale, run index() or wait for realtime indexing to refresh."
+                )
 
             return _apply_disclosure(
-                {
-                    "operation": "pattern_rewrite",
-                    "total_changes": total_changes,
-                    "files_modified": len(all_results),
-                    "dry_run": dry_run,
-                    "results": all_results,
-                    **({"hint": "Set dry_run=false to apply changes"} if dry_run else {}),
-                },
+                result,
                 tool_name="code",
-                preview_keys=["operation", "total_changes", "files_modified", "dry_run"],
+                preview_keys=["operation", "file", "changes", "total_changes", "files_modified", "dry_run"],
                 max_list_items=10,
             )
 
@@ -3562,7 +3563,7 @@ def create_server():
 
         else:
             return {
-                "error": f"Unknown operation: {operation}. Valid: search_symbols, lookup_symbols, get_document_symbols, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map"
+                "error": f"Unknown operation: {operation}. Valid: search_symbols, lookup_symbols, get_document_symbols, edit_plan, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map"
             }
 
     @mcp.tool(annotations={"readOnlyHint": True})
@@ -3624,7 +3625,7 @@ def create_server():
         # Tool reference
         tools_doc = {
             "search": "Semantic + keyword + graph hybrid search. PREFERRED over grep/glob. Returns code chunks with name, file, line, score, code snippet.",
-            "code": "AST-based code intelligence. Operations: search_symbols, lookup_symbols, get_document_symbols, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map.",
+            "code": "AST-based code intelligence. Operations: search_symbols, lookup_symbols, get_document_symbols, edit_plan, pattern_search, pattern_rewrite, generate_codebase_overview, search_codebase_map.",
             "find_symbol": "Find symbol definitions by exact or fuzzy name. Returns location, callers_count, callees_count.",
             "find_callers": "Who calls this function? Returns compact 'name (file:line)' list.",
             "find_callees": "What does this function call? Returns compact 'name (file:line)' list.",
@@ -3675,7 +3676,7 @@ def create_server():
 
         workflow_doc = {
             "first_use": "1. index('/path/to/project') → 2. poll status() until indexed:true → 3. search/find_symbol/etc.",
-            "refactoring": "1. impact('symbol') → 2. explain('symbol') → 3. find_callers('symbol') → 4. make change",
+            "refactoring": "1. impact('symbol') → 2. code(operation='edit_plan', ...) → 3. code(operation='pattern_rewrite', dry_run=True, ...) → 4. apply and verify",
             "bug_investigation": "1. search('error message') → 2. find_symbol('ErrorClass') → 3. find_callers → 4. commit_search('recent changes')",
             "context_recovery": "After compaction: session_snapshot() → restore awareness of what was done",
             "productized_context": "restore() for repo-wide context → focus(path='...') for one-file context → audit() for risks → sidecar_export() for non-MCP sidecars",
@@ -3782,8 +3783,14 @@ def main(argv: Optional[list[str]] = None):
         print(render_report(data, output_format))
 
     def _run_cli_command(args) -> None:
+        import asyncio
+
         from contextro_mcp.artifacts.bootstrap import build_bootstrap_block, write_bootstrap
         from contextro_mcp.artifacts.docs_bundle import write_docs_bundle
+        from contextro_mcp.artifacts.graph_workflow import (
+            initialize_graph_workflow,
+            watch_graph_workflow,
+        )
         from contextro_mcp.artifacts.sidecars import clean_sidecars, export_sidecars
         from contextro_mcp.cli.runtime import ensure_indexed_state
         from contextro_mcp.reports.product import (
@@ -3798,6 +3805,36 @@ def main(argv: Optional[list[str]] = None):
                 _print_report(write_bootstrap(Path(args.target)), "human")
             else:
                 print(build_bootstrap_block())
+            return
+
+        if args.command == "graph":
+            if args.graph_command == "watch":
+                asyncio.run(
+                    watch_graph_workflow(
+                        codebase_path=args.codebase,
+                        target_path=args.path,
+                        include_code=args.include_code,
+                        docs_output_dir=args.output_dir,
+                        bootstrap_target=args.bootstrap_target or None,
+                        include_docs=not args.no_docs,
+                        debounce_seconds=args.debounce_seconds,
+                        output_format=args.format,
+                    )
+                )
+                return
+
+            state = ensure_indexed_state(getattr(args, "codebase", None))
+            _print_report(
+                initialize_graph_workflow(
+                    state,
+                    target_path=args.path,
+                    include_code=args.include_code,
+                    docs_output_dir=args.output_dir,
+                    bootstrap_target=args.bootstrap_target or None,
+                    include_docs=not args.no_docs,
+                ),
+                args.format,
+            )
             return
 
         state = ensure_indexed_state(getattr(args, "codebase", None))
@@ -3950,6 +3987,83 @@ def main(argv: Optional[list[str]] = None):
         help="Optional file or directory to clean sidecars for.",
     )
     sidecar_clean_parser.add_argument("--format", choices=output_choices, default="human")
+
+    graph_parser = subparsers.add_parser(
+        "graph",
+        help="Initialize or watch the first-class graph sidecar and docs workflow.",
+    )
+    graph_parser.add_argument("--codebase", help="Optional codebase root to index first.")
+    graph_subparsers = graph_parser.add_subparsers(dest="graph_command", required=True)
+
+    graph_init_parser = graph_subparsers.add_parser(
+        "init",
+        help="Generate graph sidecars, docs, and optional bootstrap instructions.",
+    )
+    graph_init_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Optional file or directory to initialize graph artifacts for.",
+    )
+    graph_init_parser.add_argument(
+        "--include-code",
+        action="store_true",
+        help="Include compressed code previews in generated sidecars.",
+    )
+    graph_init_parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Directory to write the docs bundle into.",
+    )
+    graph_init_parser.add_argument(
+        "--bootstrap-target",
+        default="",
+        help="Optional bootstrap file target (CLAUDE.md, AGENTS.md, .cursorrules, or alias).",
+    )
+    graph_init_parser.add_argument(
+        "--no-docs",
+        action="store_true",
+        help="Skip docs bundle generation.",
+    )
+    graph_init_parser.add_argument("--format", choices=output_choices, default="human")
+
+    graph_watch_parser = graph_subparsers.add_parser(
+        "watch",
+        help="Keep sidecars and docs refreshed while editing.",
+    )
+    graph_watch_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="Optional file or directory scope for sidecar refreshes.",
+    )
+    graph_watch_parser.add_argument(
+        "--include-code",
+        action="store_true",
+        help="Include compressed code previews in generated sidecars.",
+    )
+    graph_watch_parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Directory to write the docs bundle into.",
+    )
+    graph_watch_parser.add_argument(
+        "--bootstrap-target",
+        default="",
+        help="Optional bootstrap file target to create during watcher startup.",
+    )
+    graph_watch_parser.add_argument(
+        "--no-docs",
+        action="store_true",
+        help="Skip docs bundle generation during watcher refreshes.",
+    )
+    graph_watch_parser.add_argument(
+        "--debounce-seconds",
+        type=float,
+        default=2.0,
+        help="Debounce delay before refresh after file changes.",
+    )
+    graph_watch_parser.add_argument("--format", choices=output_choices, default="human")
 
     args = parser.parse_args(argv)
 

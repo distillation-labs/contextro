@@ -185,13 +185,22 @@ class TestProductTools:
         sidecar_path = tmp_path / "src" / "main.graph.py"
         assert sidecars["count"] == 1
         assert sidecar_path.exists()
-        assert "Contextro sidecar v1" in sidecar_path.read_text()
+        sidecar_text = sidecar_path.read_text()
+        assert "Contextro sidecar v2" in sidecar_text
+        assert "[overview]" in sidecar_text
+        assert "[deps]" in sidecar_text
+        assert "[impact]" in sidecar_text
+        assert "[analysis]" in sidecar_text
         assert "<!-- BEGIN CONTEXTRO BOOTSTRAP -->" in prompt["content"]
         assert wrote_prompt["path"] == str(bootstrap_target.resolve())
         assert bootstrap_target.exists()
         assert docs["output_dir"] == str(docs_dir.resolve())
         assert (docs_dir / "index.md").exists()
+        assert (docs_dir / "workflow.md").exists()
         assert (docs_dir / "architecture.md").exists()
+        assert (docs_dir / "dead-code.md").exists()
+        assert (docs_dir / "test-coverage.md").exists()
+        assert (docs_dir / "circular-dependencies.md").exists()
         assert (docs_dir / "audit.md").exists()
         assert (docs_dir / "llms.txt").exists()
         cleaned = asyncio.run(

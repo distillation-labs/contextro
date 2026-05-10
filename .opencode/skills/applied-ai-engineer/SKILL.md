@@ -15,7 +15,7 @@ metadata:
   version: "1.0.0"
   category: engineering
   tags: [applied-ai, harness, evals, observability, rollout, reliability, benchmarking]
-license: MIT
+license: Proprietary
 ---
 
 # Applied AI Engineer

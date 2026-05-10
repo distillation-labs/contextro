@@ -13,7 +13,7 @@ metadata:
   version: "1.0.0"
   category: content
   tags: [blog, writing, research, communication, technical-writing]
-license: MIT
+license: Proprietary
 ---
 
 # Technical Blog Writer

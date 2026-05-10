@@ -81,14 +81,14 @@ Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for co
 
 ## Source Repositories
 
-### Contextro (vector search + memory)
-- **GitHub:** https://github.com/jassskalkat/Contextro
+### Internal lineage A (vector search + memory)
+- **Repository:** internal Distillation Labs source control
 - **Local clone:** `Contextro_mcp/`
 - **What we port:** models, tree-sitter parser, embedding service, parallel indexer, memory retriever, state management
 - **What we rewrite:** vector storage (ChromaDB → LanceDB), chunking pipeline
 
-### Contextro (graph analysis)
-- **GitHub:** https://github.com//Contextro
+### Internal lineage B (graph analysis)
+- **Repository:** internal Distillation Labs source control
 - **Local clone:** `Contextro/`
 - **What we port:** graph models, rustworkx graph engine, ast-grep parser, code analyzer, file watcher
 - **What we rewrite:** server layer (merge into single server)

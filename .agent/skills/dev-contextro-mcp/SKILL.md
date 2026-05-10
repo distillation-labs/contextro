@@ -14,11 +14,11 @@ when_to_use: >
   explain this class, git history, pattern search, add repo, remember or recall,
   compact or archive, retrieve sandbox results.
 metadata:
-  version: "0.0.6"
+  version: "0.0.7"
   mcp-server: contextro
   category: mcp-enhancement
   tags: [contextro, mcp, code-search, code-graph, ast, git, memory, cross-repo]
-license: MIT
+license: Proprietary
 ---
 
 # Contextro MCP

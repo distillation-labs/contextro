@@ -77,6 +77,29 @@ Add to your MCP configuration:
 }
 ```
 
+### Optional: Compress tool descriptions with caveman-shrink
+
+Contextro registers 35 tools. Every session, the AI reads all their descriptions as input tokens. Wrapping Contextro with [`caveman-shrink`](https://github.com/JuliusBrussee/caveman#caveman-shrink-mcp-middleware) compresses those descriptions automatically — same tool semantics, fewer tokens per session.
+
+**Claude Code:**
+```bash
+claude mcp add contextro -- npx caveman-shrink contextro
+```
+
+**Claude Desktop / Any MCP Client:**
+```json
+{
+  "mcpServers": {
+    "contextro": {
+      "command": "npx",
+      "args": ["caveman-shrink", "contextro"]
+    }
+  }
+}
+```
+
+Requires Node.js. No configuration needed — caveman-shrink proxies all tool calls transparently.
+
 ---
 
 ## Getting Started
@@ -92,6 +115,32 @@ That's it. The index persists on disk — you only need to do this once per proj
 ---
 
 ## What You Can Do
+
+### Turn `.graph.*` sidecars into the default workflow
+
+```bash
+contextro graph init --bootstrap-target claude
+contextro graph watch
+```
+
+`graph init` writes file-adjacent `.graph.*` sidecars, a local `.contextro-docs/` bundle, and
+an optional bootstrap block for `CLAUDE.md`, `AGENTS.md`, or `.cursorrules`. `graph watch`
+keeps those artifacts fresh while you edit, using incremental reindexing and targeted sidecar
+refresh so the MCP hot path stays unchanged.
+
+Each sidecar is structured for agents:
+
+- `[overview]` — role, entry/test status, and file summary
+- `[deps]` — imports, importers, and nearby tests
+- `[calls]` — direct call relationships
+- `[impact]` — blast radius and risk reasons
+- `[analysis]` — coverage, dead code, and complexity hotspots
+
+The docs bundle now includes `workflow.md`, `analysis.md`, `dead-code.md`,
+`test-coverage.md`, and `circular-dependencies.md` in addition to the existing architecture
+and audit pages.
+
+---
 
 ### Search your codebase by meaning
 
@@ -168,6 +217,14 @@ code(operation="lookup_symbols", symbols="AuthService,verify_token", include_sou
 # Find code by structure (ast-grep patterns)
 code(operation="pattern_search", pattern="def $F(self, $$$):", language="python")
 
+# Plan a scoped edit before touching files
+code(operation="edit_plan",
+     goal="Replace legacy logging call",
+     file_path="src/server.py",
+     pattern="logger.info($MSG)",
+     replacement="logger.debug($MSG)",
+     language="python")
+
 # Rewrite code structurally — always preview first
 code(operation="pattern_rewrite",
      pattern="logger.info($MSG)",
@@ -179,6 +236,11 @@ code(operation="pattern_rewrite",
 # Explore a directory's structure
 code(operation="search_codebase_map", path="src/auth")
 ```
+
+Use `edit_plan` first for any non-trivial change. It returns target files, related tests,
+risks, a rollback hint, and the recommended next step. `pattern_rewrite` previews now include
+changed symbols, touched lines, and unified diff output. Set `CTX_EDIT_REQUIRE_PREVIEW_BEFORE_APPLY=true`
+to require a recent dry run before apply.
 
 ---
 
@@ -279,8 +341,8 @@ When a newer version of Contextro is available, `status()` will include:
 
 ```json
 {
-  "update_available": "0.0.6",
-  "update_hint": "pip install --upgrade contextro  # 0.0.6 available"
+  "update_available": "0.0.7",
+  "update_hint": "pip install --upgrade contextro  # 0.0.7 available"
 }
 ```
 
@@ -488,4 +550,4 @@ docker pull ghcr.io/jassskalkat/contextro-mcp:latest
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+Proprietary — see [LICENSE](LICENSE) for internal-use terms.

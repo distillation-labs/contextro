@@ -17,7 +17,7 @@ metadata:
   version: "1.0.0"
   category: research
   tags: [research, hypotheses, literature, evaluation, architecture, benchmarking]
-license: MIT
+license: Proprietary
 ---
 
 # Breakthrough Researcher

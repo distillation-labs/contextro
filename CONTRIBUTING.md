@@ -7,8 +7,8 @@ Thank you for your interest in contributing! Contextro is a fully local MCP serv
 ## Quick Start
 
 ```bash
-git clone https://github.com/jassskalkat/Contextro-MCP.git
-cd Contextro-MCP
+git clone <internal-contextro-repo-url>
+cd contextro
 
 # Automated setup (creates venv, installs all deps, verifies)
 ./setup.sh
@@ -271,4 +271,4 @@ Please include:
 
 ## License
 
-MIT — contributions are accepted under the same license.
+Proprietary — contributions are accepted under Distillation Labs internal terms.

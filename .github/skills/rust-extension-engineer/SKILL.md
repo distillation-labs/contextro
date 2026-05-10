@@ -14,7 +14,7 @@ metadata:
   version: "1.0.0"
   category: mcp-development
   tags: [rust, pyo3, maturin, extension, ffi, performance, parity]
-license: MIT
+license: Proprietary
 ---
 
 # Rust Extension Engineer

@@ -75,8 +75,8 @@ curl https://sh.rustup.rs -sSf | sh
 
 ```bash
 # Clone the repository
-git clone https://github.com/jassskalkat/Contextro.git
-cd Contextro
+git clone <internal-contextro-repo-url>
+cd contextro
 
 # Run setup script (creates venv, installs deps, verifies)
 ./setup.sh
@@ -111,8 +111,8 @@ source .venv/bin/activate
 ### Manual Install from Source
 
 ```bash
-git clone https://github.com/jassskalkat/Contextro.git
-cd Contextro
+git clone <internal-contextro-repo-url>
+cd contextro
 
 # Option 1: Production only
 pip install -e .
