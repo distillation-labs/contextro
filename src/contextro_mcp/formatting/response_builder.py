@@ -7,6 +7,7 @@ enforcing token budgets per verbosity level.
 from typing import Any, Dict, List
 
 from contextro_mcp.formatting.token_budget import TokenBudget
+from contextro_mcp.token_counting import count_serialized_tokens
 
 
 class ResponseBuilder:
@@ -24,7 +25,7 @@ class ResponseBuilder:
         - full: + code text, relationships
         """
         formatted = []
-        used_chars = 0
+        used_tokens = 0
 
         for r in results:
             if self.verbosity == "summary":
@@ -44,17 +45,17 @@ class ResponseBuilder:
                     "line_start": r.get("line_start"),
                     "line_end": r.get("line_end"),
                     "signature": r.get("signature", ""),
-                    "docstring": self.budget.truncate(r.get("docstring", ""), reserve=used_chars)[
+                    "docstring": self.budget.truncate(r.get("docstring", ""), reserve=used_tokens)[
                         :200
                     ],
                 }
             else:  # full
                 entry = {**r, "score": round(r.get("score", 0.0), 4)}
 
-            entry_size = sum(len(str(v)) for v in entry.values())
-            if used_chars + entry_size > self.budget.budget_chars:
+            entry_size = count_serialized_tokens(entry)
+            if used_tokens + entry_size > self.budget.budget_tokens:
                 break
-            used_chars += entry_size
+            used_tokens += entry_size
             formatted.append(entry)
 
         return {
