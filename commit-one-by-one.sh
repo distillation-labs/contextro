@@ -37,8 +37,6 @@ commit_file() {
     local file=$1
     local message=$(get_commit_message "$file")
     
-    # Clear staging area first to ensure only this file gets committed
-    git reset HEAD -- . 2>/dev/null
     echo "Adding $file..."
     git add "$file"
     
@@ -64,6 +62,9 @@ else
     untracked=$(git ls-files --others --exclude-standard)
     files=$(echo -e "$staged\n$unstaged\n$untracked" | sort -u)
 fi
+
+# Clear staging area to ensure only the target file gets committed each time
+git reset HEAD -- . 2>/dev/null
 
 # Check if there are any files to commit
 if [ -z "$files" ]; then
