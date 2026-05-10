@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 627" font-family="Inter, -apple-system, system-ui, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="627" fill="#fafafa"/>
+  <text x="70" y="70" font-size="24" font-weight="700" fill="#1a1a2e">Contextro</text>
+  <text x="70" y="98" font-size="14" fill="#6b7280">A local MCP server for code intelligence</text>
+  <text x="70" y="124" font-size="12" fill="#6b7280">Controlled experiment on an 8,496-file production monorepo</text>
+
+  <rect x="60" y="160" width="1080" height="380" rx="18" fill="#ffffff" stroke="#e5e7eb" filter="url(#shadow)"/>
+
+  <text x="170" y="218" text-anchor="middle" font-size="20" font-weight="600" fill="#4b5563">Total tokens</text>
+  <text x="170" y="260" text-anchor="middle" font-size="42" font-weight="700" fill="#dc2626">95.6% fewer</text>
+  <text x="170" y="286" text-anchor="middle" font-size="13" fill="#6b7280">328,272 -> 14,407</text>
+
+  <text x="430" y="218" text-anchor="middle" font-size="20" font-weight="600" fill="#4b5563">Median latency</text>
+  <text x="430" y="260" text-anchor="middle" font-size="42" font-weight="700" fill="#0f3460">86x faster</text>
+  <text x="430" y="286" text-anchor="middle" font-size="13" fill="#6b7280">448.35ms -> 5.21ms</text>
+
+  <text x="690" y="218" text-anchor="middle" font-size="20" font-weight="600" fill="#4b5563">Files read</text>
+  <text x="690" y="260" text-anchor="middle" font-size="42" font-weight="700" fill="#059669">0</text>
+  <text x="690" y="286" text-anchor="middle" font-size="13" fill="#6b7280">during discovery workflows</text>
+
+  <text x="940" y="218" text-anchor="middle" font-size="20" font-weight="600" fill="#4b5563">Toolset</text>
+  <text x="940" y="260" text-anchor="middle" font-size="42" font-weight="700" fill="#7c3aed">30 tools</text>
+  <text x="940" y="286" text-anchor="middle" font-size="13" fill="#6b7280">semantic search, graph traversal, memory</text>
+
+  <line x1="120" y1="340" x2="1080" y2="340" stroke="#e5e7eb" stroke-width="1"/>
+
+  <text x="90" y="376" font-size="16" font-weight="700" fill="#1a1a2e">Why it matters</text>
+  <text x="90" y="404" font-size="13" fill="#4b5563">Agents should search by meaning, trace callers, check impact, and reuse memory instead of reading files until they guess right.</text>
+  <text x="90" y="430" font-size="13" fill="#4b5563">Local-first, no cloud, no API keys, and reproducible on real repositories.</text>
+
+  <rect x="660" y="364" width="410" height="116" rx="14" fill="#f8fafc" stroke="#e5e7eb"/>
+  <text x="865" y="398" text-anchor="middle" font-size="16" font-weight="700" fill="#1a1a2e">Paper includes</text>
+  <text x="865" y="424" text-anchor="middle" font-size="13" fill="#6b7280">architecture, controlled experiment, results, limitations, reproducibility</text>
+  <text x="865" y="450" text-anchor="middle" font-size="13" fill="#6b7280">plus images you can reuse for X, LinkedIn, and Bluesky</text>
+
+  <rect x="60" y="562" width="1080" height="34" rx="10" fill="#0f3460"/>
+  <text x="600" y="584" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">Distillation Labs research | Read the paper | Use the assets | Publish the thread</text>
+</svg>
