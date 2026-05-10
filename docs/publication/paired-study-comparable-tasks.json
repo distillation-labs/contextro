@@ -1,0 +1,478 @@
+{
+  "suite": "contextro_paired_study",
+  "catalog": "comparable",
+  "redacted": true,
+  "redaction_note": "This public paired-study inventory is sanitized. Private symbol names, file paths, free-text prompts, and machine-local content have been replaced with placeholders while preserving task-family counts, categories, and tool coverage.",
+  "task_count": 39,
+  "full_suite_task_count": 60,
+  "category_count": 8,
+  "categories": [
+    "caller_tracing",
+    "code_tool",
+    "code_understanding",
+    "focus",
+    "git_history",
+    "impact_analysis",
+    "semantic_search",
+    "symbol_discovery"
+  ],
+  "selection_criteria": "Sanitized public comparable subset preserving the original scripted control-equivalent task count.",
+  "excluded_task_ids": [
+    "status_01",
+    "health_01",
+    "overview_01",
+    "arch_01",
+    "analyze_01",
+    "commit_hist_01",
+    "code_doc_01",
+    "code_map_01",
+    "dead_code_01",
+    "circular_01",
+    "coverage_01",
+    "audit_01",
+    "remember_01",
+    "recall_01",
+    "forget_01",
+    "knowledge_show_01",
+    "snapshot_01",
+    "restore_01",
+    "compact_01",
+    "introspect_01",
+    "repo_status_01"
+  ],
+  "tasks": [
+    {
+      "id": "sym_01",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_01>",
+      "grep_pattern": "<private_symbol_01>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "sym_02",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_02>",
+      "grep_pattern": "<private_symbol_02>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_02>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "sym_03",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_03>",
+      "grep_pattern": "<private_symbol_03>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_03>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "sym_04",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_04>",
+      "grep_pattern": "<private_symbol_04>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_04>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "sym_05",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_05>",
+      "grep_pattern": "<private_symbol_05>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_05>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "sym_06",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_06>",
+      "grep_pattern": "<private_symbol_06>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_06>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "sym_07",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_07>",
+      "grep_pattern": "<private_symbol_07>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_07>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "sym_08",
+      "category": "symbol_discovery",
+      "description": "Find <private_symbol_08>",
+      "grep_pattern": "<private_symbol_08>",
+      "mcp_tool": "find_symbol",
+      "mcp_args": {
+        "name": "<private_symbol_08>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "call_01",
+      "category": "caller_tracing",
+      "description": "Who calls <private_symbol_01>?",
+      "grep_pattern": "<private_symbol_01>",
+      "mcp_tool": "find_callers",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "call_02",
+      "category": "caller_tracing",
+      "description": "Who calls <private_symbol_03>?",
+      "grep_pattern": "<private_symbol_03>",
+      "mcp_tool": "find_callers",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_03>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "call_03",
+      "category": "caller_tracing",
+      "description": "Who calls <private_symbol_04>?",
+      "grep_pattern": "<private_symbol_04>",
+      "mcp_tool": "find_callers",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_04>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "call_04",
+      "category": "caller_tracing",
+      "description": "Who calls <private_symbol_06>?",
+      "grep_pattern": "<private_symbol_06>",
+      "mcp_tool": "find_callers",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_06>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "call_05",
+      "category": "caller_tracing",
+      "description": "What does <private_symbol_01> call?",
+      "grep_pattern": "<private_symbol_01>",
+      "mcp_tool": "find_callees",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "call_06",
+      "category": "caller_tracing",
+      "description": "What does <private_symbol_07> call?",
+      "grep_pattern": "<private_symbol_07>",
+      "mcp_tool": "find_callees",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_07>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_01",
+      "category": "semantic_search",
+      "description": "Semantic search task 01",
+      "grep_pattern": "<private_search_pattern_01>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_02",
+      "category": "semantic_search",
+      "description": "Semantic search task 02",
+      "grep_pattern": "<private_search_pattern_02>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_02>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_03",
+      "category": "semantic_search",
+      "description": "Semantic search task 03",
+      "grep_pattern": "<private_search_pattern_03>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_03>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_04",
+      "category": "semantic_search",
+      "description": "Semantic search task 04",
+      "grep_pattern": "<private_search_pattern_04>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_04>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_05",
+      "category": "semantic_search",
+      "description": "Semantic search task 05",
+      "grep_pattern": "<private_search_pattern_05>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_05>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_06",
+      "category": "semantic_search",
+      "description": "Semantic search task 06",
+      "grep_pattern": "<private_search_pattern_06>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_06>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_07",
+      "category": "semantic_search",
+      "description": "Semantic search task 07",
+      "grep_pattern": "<private_search_pattern_07>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_07>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "search_08",
+      "category": "semantic_search",
+      "description": "Semantic search task 08",
+      "grep_pattern": "<private_search_pattern_08>",
+      "mcp_tool": "search",
+      "mcp_args": {
+        "query": "<private_search_query_08>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "explain_01",
+      "category": "code_understanding",
+      "description": "Explain <private_symbol_06>",
+      "grep_pattern": "<private_symbol_06>",
+      "mcp_tool": "explain",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_06>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "explain_02",
+      "category": "code_understanding",
+      "description": "Explain <private_symbol_07>",
+      "grep_pattern": "<private_symbol_07>",
+      "mcp_tool": "explain",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_07>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "explain_03",
+      "category": "code_understanding",
+      "description": "Explain <private_symbol_01>",
+      "grep_pattern": "<private_symbol_01>",
+      "mcp_tool": "explain",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "explain_04",
+      "category": "code_understanding",
+      "description": "Explain <private_symbol_05>",
+      "grep_pattern": "<private_symbol_05>",
+      "mcp_tool": "explain",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_05>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "explain_05",
+      "category": "code_understanding",
+      "description": "Explain <private_symbol_03>",
+      "grep_pattern": "<private_symbol_03>",
+      "mcp_tool": "explain",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_03>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "explain_06",
+      "category": "code_understanding",
+      "description": "Explain <private_symbol_04>",
+      "grep_pattern": "<private_symbol_04>",
+      "mcp_tool": "explain",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_04>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "impact_01",
+      "category": "impact_analysis",
+      "description": "Impact of changing <private_symbol_06>",
+      "grep_pattern": "<private_symbol_06>",
+      "mcp_tool": "impact",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_06>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "impact_02",
+      "category": "impact_analysis",
+      "description": "Impact of changing <private_symbol_07>",
+      "grep_pattern": "<private_symbol_07>",
+      "mcp_tool": "impact",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_07>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "impact_03",
+      "category": "impact_analysis",
+      "description": "Impact of changing <private_symbol_04>",
+      "grep_pattern": "<private_symbol_04>",
+      "mcp_tool": "impact",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_04>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "impact_04",
+      "category": "impact_analysis",
+      "description": "Impact of changing <private_symbol_05>",
+      "grep_pattern": "<private_symbol_05>",
+      "mcp_tool": "impact",
+      "mcp_args": {
+        "symbol_name": "<private_symbol_05>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "focus_01",
+      "category": "focus",
+      "description": "Focus on private file 01",
+      "grep_pattern": "<private_focus_pattern_01>",
+      "mcp_tool": "focus",
+      "mcp_args": {
+        "path": "<private_path_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "focus_02",
+      "category": "focus",
+      "description": "Focus on private file 02",
+      "grep_pattern": "<private_focus_pattern_02>",
+      "mcp_tool": "focus",
+      "mcp_args": {
+        "path": "<private_path_02>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "commit_search_01",
+      "category": "git_history",
+      "description": "Search private history topic 01",
+      "grep_pattern": "<private_commit_pattern_01>",
+      "mcp_tool": "commit_search",
+      "mcp_args": {
+        "query": "<private_commit_query_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "commit_search_02",
+      "category": "git_history",
+      "description": "Search private history topic 02",
+      "grep_pattern": "<private_commit_pattern_02>",
+      "mcp_tool": "commit_search",
+      "mcp_args": {
+        "query": "<private_commit_query_02>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "code_symbols_01",
+      "category": "code_tool",
+      "description": "Search symbols: private cluster 01",
+      "grep_pattern": "<private_code_pattern_01>",
+      "mcp_tool": "code",
+      "mcp_args": {
+        "operation": "search_symbols",
+        "symbol_name": "<private_symbol_group_01>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "code_symbols_02",
+      "category": "code_tool",
+      "description": "Lookup symbols batch",
+      "grep_pattern": "<private_symbol_07>",
+      "mcp_tool": "code",
+      "mcp_args": {
+        "operation": "lookup_symbols",
+        "symbols": "<private_symbol_07>,<private_symbol_06>,<private_symbol_05>"
+      },
+      "control_equivalent": true
+    },
+    {
+      "id": "code_pattern_01",
+      "category": "code_tool",
+      "description": "Pattern search: export default",
+      "grep_pattern": "export default",
+      "mcp_tool": "code",
+      "mcp_args": {
+        "operation": "pattern_search",
+        "pattern": "export default function $NAME($$$) { $$$ }",
+        "language": "typescript"
+      },
+      "control_equivalent": true
+    }
+  ]
+}
