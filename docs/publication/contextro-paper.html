@@ -308,6 +308,88 @@
       border-bottom: 1.5px solid var(--rule);
     }
 
+    .table-fixed,
+    .table-two-col {
+      table-layout: fixed;
+    }
+
+    .table-two-col th:first-child,
+    .table-two-col td:first-child {
+      width: 31%;
+    }
+
+    .table-outcomes,
+    .table-category-results {
+      table-layout: fixed;
+    }
+
+    .table-outcomes th,
+    .table-outcomes td,
+    .table-category-results th,
+    .table-category-results td {
+      padding-left: 6px;
+      padding-right: 6px;
+    }
+
+    .table-outcomes th:first-child,
+    .table-outcomes td:first-child {
+      width: 18%;
+    }
+
+    .table-outcomes th:nth-child(2),
+    .table-outcomes td:nth-child(2) {
+      width: 7%;
+    }
+
+    .table-outcomes th:nth-child(3),
+    .table-outcomes td:nth-child(3) {
+      width: 12%;
+    }
+
+    .table-outcomes th:nth-child(4),
+    .table-outcomes td:nth-child(4),
+    .table-outcomes th:nth-child(5),
+    .table-outcomes td:nth-child(5) {
+      width: 13%;
+    }
+
+    .table-outcomes th:nth-child(6),
+    .table-outcomes td:nth-child(6) {
+      width: 16%;
+    }
+
+    .table-outcomes th:last-child,
+    .table-outcomes td:last-child {
+      width: 21%;
+    }
+
+    .table-category-results th:first-child,
+    .table-category-results td:first-child {
+      width: 21%;
+    }
+
+    .table-category-results th:nth-child(2),
+    .table-category-results td:nth-child(2) {
+      width: 13%;
+    }
+
+    .table-category-results th:nth-child(3),
+    .table-category-results td:nth-child(3),
+    .table-category-results th:nth-child(4),
+    .table-category-results td:nth-child(4) {
+      width: 14%;
+    }
+
+    .table-category-results th:nth-child(5),
+    .table-category-results td:nth-child(5) {
+      width: 11%;
+    }
+
+    .table-category-results th:last-child,
+    .table-category-results td:last-child {
+      width: 27%;
+    }
+
     tbody tr {
       break-inside: avoid;
       page-break-inside: avoid;
@@ -333,6 +415,13 @@
       vertical-align: top;
     }
 
+    thead th,
+    tbody td {
+      overflow-wrap: anywhere;
+      word-break: normal;
+      hyphens: auto;
+    }
+
     tbody tr + tr td {
       border-top: 1px solid #e6e6e6;
     }
@@ -346,6 +435,12 @@
     pre {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-size: 10pt;
+    }
+
+    table code {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     pre {
@@ -398,9 +493,18 @@
     }
 
     #appendix-c .appendix-note {
+      margin-bottom: 6px;
+      font-size: 9.15pt;
+      line-height: 1.24;
+    }
+
+    #appendix-c h2 {
+      margin-top: 0;
       margin-bottom: 8px;
-      font-size: 9.7pt;
-      line-height: 1.4;
+    }
+
+    #appendix-c .table-caption {
+      margin-bottom: 3px;
     }
 
     .appendix-tool-family-table {
@@ -417,26 +521,72 @@
 
     .appendix-tool-family-table th:first-child,
     .appendix-tool-family-table td:first-child {
-      width: 16%;
+      width: 20%;
       white-space: nowrap;
     }
 
     .appendix-tool-family-table th:nth-child(2),
     .appendix-tool-family-table td:nth-child(2) {
-      width: 27%;
+      width: 18%;
       white-space: nowrap;
-    }
-
-    .appendix-tool-family-table td {
-      overflow-wrap: anywhere;
-      word-break: normal;
     }
 
     .appendix-tool-family-table th:nth-child(3),
-    .appendix-tool-family-table td:nth-child(3),
+    .appendix-tool-family-table td:nth-child(3) {
+      width: 16%;
+      white-space: normal;
+    }
+
     .appendix-tool-family-table th:last-child,
     .appendix-tool-family-table td:last-child {
-      white-space: nowrap;
+      width: 46%;
+      white-space: normal;
+    }
+
+    .appendix-results-table {
+      margin-top: 4px;
+      font-size: 7.85pt;
+      line-height: 1.02;
+      table-layout: fixed;
+    }
+
+    .appendix-results-table th,
+    .appendix-results-table td {
+      padding: 2px 4px;
+      font-size: 7.85pt;
+      line-height: 1.02;
+    }
+
+    .appendix-results-table th:first-child,
+    .appendix-results-table td:first-child {
+      width: 20%;
+    }
+
+    .appendix-results-table th:nth-child(2),
+    .appendix-results-table td:nth-child(2) {
+      width: 15%;
+    }
+
+    .appendix-results-table th:nth-child(3),
+    .appendix-results-table td:nth-child(3) {
+      width: 10%;
+    }
+
+    .appendix-results-table th:nth-child(4),
+    .appendix-results-table td:nth-child(4),
+    .appendix-results-table th:nth-child(5),
+    .appendix-results-table td:nth-child(5) {
+      width: 10%;
+    }
+
+    .appendix-results-table th:nth-child(6),
+    .appendix-results-table td:nth-child(6) {
+      width: 18%;
+    }
+
+    .appendix-results-table th:last-child,
+    .appendix-results-table td:last-child {
+      width: 17%;
     }
 
     @media print {
@@ -506,7 +656,7 @@
 
       <h3 id="system-components">3.1. System Components</h3>
       <div class="table-caption" id="table-1"><strong>Table 1.</strong> Capability map.</div>
-      <table>
+      <table class="table-fixed">
         <thead>
           <tr>
             <th>Capability</th>
@@ -546,13 +696,13 @@
 
       <h3 id="repository-under-test">4.2. Repository Under Test</h3>
       <div class="table-caption" id="table-2"><strong>Table 2.</strong> Repository under test.</div>
-      <table>
+      <table class="table-two-col">
         <thead>
           <tr><th>Property</th><th>Value</th></tr>
         </thead>
         <tbody>
           <tr><td>Repository</td><td>Private production TypeScript monorepo</td></tr>
-          <tr><td>Indexed files</td><td class="num">8,496 files in the private production monorepo</td></tr>
+          <tr><td>Indexed files</td><td>8,496 files in the private production monorepo</td></tr>
           <tr><td>Languages</td><td>TypeScript and JavaScript</td></tr>
           <tr><td>Task inventory</td><td>60 tasks across 16 categories</td></tr>
           <tr><td>Directly comparable subset</td><td>39 tasks across 8 categories</td></tr>
@@ -564,7 +714,7 @@
 
       <h3 id="metrics-reporting">4.3. Metrics and Reporting</h3>
       <div class="table-caption" id="table-3"><strong>Table 3.</strong> Metrics and reporting.</div>
-      <table>
+      <table class="table-fixed">
         <thead>
           <tr><th>Measurement</th><th>Definition</th><th>Artifact</th></tr>
         </thead>
@@ -597,9 +747,9 @@
       </figure>
 
       <div class="table-caption" id="table-4"><strong>Table 4.</strong> Headline outcomes.</div>
-      <table>
+      <table class="table-outcomes">
         <thead>
-          <tr><th>Analysis set</th><th class="num">Tasks</th><th class="num">MCP-native tasks</th><th class="num">Lexical tokens</th><th class="num">Contextro tokens</th><th>Token result</th><th>Median latency</th></tr>
+          <tr><th>Analysis<br>set</th><th class="num">Tasks</th><th class="num">MCP-native<br>tasks</th><th class="num">Lexical<br>tokens</th><th class="num">Contextro<br>tokens</th><th>Token<br>result</th><th>Median<br>latency</th></tr>
         </thead>
         <tbody>
           <tr><td>Full task inventory</td><td class="num">60</td><td class="num">21</td><td class="num">328,272</td><td class="num">14,407</td><td>95.6% reduction</td><td>448.35 ms → 5.21 ms</td></tr>
@@ -619,9 +769,9 @@
       </figure>
 
       <div class="table-caption" id="table-5"><strong>Table 5.</strong> Results by category.</div>
-      <table>
+      <table class="table-category-results">
         <thead>
-          <tr><th>Category</th><th class="num">Comparable tasks</th><th class="num">Lexical tokens</th><th class="num">Contextro tokens</th><th>Reduction</th><th>Contextro latency</th></tr>
+          <tr><th>Category</th><th class="num">Comparable<br>tasks</th><th class="num">Lexical<br>tokens</th><th class="num">Contextro<br>tokens</th><th>Reduction</th><th>Contextro<br>latency</th></tr>
         </thead>
         <tbody>
           <tr><td>Semantic search</td><td class="num">8</td><td class="num">96,366</td><td class="num">1,199</td><td>98.8%</td><td>131.53 ms median<br>95.19-138.31 ms</td></tr>
@@ -639,7 +789,7 @@
       <p>Most lookup and graph operations remain in the low-millisecond range. The long tail is composed of a small number of deliberately heavier analyses rather than broad slowness. In the fresh rerun, <code>focus_01</code> took 7.01 s and repository-wide <code>code(pattern_search, ...)</code> took 11.22 s; both are preserved explicitly in Appendix C rather than absorbed into category means.</p>
 
       <div class="table-caption" id="table-6"><strong>Table 6.</strong> Representative tool latencies.</div>
-      <table>
+      <table class="table-fixed">
         <thead>
           <tr><th>Tool</th><th class="num">Fresh rerun latency</th><th>Role</th></tr>
         </thead>
@@ -663,7 +813,7 @@
       <p>Public artifact reruns now span three layers: the original open-<code>src/</code> verification checks, a larger 1,179-file public proxy repository benchmark with a stronger local-tools pipeline, and a deterministic discovery-plus-edit correctness benchmark. Together these materials do not replace the private monorepo evaluation, but they provide external evidence for stronger controls, redistributable tasks, and exact tool contracts.</p>
 
       <div class="table-caption" id="table-7"><strong>Table 7.</strong> Public verification and supplemental methodology artifacts.</div>
-      <table>
+      <table class="table-fixed">
         <thead>
           <tr><th>Artifact</th><th>Measurement</th><th>Result</th><th>Source</th></tr>
         </thead>
@@ -692,7 +842,7 @@
       <p>The findings in this report are bounded. They describe repository discovery efficiency under a paired task protocol, not general-purpose coding quality under all workflows or repositories.</p>
 
       <div class="table-caption" id="table-8"><strong>Table 8.</strong> Study limitations.</div>
-      <table>
+      <table class="table-fixed">
         <thead>
           <tr><th>Area</th><th>Issue</th><th>Status</th></tr>
         </thead>
@@ -859,11 +1009,11 @@ python scripts/task_subset_robustness.py --results /secure/local-output/results.
 
     <section id="appendix-c">
       <h2>Appendix C. Paired-Study Results by Tool Family</h2>
-      <p class="appendix-note">Table 10 reports aggregate token and latency measurements grouped by tool family. Rows marked <em>No</em> in the lexical-equivalent column represent MCP-native capabilities and are excluded from the directly comparable subset and bootstrap analyses discussed in Section 5.</p>
+      <p class="appendix-note">Table 10 groups aggregate token and latency by tool family. Rows marked <em>No</em> are MCP-native and excluded from the directly comparable subset and bootstrap analysis in Section 5.</p>
       <div class="table-caption" id="table-10"><strong>Table 10.</strong> Paired-study results by tool family.</div>
-      <table class="table-compact">
+      <table class="table-compact appendix-results-table">
         <thead>
-          <tr><th>Tool family</th><th>Category</th><th>Lexical equivalent?</th><th class="num">Lexical tokens</th><th class="num">Contextro tokens</th><th>Contextro latency (ms)</th><th>Reduction</th></tr>
+          <tr><th>Tool family</th><th>Category</th><th>Lexical<br>equiv-<br>alent?</th><th class="num">Lexical<br>tokens</th><th class="num">Contextro<br>tokens</th><th>Contextro<br>latency<br>(ms)</th><th>Reduction</th></tr>
         </thead>
         <tbody>
           <tr><td>find_symbol ×8</td><td>Symbol discovery</td><td>Yes</td><td class="num">34,481</td><td class="num">413</td><td>1.37–9.13</td><td>98.8%</td></tr>
