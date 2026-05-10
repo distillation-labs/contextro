@@ -69,7 +69,7 @@ npx @contextro/skills benchmark --dir /path/to/your/project
 
 - **Node.js 18+** (for npx)
 - **Contextro** installed in your project: `pip install contextro`
-- **MCP configured** in your agent (see [Contextro README](https://github.com/contextro/contextro#connect-to-your-agent))
+- **MCP configured** in your agent (see the root `README.md` for connection examples)
 
 ## Benchmark
 
@@ -132,4 +132,4 @@ npx @contextro/skills install --force
 
 ## License
 
-MIT
+Proprietary - internal Distillation Labs distribution only.
