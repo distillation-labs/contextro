@@ -250,6 +250,16 @@ class SessionState:
         self._index_snapshot = snapshot
         return dict(snapshot)
 
+    def clear_derived_caches(self) -> None:
+        """Drop derived analysis/report caches after reindexing or warm start."""
+        for attr in (
+            "_repository_map_cache",
+            "_static_analysis_cache",
+            "_product_analysis_cache",
+            "_audit_report_cache",
+        ):
+            setattr(self, attr, None)
+
     def shutdown(self) -> None:
         """Gracefully shut down: persist graph state and clean up resources."""
         with self._shutdown_lock:

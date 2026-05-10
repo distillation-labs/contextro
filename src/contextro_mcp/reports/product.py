@@ -23,7 +23,30 @@ from contextro_mcp.config import get_settings
 from contextro_mcp.execution.ast_compression import compress_snippet
 
 AUDIT_SCHEMA_VERSION = 1
-DOCS_SECTION_ORDER = ("index.md", "architecture.md", "audit.md", "llms.txt")
+DOCS_SECTION_ORDER = (
+    "index.md",
+    "workflow.md",
+    "architecture.md",
+    "analysis.md",
+    "audit.md",
+    "dead-code.md",
+    "test-coverage.md",
+    "circular-dependencies.md",
+    "llms.txt",
+)
+
+
+def _state_signature(state) -> tuple[str, int, int]:
+    """Return a stable signature for derived caches tied to the current graph."""
+    root = _require_root(state)
+    graph = state.graph_engine
+    if graph is None:
+        raise ValueError("No graph available. Run index first.")
+    return (
+        str(root),
+        len(getattr(graph, "nodes", {})),
+        len(getattr(graph, "relationships", {})),
+    )
 
 
 def get_repository_map_for_state(state) -> RepositoryMap:
@@ -33,11 +56,7 @@ def get_repository_map_for_state(state) -> RepositoryMap:
     if graph is None:
         raise ValueError("No graph available. Run index first.")
 
-    signature = (
-        str(root),
-        len(getattr(graph, "nodes", {})),
-        len(getattr(graph, "relationships", {})),
-    )
+    signature = _state_signature(state)
     cache = getattr(state, "_repository_map_cache", None)
     if cache and cache.get("signature") == signature:
         return cache["repo_map"]
@@ -49,14 +68,9 @@ def get_repository_map_for_state(state) -> RepositoryMap:
 
 def get_static_analysis_bundle(state) -> dict[str, Any]:
     """Build or reuse the current static analysis bundle."""
-    root = _require_root(state)
     graph = state.graph_engine
     repo_map = get_repository_map_for_state(state)
-    signature = (
-        str(root),
-        len(getattr(graph, "nodes", {})),
-        len(getattr(graph, "relationships", {})),
-    )
+    signature = _state_signature(state)
     cache = getattr(state, "_static_analysis_cache", None)
     if cache and cache.get("signature") == signature:
         return cache["bundle"]
@@ -68,6 +82,173 @@ def get_static_analysis_bundle(state) -> dict[str, Any]:
     }
     state._static_analysis_cache = {"signature": signature, "bundle": bundle}
     return bundle
+
+
+def get_product_analysis_bundle(state) -> dict[str, Any]:
+    """Build or reuse a richer product-analysis bundle for reports and sidecars."""
+    signature = _state_signature(state)
+    cache = getattr(state, "_product_analysis_cache", None)
+    if cache and cache.get("signature") == signature:
+        return cache["bundle"]
+
+    graph = state.graph_engine
+    repo_map = get_repository_map_for_state(state)
+    static_bundle = get_static_analysis_bundle(state)
+    analyzer = CodeAnalyzer(graph)
+    complexity = analyzer.analyze_complexity()
+    quality = analyzer.calculate_quality_metrics()
+    hub_risks = top_degree_files(repo_map, limit=max(len(repo_map.modules), 1))
+
+    dead_files = set(static_bundle["dead_code"]["unused_files"])
+    dead_symbols_by_path: dict[str, list[dict[str, Any]]] = {}
+    for item in static_bundle["dead_code"]["unused_symbols"]:
+        path = _path_from_location(item.get("location", ""))
+        if not path:
+            continue
+        dead_symbols_by_path.setdefault(path, []).append(item)
+
+    uncovered_files = set(static_bundle["test_coverage_map"]["uncovered_files"])
+    uncovered_symbols_by_path: dict[str, list[dict[str, Any]]] = {}
+    for item in static_bundle["test_coverage_map"]["uncovered_symbols"]:
+        path = _path_from_location(item.get("location", ""))
+        if not path:
+            continue
+        uncovered_symbols_by_path.setdefault(path, []).append(item)
+
+    complexity_by_path: dict[str, list[dict[str, Any]]] = {}
+    for item in complexity["high_complexity_functions"]:
+        path = _path_from_location(item.get("location", ""))
+        if not path:
+            continue
+        complexity_by_path.setdefault(path, []).append(item)
+
+    file_coverage = {
+        item["path"]: item for item in static_bundle["test_coverage_map"]["file_coverage"]
+    }
+    hub_by_path = {item["path"]: item for item in hub_risks}
+
+    bundle = {
+        "repo_map": repo_map,
+        "static_bundle": static_bundle,
+        "quality": quality,
+        "complexity": complexity,
+        "hub_risks": hub_risks,
+        "hub_by_path": hub_by_path,
+        "file_coverage": file_coverage,
+        "tests_by_path": {path: item.get("tests", []) for path, item in file_coverage.items()},
+        "dead_files": dead_files,
+        "dead_symbols_by_path": dead_symbols_by_path,
+        "uncovered_files": uncovered_files,
+        "uncovered_symbols_by_path": uncovered_symbols_by_path,
+        "complexity_by_path": complexity_by_path,
+    }
+    state._product_analysis_cache = {"signature": signature, "bundle": bundle}
+    return bundle
+
+
+def build_sidecar_report(state, target_path: str, *, include_code: bool = True) -> dict[str, Any]:
+    """Build a productized `.graph.*` sidecar report for one file."""
+    root = _require_root(state)
+    graph = state.graph_engine
+    repo_map = get_repository_map_for_state(state)
+    bundle = get_product_analysis_bundle(state)
+    relative_path = _resolve_relative_path(root, target_path)
+    module = repo_map.modules.get(relative_path)
+    if module is None:
+        raise ValueError(f"File not found in indexed codebase: {target_path}")
+
+    symbols = []
+    for symbol_id in module.symbol_ids:
+        node = graph.get_node(symbol_id)
+        if node is None:
+            continue
+        symbols.append(
+            {
+                "name": node.name,
+                "type": node.node_type.value,
+                "line": node.location.start_line,
+                "line_count": node.line_count,
+            }
+        )
+    symbols.sort(key=lambda item: (item["line"], item["name"]))
+
+    direct_impact = sorted(set(module.dependents) | set(module.called_by))
+    dead_symbols = list(bundle["dead_symbols_by_path"].get(relative_path, []))
+    uncovered_symbols = list(bundle["uncovered_symbols_by_path"].get(relative_path, []))
+    coverage = bundle["file_coverage"].get(
+        relative_path,
+        {"path": relative_path, "covered": False, "tests": []},
+    )
+    complexity_hotspots = list(bundle["complexity_by_path"].get(relative_path, []))
+    hub = bundle["hub_by_path"].get(
+        relative_path,
+        {
+            "path": relative_path,
+            "degree": len(
+                set(module.imports)
+                | set(module.dependents)
+                | set(module.calls)
+                | set(module.called_by)
+            ),
+            "imports": len(module.imports),
+            "dependents": len(module.dependents),
+            "calls": len(module.calls),
+            "called_by": len(module.called_by),
+        },
+    )
+    risk = _build_file_risk(
+        module=module,
+        hub=hub,
+        coverage=coverage,
+        complexity_hotspots=complexity_hotspots,
+        dead_symbols=dead_symbols,
+        dead_file=relative_path in bundle["dead_files"],
+    )
+
+    report = {
+        "path": relative_path,
+        "overview": {
+            "role": f"{layer_hint(relative_path)} module",
+            "language": module.language,
+            "entry_point": module.is_entry,
+            "test_file": module.is_test,
+            "status": risk["status"],
+            "summary": risk["summary"],
+        },
+        "symbols": symbols[:20],
+        "deps": {
+            "imports": list(module.imports[:12]),
+            "imported_by": list(module.dependents[:12]),
+            "nearby_tests": list(related_tests(repo_map, relative_path)[:12]),
+        },
+        "calls": {
+            "calls": list(module.calls[:12]),
+            "called_by": list(module.called_by[:12]),
+        },
+        "impact": {
+            "risk": risk["level"],
+            "reasons": risk["reasons"],
+            "direct_files": len(direct_impact),
+            "top_dependents": direct_impact[:12],
+            "hub_degree": hub["degree"],
+        },
+        "analysis": {
+            "coverage": (
+                f"covered by {len(coverage.get('tests', []))} test file(s)"
+                if coverage.get("tests")
+                else "no static test path"
+            ),
+            "tests": list(coverage.get("tests", [])[:12]),
+            "dead_file": relative_path in bundle["dead_files"],
+            "dead_symbols": dead_symbols[:10],
+            "uncovered_symbols": uncovered_symbols[:10],
+            "complexity_hotspots": complexity_hotspots[:10],
+        },
+    }
+    if include_code:
+        source_text = _safe_read(root / relative_path)
+        report["code_preview"] = compress_snippet(source_text[:8000], module.language)
+    return report
 
 
 def build_focus_report(state, target_path: str, *, include_code: bool = True) -> dict[str, Any]:
@@ -178,13 +359,17 @@ def build_restore_report(state) -> dict[str, Any]:
 
 def build_audit_report(state) -> dict[str, Any]:
     """Build a packaged audit report."""
-    graph = state.graph_engine
-    repo_map = get_repository_map_for_state(state)
-    analyzer = CodeAnalyzer(graph)
-    static_bundle = get_static_analysis_bundle(state)
-    complexity = analyzer.analyze_complexity()
-    quality = analyzer.calculate_quality_metrics()
-    hub_risks = top_degree_files(repo_map, limit=10)
+    signature = _state_signature(state)
+    cache = getattr(state, "_audit_report_cache", None)
+    if cache and cache.get("signature") == signature:
+        return cache["report"]
+
+    bundle = get_product_analysis_bundle(state)
+    static_bundle = bundle["static_bundle"]
+    quality = bundle["quality"]
+    complexity = bundle["complexity"]
+    repo_map = bundle["repo_map"]
+    hub_risks = bundle["hub_risks"][:10]
     uncovered_files = static_bundle["test_coverage_map"]["uncovered_files"]
     uncovered_hubs = []
     for item in hub_risks:
@@ -306,7 +491,7 @@ def build_audit_report(state) -> dict[str, Any]:
         )
     recommendations = [item["action"] for item in recommendation_details]
 
-    return {
+    report = {
         "report_type": "audit",
         "schema_version": AUDIT_SCHEMA_VERSION,
         "summary": summary,
@@ -320,14 +505,18 @@ def build_audit_report(state) -> dict[str, Any]:
         "recommendation_details": recommendation_details,
         "recommendations": recommendations,
     }
+    state._audit_report_cache = {"signature": signature, "report": report}
+    return report
 
 
 def build_docs_sections(state) -> dict[str, str]:
     """Build the packaged docs bundle as markdown/plain-text sections."""
     root = _require_root(state)
-    repo_map = get_repository_map_for_state(state)
+    bundle = get_product_analysis_bundle(state)
+    repo_map = bundle["repo_map"]
     restore = build_restore_report(state)
     audit = build_audit_report(state)
+    static_bundle = bundle["static_bundle"]
 
     index_doc = "\n\n".join(
         [
@@ -337,10 +526,24 @@ def build_docs_sections(state) -> dict[str, str]:
                 "Bundle Contents",
                 "\n".join(
                     [
+                        (
+                            "- [Workflow](workflow.md) — how to turn on and keep "
+                            "`.graph.*` sidecars fresh."
+                        ),
                         "- [Architecture](architecture.md) — layers, entry points, and hub files.",
+                        "- [Analysis](analysis.md) — quality, complexity, and structural hotspots.",
                         (
                             "- [Audit](audit.md) — prioritized risks, dead "
                             "code, cycles, and coverage gaps."
+                        ),
+                        "- [Dead Code](dead-code.md) — unreachable files and private symbols.",
+                        (
+                            "- [Test Coverage](test-coverage.md) — static coverage gaps "
+                            "by file and symbol."
+                        ),
+                        (
+                            "- [Circular Dependencies](circular-dependencies.md) — "
+                            "file-level SCC findings."
                         ),
                         "- [LLMs Context](llms.txt) — terse briefing for agents and scripts.",
                     ]
@@ -356,8 +559,31 @@ def build_docs_sections(state) -> dict[str, str]:
                     ]
                 ),
             ),
+            _section(
+                "Workflow",
+                "\n".join(
+                    [
+                        (
+                            "- `contextro graph init --bootstrap-target claude` — "
+                            "generate sidecars, docs, and a bootstrap block."
+                        ),
+                        "- `contextro graph watch` — keep sidecars fresh while you edit.",
+                        (
+                            "- `contextro sidecar clean` — remove generated `.graph.*` "
+                            "files when you want a clean tree."
+                        ),
+                    ]
+                ),
+            ),
             _section("Entry Points", _code_list(restore["entry_points"][:10])),
             _section("Architecture Snapshot", _architecture_snapshot_markdown(restore)),
+            _section(
+                "Analysis Snapshot",
+                _ordered_summary_bullets(
+                    audit["quality"],
+                    ("quality_score", "maintainability_index", "documentation_ratio"),
+                ),
+            ),
             _section("Audit Snapshot", _audit_summary_markdown(audit["summary"])),
             _section(
                 "Recent Session Snapshot",
@@ -391,6 +617,87 @@ def build_docs_sections(state) -> dict[str, str]:
             _section(
                 "Suggested Commands",
                 _code_list(restore.get("suggested_next_commands", [])),
+            ),
+        ]
+    )
+    workflow_doc = "\n\n".join(
+        [
+            "# Contextro Graph Workflow",
+            (
+                "Use this workflow when you want file-adjacent `.graph.*` summaries to become "
+                "the agent's default map of the repo."
+            ),
+            _section(
+                "One-Time Setup",
+                "\n".join(
+                    [
+                        (
+                            "1. Run `contextro graph init --bootstrap-target claude` "
+                            "(or `agents` / `cursor`)."
+                        ),
+                        "2. Tell the agent to read `*.graph.*` sidecars before source files.",
+                        (
+                            "3. Open `.contextro-docs/index.md` or `llms.txt` for the "
+                            "repo-wide briefing."
+                        ),
+                    ]
+                ),
+            ),
+            _section(
+                "Live Workflow",
+                "\n".join(
+                    [
+                        "1. Run `contextro graph watch` while editing.",
+                        (
+                            "2. Contextro reindexes incrementally on changes and refreshes "
+                            "affected sidecars."
+                        ),
+                        (
+                            "3. Use `focus`, `audit`, `dead-code`, and `test-coverage` "
+                            "when you need deeper details."
+                        ),
+                    ]
+                ),
+            ),
+            _section(
+                "Sidecar Sections",
+                "\n".join(
+                    [
+                        "- `[overview]` — file role, entry/test status, and why it matters.",
+                        "- `[deps]` — imports, importers, and nearby tests.",
+                        "- `[calls]` — direct call relationships at the file level.",
+                        "- `[impact]` — blast radius and risk reasons.",
+                        "- `[analysis]` — coverage, dead code, and complexity hotspots.",
+                    ]
+                ),
+            ),
+        ]
+    )
+    analysis_doc = "\n\n".join(
+        [
+            "# Contextro Analysis",
+            _section(
+                "Quality Metrics",
+                _ordered_summary_bullets(
+                    audit["quality"],
+                    ("quality_score", "maintainability_index", "documentation_ratio"),
+                ),
+            ),
+            _section(
+                "Complexity Metrics",
+                _ordered_summary_bullets(
+                    audit["complexity"],
+                    ("total_functions", "average_complexity", "max_complexity"),
+                ),
+            ),
+            _section(
+                "Complexity Distribution",
+                _mapping_bullets(audit["complexity"].get("complexity_distribution", {})),
+            ),
+            _section("Hub Files", _hub_items_markdown(audit["hub_risks"][:15])),
+            _section(
+                "Complexity Hotspots",
+                _complexity_items_markdown(audit["complexity"]["high_complexity_functions"][:15]),
             ),
         ]
     )
@@ -454,14 +761,94 @@ def build_docs_sections(state) -> dict[str, str]:
             ),
         ]
     )
+    dead_code_doc = "\n\n".join(
+        [
+            "# Contextro Dead Code",
+            _section(
+                "Summary",
+                _ordered_summary_bullets(
+                    static_bundle["dead_code"]["summary"],
+                    (
+                        "production_entry_points",
+                        "reachable_files",
+                        "unused_files",
+                        "unused_symbols",
+                        "unresolved_imports",
+                    ),
+                ),
+            ),
+            _section("Entry Points", _code_list(static_bundle["dead_code"]["entry_points"][:20])),
+            _section("Unused Files", _code_list(static_bundle["dead_code"]["unused_files"][:20])),
+            _section(
+                "Unused Symbols",
+                _unused_symbol_markdown(static_bundle["dead_code"]["unused_symbols"][:20]),
+            ),
+            _section(
+                "Unresolved Imports",
+                _import_link_markdown(static_bundle["dead_code"]["unresolved_imports"][:20]),
+            ),
+        ]
+    )
+    coverage_doc = "\n\n".join(
+        [
+            "# Contextro Test Coverage Map",
+            _section(
+                "Summary",
+                _ordered_summary_bullets(
+                    static_bundle["test_coverage_map"]["summary"],
+                    (
+                        "test_files",
+                        "production_files",
+                        "covered_files",
+                        "uncovered_files",
+                        "coverage_ratio",
+                    ),
+                ),
+            ),
+            _section(
+                "Uncovered Files",
+                _code_list(static_bundle["test_coverage_map"]["uncovered_files"][:20]),
+            ),
+            _section(
+                "Uncovered Symbols",
+                _unused_symbol_markdown(static_bundle["test_coverage_map"]["uncovered_symbols"][:20]),
+            ),
+            _section(
+                "Covered File Samples",
+                _file_coverage_markdown(static_bundle["test_coverage_map"]["file_coverage"][:20]),
+            ),
+            _section("Notes", static_bundle["test_coverage_map"]["note"]),
+        ]
+    )
+    circular_doc = "\n\n".join(
+        [
+            "# Contextro Circular Dependencies",
+            _section(
+                "Summary",
+                _ordered_summary_bullets(
+                    static_bundle["circular_dependencies"]["summary"],
+                    ("cycle_count", "files_in_cycles", "self_cycles"),
+                ),
+            ),
+            _section(
+                "Cycles",
+                _cycles_markdown(static_bundle["circular_dependencies"]["cycles"][:20]),
+            ),
+        ]
+    )
     llms_doc = "\n".join(
         [
             f"Contextro local docs bundle for project {root.name}.",
             "Read order:",
-            "1. index.md - bundle overview, entry points, and command hints",
-            "2. architecture.md - layers, entry points, and highest-blast-radius files",
-            "3. audit.md - prioritized risks, dead code, cycles, and coverage gaps",
-            "4. llms.txt - this terse summary",
+            "1. index.md - bundle overview and command hints",
+            "2. workflow.md - how to use `.graph.*` sidecars and live graph mode",
+            "3. architecture.md - layers, entry points, and highest-blast-radius files",
+            "4. analysis.md - quality, complexity, and hub-file context",
+            "5. audit.md - prioritized risks and recommendations",
+            "6. dead-code.md - unreachable files and private symbols",
+            "7. test-coverage.md - static coverage gaps",
+            "8. circular-dependencies.md - SCC-based cycles",
+            "9. llms.txt - this terse summary",
             "",
             f"Project root: {root}",
             f"Files indexed: {len(repo_map.modules)}",
@@ -476,6 +863,8 @@ def build_docs_sections(state) -> dict[str, str]:
             _llms_recommendations(audit["recommendation_details"]),
             "",
             "Suggested commands:",
+            "- contextro graph init --bootstrap-target claude",
+            "- contextro graph watch",
             "- contextro restore",
             "- contextro focus <file>",
             "- contextro audit",
@@ -483,8 +872,13 @@ def build_docs_sections(state) -> dict[str, str]:
     ).strip()
     return {
         "index.md": index_doc,
+        "workflow.md": workflow_doc,
         "architecture.md": architecture_doc,
+        "analysis.md": analysis_doc,
         "audit.md": audit_doc,
+        "dead-code.md": dead_code_doc,
+        "test-coverage.md": coverage_doc,
+        "circular-dependencies.md": circular_doc,
         "llms.txt": llms_doc,
     }
 
@@ -571,6 +965,24 @@ def _unused_symbol_markdown(items: list[dict[str, Any]]) -> str:
         )
         for item in items
     )
+
+
+def _import_link_markdown(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "- (none)"
+    return "\n".join(
+        f"- `{item['source']}` → `{item['specifier']}`" for item in items
+    )
+
+
+def _file_coverage_markdown(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "- (none)"
+    lines = []
+    for item in items:
+        tests = ", ".join(f"`{test}`" for test in item.get("tests", [])) or "(none)"
+        lines.append(f"- `{item['path']}` — covered: {item['covered']} · tests: {tests}")
+    return "\n".join(lines)
 
 
 def _cycles_markdown(cycles: list[dict[str, Any]]) -> str:
@@ -668,6 +1080,76 @@ def _recent_session_markdown(recent_session: dict[str, Any], archive: dict[str, 
     if archive_entries:
         parts.append(f"- **Archived Context Entries:** {archive_entries}")
     return "\n\n".join(parts) if parts else "- (none)"
+
+
+def _path_from_location(location: str) -> str:
+    return location.split(":", 1)[0] if ":" in location else location
+
+
+def _build_file_risk(
+    *,
+    module,
+    hub: dict[str, Any],
+    coverage: dict[str, Any],
+    complexity_hotspots: list[dict[str, Any]],
+    dead_symbols: list[dict[str, Any]],
+    dead_file: bool,
+) -> dict[str, Any]:
+    if dead_file:
+        return {
+            "level": "prune",
+            "status": "unreachable production file",
+            "summary": (
+                "File is unreachable from production entry points and is a cleanup candidate."
+            ),
+            "reasons": ["file is unreachable from production entry points"],
+        }
+
+    score = 0
+    reasons: list[str] = []
+    direct_dependents = len(set(module.dependents) | set(module.called_by))
+    if module.is_entry:
+        score += 2
+        reasons.append("entry point")
+    if direct_dependents >= 4:
+        score += 2
+        reasons.append(f"{direct_dependents} direct dependents/callers")
+    elif direct_dependents >= 1:
+        score += 1
+        reasons.append(f"{direct_dependents} direct dependents/callers")
+    if hub.get("degree", 0) >= 8:
+        score += 1
+        reasons.append(f"hub degree {hub['degree']}")
+    if complexity_hotspots:
+        score += 1
+        reasons.append(f"{len(complexity_hotspots)} high-complexity symbol(s)")
+    if not module.is_test and not coverage.get("tests"):
+        score += 1
+        reasons.append("no static test path")
+    if dead_symbols:
+        reasons.append(f"{len(dead_symbols)} removable private symbol(s)")
+
+    if score >= 4:
+        level = "high"
+    elif score >= 2:
+        level = "medium"
+    else:
+        level = "low"
+
+    if module.is_test:
+        status = "test module"
+    elif module.is_entry:
+        status = "entry point"
+    elif coverage.get("tests"):
+        status = "covered production module"
+    else:
+        status = "uncovered production module"
+
+    summary = (
+        f"{status}; risk {level}; "
+        + (", ".join(reasons[:3]) if reasons else "light blast radius")
+    )
+    return {"level": level, "status": status, "summary": summary, "reasons": reasons}
 
 
 def _llms_recommendations(items: list[dict[str, Any]]) -> str:

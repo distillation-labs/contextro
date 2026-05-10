@@ -242,15 +242,17 @@ class EmbeddingService:
                 elif self.device == "mps":
                     kwargs["model_kwargs"] = {"provider": "CoreMLExecutionProvider"}
                 else:
-                    # Optimize CPU threading for maximum throughput
+                    # Optimum expects a real SessionOptions object here.
+                    import onnxruntime
+
                     num_cores = _os.cpu_count() or 4
+                    session_options = onnxruntime.SessionOptions()
+                    session_options.intra_op_num_threads = num_cores
+                    session_options.inter_op_num_threads = 1
                     kwargs["model_kwargs"] = {
                         "provider": "CPUExecutionProvider",
                         "provider_options": {},
-                        "session_options": {
-                            "intra_op_num_threads": num_cores,
-                            "inter_op_num_threads": 1,
-                        },
+                        "session_options": session_options,
                     }
                 # ONNX manages its own device; remove SentenceTransformer device param
                 kwargs.pop("device", None)

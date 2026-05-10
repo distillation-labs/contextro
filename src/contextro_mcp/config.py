@@ -80,7 +80,7 @@ class Settings:
     search_adaptive_result_count_enabled: bool = True
     search_adaptive_high_confidence_limit: int = 3
     search_adaptive_medium_confidence_limit: int = 6
-    search_rerank_max_candidates: int = 10
+    search_rerank_max_candidates: int = 6
     search_rerank_max_passage_chars: int = 800
     search_rerank_non_vector_passage_chars: int = 400
     search_prewarm_enabled: bool = True
@@ -133,6 +133,13 @@ class Settings:
     branch_poll_interval: float = 2.0  # seconds between HEAD polls
     reindex_debounce_seconds: float = 3.0  # min seconds between reindex triggers
     file_watcher_enabled: bool = True  # auto-start file watcher on index
+
+    # Edit assistance
+    edit_require_preview_before_apply: bool = False
+    edit_preview_ttl_seconds: float = 900.0
+    edit_preview_context_lines: int = 3
+    edit_preview_max_diff_lines: int = 80
+    edit_plan_max_targets: int = 8
 
     # Cross-Repo Context
     cross_repo_enabled: bool = True
@@ -239,6 +246,15 @@ class Settings:
             "CTX_BRANCH_POLL_INTERVAL": ("branch_poll_interval", float),
             "CTX_REINDEX_DEBOUNCE_SECONDS": ("reindex_debounce_seconds", float),
             "CTX_FILE_WATCHER_ENABLED": ("file_watcher_enabled", _bool),
+            # Edit assistance
+            "CTX_EDIT_REQUIRE_PREVIEW_BEFORE_APPLY": (
+                "edit_require_preview_before_apply",
+                _bool,
+            ),
+            "CTX_EDIT_PREVIEW_TTL_SECONDS": ("edit_preview_ttl_seconds", float),
+            "CTX_EDIT_PREVIEW_CONTEXT_LINES": ("edit_preview_context_lines", int),
+            "CTX_EDIT_PREVIEW_MAX_DIFF_LINES": ("edit_preview_max_diff_lines", int),
+            "CTX_EDIT_PLAN_MAX_TARGETS": ("edit_plan_max_targets", int),
             # Cross-Repo Context
             "CTX_CROSS_REPO_ENABLED": ("cross_repo_enabled", _bool),
             "CTX_CROSS_REPO_PATHS": ("cross_repo_paths", str),

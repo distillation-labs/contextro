@@ -174,6 +174,56 @@ def test_batch_size_clamped(model_name, batch_size):
     assert svc.max_batch_size == 128
 
 
+def test_cpu_onnx_uses_session_options(monkeypatch):
+    """CPU ONNX loading passes a real SessionOptions object to optimum."""
+    import os
+    import sys
+    import types
+
+    monkeypatch.setenv("CTX_TRUST_REMOTE_CODE", "true")
+    reset_settings()
+
+    captured = {}
+
+    class FakeSessionOptions:
+        def __init__(self):
+            self.intra_op_num_threads = None
+            self.inter_op_num_threads = None
+
+        def has_providers(self):
+            return False
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_name, **kwargs):
+            captured["model_name"] = model_name
+            captured["kwargs"] = kwargs
+
+        def get_sentence_embedding_dimension(self):
+            return 768
+
+    fake_onnxruntime = types.ModuleType("onnxruntime")
+    fake_onnxruntime.SessionOptions = FakeSessionOptions
+
+    fake_sentence_transformers = types.ModuleType("sentence_transformers")
+    fake_sentence_transformers.SentenceTransformer = FakeSentenceTransformer
+
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_sentence_transformers)
+
+    svc = EmbeddingService(model_name="jina-code", device="cpu")
+    svc._load_model()
+
+    model_kwargs = captured["kwargs"]["model_kwargs"]
+    session_options = model_kwargs["session_options"]
+
+    assert captured["kwargs"]["backend"] == "onnx"
+    assert model_kwargs["provider"] == "CPUExecutionProvider"
+    assert model_kwargs["provider_options"] == {}
+    assert isinstance(session_options, FakeSessionOptions)
+    assert session_options.intra_op_num_threads == (os.cpu_count() or 4)
+    assert session_options.inter_op_num_threads == 1
+
+
 def test_unsupported_model_raises_error():
     """Unsupported model names raise ConfigurationError."""
     from contextro_mcp.core.exceptions import ConfigurationError

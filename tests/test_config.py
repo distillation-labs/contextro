@@ -21,7 +21,7 @@ def test_default_settings():
     assert s.incremental_index_fast_path_enabled is True
     assert s.search_prewarm_enabled is True
     assert s.search_prewarm_reranker is True
-    assert s.search_rerank_max_candidates == 10
+    assert s.search_rerank_max_candidates == 6
     assert s.search_rerank_max_passage_chars == 800
     assert s.search_rerank_non_vector_passage_chars == 400
     assert s.chunk_context_mode == "rich"
