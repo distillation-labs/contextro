@@ -4,8 +4,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/jassskalkat/Contextro.git
-cd Contextro
+git clone <internal-contextro-repo-url>
+cd contextro
 
 # Create virtual environment
 python3.12 -m venv .venv
@@ -46,7 +46,7 @@ Contextro/
 │   ├── adr/                # 11 Architecture Decision Records
 │   └── research/           # Research notes on libraries
 ├── pyproject.toml          # Build config, dependencies
-└── LICENSE                 # MIT License
+└── LICENSE                 # Proprietary license notice
 ```
 
 ## Running Tests
