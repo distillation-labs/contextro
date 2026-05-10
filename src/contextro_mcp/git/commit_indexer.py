@@ -20,6 +20,17 @@ MAX_DIFF_CHARS = 4000
 DEFAULT_COMMIT_LIMIT = 500
 
 
+def _ctx_fast() -> Any | None:
+    try:
+        from contextro_mcp.accelerator import RUST_AVAILABLE, ctx_fast
+
+        if RUST_AVAILABLE:
+            return ctx_fast
+    except Exception:
+        return None
+    return None
+
+
 @dataclass
 class CommitInfo:
     """Parsed git commit metadata."""
@@ -121,6 +132,14 @@ def _run_git(args: List[str], cwd: str, timeout: int = 30) -> Optional[str]:
 
 def get_current_branch(repo_path: str) -> str:
     """Get the current git branch name."""
+    ctx = _ctx_fast()
+    if ctx is not None:
+        try:
+            branch = ctx.git_current_branch(repo_path)
+            if branch:
+                return branch
+        except Exception:
+            pass
     output = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_path)
     if output:
         return output.strip()
@@ -129,6 +148,14 @@ def get_current_branch(repo_path: str) -> str:
 
 def get_current_head(repo_path: str) -> str:
     """Get the current HEAD commit hash."""
+    ctx = _ctx_fast()
+    if ctx is not None:
+        try:
+            head = ctx.git_head_hash(repo_path)
+            if head:
+                return head
+        except Exception:
+            pass
     output = _run_git(["rev-parse", "HEAD"], cwd=repo_path)
     if output:
         return output.strip()
@@ -137,6 +164,12 @@ def get_current_head(repo_path: str) -> str:
 
 def is_git_repo(path: str) -> bool:
     """Check if a path is inside a git repository."""
+    ctx = _ctx_fast()
+    if ctx is not None:
+        try:
+            return bool(ctx.git_is_repo(path))
+        except Exception:
+            pass
     output = _run_git(["rev-parse", "--is-inside-work-tree"], cwd=path)
     return output is not None and output.strip() == "true"
 
