@@ -5,25 +5,22 @@ build-backend = "maturin"
 [project]
 name = "contextro"
 version = "0.0.6"
-description = "Contextro — AI-native code intelligence MCP server: hybrid search, code graph, semantic memory, commit history, progressive disclosure, AST compression"
+description = "Contextro is a proprietary code intelligence MCP server for repository search and navigation"
 readme = "README.md"
-license = "MIT"
+license = "Proprietary"
 license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.14"
 authors = [
-    { name = "Jass Kalkat" },
+    { name = "Distillation Labs" },
 ]
 keywords = [
     "mcp", "mcp-server", "model-context-protocol",
-    "code-search", "semantic-search", "hybrid-search",
-    "code-graph", "code-analysis", "code-intelligence",
-    "vector-search", "bm25", "ai-coding",
-    "tree-sitter", "lancedb", "local-first",
-    "contextro", "commit-history", "cross-repo",
+    "code-search", "semantic-search", "code-intelligence",
+    "repository-navigation", "contextro",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -44,16 +41,10 @@ dependencies = [
     "ast-grep-py>=0.28.0",
     "rustworkx>=0.15.0",
     "pathspec>=0.11.0",
+    "tiktoken>=0.8.0",
     "watchdog>=3.0.0",
     "pyarrow>=14.0.0",
 ]
-
-[project.urls]
-Homepage = "https://github.com/jassskalkat/Contextro-MCP"
-Repository = "https://github.com/jassskalkat/Contextro-MCP"
-Documentation = "https://github.com/jassskalkat/Contextro-MCP/blob/main/docs/USAGE_GUIDE.md"
-Issues = "https://github.com/jassskalkat/Contextro-MCP/issues"
-Changelog = "https://github.com/jassskalkat/Contextro-MCP/releases"
 
 [project.optional-dependencies]
 dev = [
