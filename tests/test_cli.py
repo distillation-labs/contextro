@@ -174,8 +174,13 @@ def test_main_docs_subcommand_uses_codebase_relative_default(tmp_path, capsys, m
         "contextro_mcp.artifacts.docs_bundle.build_docs_sections",
         lambda state: {
             "index.md": "# Demo",
+            "workflow.md": "# Workflow",
             "architecture.md": "# Architecture",
+            "analysis.md": "# Analysis",
             "audit.md": "# Audit",
+            "dead-code.md": "# Dead Code",
+            "test-coverage.md": "# Test Coverage",
+            "circular-dependencies.md": "# Cycles",
             "llms.txt": "demo",
         },
     )
@@ -212,6 +217,83 @@ def test_main_sidecar_clean_subcommand_prints_json(capsys, monkeypatch):
     captured = capsys.readouterr()
     assert '"count": 1' in captured.out
     assert "src/main.py" in captured.out
+    assert fake_state.shutdown_called is True
+
+
+def test_main_graph_init_subcommand_prints_json(capsys, monkeypatch):
+    class _FakeState:
+        def __init__(self):
+            self.shutdown_called = False
+
+        def shutdown(self):
+            self.shutdown_called = True
+
+    fake_state = _FakeState()
+
+    monkeypatch.setattr("contextro_mcp.state.get_state", lambda: fake_state)
+    monkeypatch.setattr(
+        "contextro_mcp.cli.runtime.ensure_indexed_state",
+        lambda codebase_path=None: fake_state,
+    )
+    monkeypatch.setattr(
+        "contextro_mcp.artifacts.graph_workflow.initialize_graph_workflow",
+        lambda state, **kwargs: {"workflow": "graph", "mode": "initialized", **kwargs},
+    )
+
+    server_module.main(["graph", "init", "src", "--format", "json"])
+
+    captured = capsys.readouterr()
+    assert '"workflow": "graph"' in captured.out
+    assert '"mode": "initialized"' in captured.out
+    assert fake_state.shutdown_called is True
+
+
+def test_main_graph_watch_subcommand_runs_async_workflow(monkeypatch):
+    class _FakeState:
+        def __init__(self):
+            self.shutdown_called = False
+
+        def shutdown(self):
+            self.shutdown_called = True
+
+    fake_state = _FakeState()
+    called = {}
+
+    async def _fake_watch_graph_workflow(**kwargs):
+        called["kwargs"] = kwargs
+
+    monkeypatch.setattr("contextro_mcp.state.get_state", lambda: fake_state)
+    monkeypatch.setattr(
+        "contextro_mcp.artifacts.graph_workflow.watch_graph_workflow",
+        _fake_watch_graph_workflow,
+    )
+
+    server_module.main(
+        [
+            "graph",
+            "watch",
+            "src",
+            "--include-code",
+            "--no-docs",
+            "--bootstrap-target",
+            "claude",
+            "--debounce-seconds",
+            "1.5",
+            "--format",
+            "json",
+        ]
+    )
+
+    assert called["kwargs"] == {
+        "codebase_path": None,
+        "target_path": "src",
+        "include_code": True,
+        "docs_output_dir": "",
+        "bootstrap_target": "claude",
+        "include_docs": False,
+        "debounce_seconds": 1.5,
+        "output_format": "json",
+    }
     assert fake_state.shutdown_called is True
 
 
