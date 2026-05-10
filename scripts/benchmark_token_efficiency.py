@@ -27,6 +27,8 @@ from benchmark_utils import (
     sync_vector_engine,
 )
 
+from contextro_mcp.token_counting import tokenizer_metadata
+
 
 def create_test_codebase(tmp_dir: Path) -> Path:
     """Create a realistic test codebase for benchmarking."""
@@ -233,6 +235,7 @@ async def run_benchmark() -> dict:
 
     metrics = {
         "timestamp": time.time(),
+        "tokenizer": tokenizer_metadata(),
         "tokens_per_search": 0,
         "tokens_per_explain": 0,
         "tokens_per_find_symbol": 0,
@@ -387,6 +390,8 @@ def main():
             continue
         if isinstance(value, float):
             print(f"{key:<30} {value:>15.4f}")
+        elif isinstance(value, dict):
+            print(f"{key:<30} {json.dumps(value, sort_keys=True):>15}")
         else:
             print(f"{key:<30} {value:>15}")
 
