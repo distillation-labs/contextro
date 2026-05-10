@@ -8,7 +8,6 @@ Measures the token reduction achieved by:
 Run: PYTHONPATH=src python scripts/benchmark_disclosure.py
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -18,12 +17,11 @@ from contextro_mcp.engines.output_sandbox import OutputSandbox
 from contextro_mcp.execution.ast_compression import compress_snippet
 from contextro_mcp.execution.response_policy import ToolResponsePolicy
 from contextro_mcp.memory.compaction_archive import CompactionArchive
+from contextro_mcp.token_counting import count_serialized_tokens
 
 
 def estimate_tokens(data) -> int:
-    if isinstance(data, str):
-        return len(data) // 4
-    return len(json.dumps(data, default=str)) // 4
+    return count_serialized_tokens(data)
 
 
 def benchmark_progressive_disclosure():
