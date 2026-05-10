@@ -39,6 +39,13 @@ class SessionTracker:
         self._search_queries: deque = deque(maxlen=20)
         self._symbols_explored: deque = deque(maxlen=20)
         self._files_touched: set = set()
+        self._recent_edits: deque = deque(maxlen=12)
+        self._edit_metrics = {
+            "plans": 0,
+            "previews": 0,
+            "applies": 0,
+            "verifications": 0,
+        }
         self.started_at = time.time()
 
     def track_search(self, query: str, result_count: int):
@@ -99,6 +106,64 @@ class SessionTracker:
             priority=2,
         ))
 
+    def track_edit_plan(self, goal: str, target_files: list[str], confidence: float):
+        """Track an edit plan generation event."""
+        self._edit_metrics["plans"] += 1
+        if target_files:
+            self._files_touched.update(target_files)
+        summary = (
+            f"edit_plan({goal!r}) -> {len(target_files)} "
+            f"target(s), confidence={confidence:.2f}"
+        )
+        self._recent_edits.append(summary)
+        self._events.append(SessionEvent(
+            timestamp=time.time(),
+            event_type="edit_plan",
+            summary=summary,
+            priority=3,
+        ))
+
+    def track_edit_preview(self, files: list[str], change_count: int):
+        """Track a dry-run preview event."""
+        self._edit_metrics["previews"] += 1
+        if files:
+            self._files_touched.update(files)
+        summary = f"edit_preview({len(files)} file(s), {change_count} change(s))"
+        self._recent_edits.append(summary)
+        self._events.append(SessionEvent(
+            timestamp=time.time(),
+            event_type="edit_preview",
+            summary=summary,
+            priority=3,
+        ))
+
+    def track_edit_apply(self, files: list[str], change_count: int):
+        """Track an applied structural edit."""
+        self._edit_metrics["applies"] += 1
+        if files:
+            self._files_touched.update(files)
+        summary = f"edit_apply({len(files)} file(s), {change_count} change(s))"
+        self._recent_edits.append(summary)
+        self._events.append(SessionEvent(
+            timestamp=time.time(),
+            event_type="edit_apply",
+            summary=summary,
+            priority=3,
+        ))
+
+    def track_edit_verify(self, label: str, passed: bool):
+        """Track a verification step after an edit."""
+        self._edit_metrics["verifications"] += 1
+        status = "passed" if passed else "failed"
+        summary = f"edit_verify({label}) -> {status}"
+        self._recent_edits.append(summary)
+        self._events.append(SessionEvent(
+            timestamp=time.time(),
+            event_type="edit_verify",
+            summary=summary,
+            priority=2,
+        ))
+
     def get_snapshot(self, max_tokens: int = 500) -> Dict[str, Any]:
         """Generate a compressed session snapshot for context recovery.
 
@@ -129,6 +194,13 @@ class SessionTracker:
         if self._symbols_explored:
             snapshot["symbols_explored"] = list(set(self._symbols_explored))[:10]
 
+        if any(self._edit_metrics.values()):
+            snapshot["edit_metrics"] = dict(self._edit_metrics)
+        if self._recent_edits:
+            snapshot["recent_edits"] = list(self._recent_edits)[-5:]
+        if self._files_touched:
+            snapshot["files_touched"] = sorted(self._files_touched)[:10]
+
         # Check budget
         import json
         text = json.dumps(snapshot)
@@ -137,6 +209,10 @@ class SessionTracker:
             snapshot.pop("recent_searches", None)
             if len(json.dumps(snapshot)) > max_chars:
                 snapshot.pop("symbols_explored", None)
+            if len(json.dumps(snapshot)) > max_chars:
+                snapshot.pop("files_touched", None)
+            if len(json.dumps(snapshot)) > max_chars:
+                snapshot.pop("recent_edits", None)
 
         return snapshot
 
@@ -144,3 +220,8 @@ class SessionTracker:
     def event_count(self) -> int:
         """Total events tracked."""
         return len(self._events)
+
+    @property
+    def edit_metrics(self) -> Dict[str, int]:
+        """Aggregated edit lifecycle counters."""
+        return dict(self._edit_metrics)
