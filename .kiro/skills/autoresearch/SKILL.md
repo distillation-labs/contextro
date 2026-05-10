@@ -17,7 +17,7 @@ metadata:
   version: "4.0.0"
   category: workflow-automation
   tags: [research, optimization, benchmarking, experimentation, autonomous]
-license: MIT
+license: Proprietary
 ---
 
 # Autoresearch
