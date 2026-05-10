@@ -1,0 +1,10 @@
+"""Generated filler test 046 for the analytics package."""
+
+from __future__ import annotations
+
+from analytics.generated.generated_046 import build_analytics_payload_046
+
+
+def test_generated_payload_046() -> None:
+    payload = build_analytics_payload_046("seed")
+    assert payload["identifier"].startswith("seed-")
