@@ -24,7 +24,7 @@
   <text x="700" y="214" text-anchor="middle" font-size="21" font-weight="700" fill="#111111">Contextro</text>
   <text x="700" y="238" text-anchor="middle" font-size="13" fill="#555555">30 tools</text>
   <text x="700" y="260" text-anchor="middle" font-size="13" fill="#555555">Local-first execution</text>
-  <text x="700" y="282" text-anchor="middle" font-size="13" fill="#555555">No cloud dependency</text>
+  <text x="700" y="282" text-anchor="middle" font-size="13" fill="#555555">No cloud dependencies</text>
   <text x="700" y="304" text-anchor="middle" font-size="13" fill="#555555">No API key required</text>
 
   <line x1="250" y1="256" x2="340" y2="256" stroke="#444444" stroke-width="1.6" marker-end="url(#arrow)"/>
