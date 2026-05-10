@@ -18,8 +18,8 @@ pip install contextro[gpu]
 Or install from source for development:
 
 ```bash
-git clone https://github.com/jassskalkat/Contextro.git
-cd Contextro
+git clone <internal-contextro-repo-url>
+cd contextro
 pip install -e ".[dev,reranker]"
 ```
 
