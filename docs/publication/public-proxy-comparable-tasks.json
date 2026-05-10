@@ -1,0 +1,890 @@
+[
+  {
+    "id": "sym_01",
+    "category": "symbol_discovery",
+    "prompt": "Find PartnerProfileProjector.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "PartnerProfileProjector"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "PartnerProfileProjector",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/catalog/src/catalog/profile_projector.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "sym_02",
+    "category": "symbol_discovery",
+    "prompt": "Find schedule_digest_delivery.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "schedule_digest_delivery"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "schedule_digest_delivery",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/notifications/src/notifications/digest_scheduler.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "sym_03",
+    "category": "symbol_discovery",
+    "prompt": "Find normalize_partner_alias.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "normalize_partner_alias"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "normalize_partner_alias",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/aliases.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "sym_04",
+    "category": "symbol_discovery",
+    "prompt": "Find refresh_partner_search_projection.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "refresh_partner_search_projection"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "refresh_partner_search_projection",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/search/src/search/projections.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "sym_05",
+    "category": "symbol_discovery",
+    "prompt": "Find build_invoice_reminder_message.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "build_invoice_reminder_message"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "build_invoice_reminder_message",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/billing/src/billing/invoice_reminders.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "sym_06",
+    "category": "symbol_discovery",
+    "prompt": "Find resolve_notification_channels.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "resolve_notification_channels"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "resolve_notification_channels",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/notifications/src/notifications/preferences.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "sym_07",
+    "category": "symbol_discovery",
+    "prompt": "Find evaluate_rollout_gate.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "evaluate_rollout_gate"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "evaluate_rollout_gate",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/experiments/src/experiments/rollouts.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "sym_08",
+    "category": "symbol_discovery",
+    "prompt": "Find emit_partner_metric.",
+    "mcp_tool": "find_symbol",
+    "mcp_args": {
+      "name": "emit_partner_metric"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "emit_partner_metric",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/analytics/src/analytics/reporter.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "call_01",
+    "category": "caller_tracing",
+    "prompt": "Who calls refresh_partner_search_projection?",
+    "mcp_tool": "find_callers",
+    "mcp_args": {
+      "symbol_name": "refresh_partner_search_projection"
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "refresh_partner_search_projection\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "apps/worker/src/worker/search_projection.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "call_02",
+    "category": "caller_tracing",
+    "prompt": "Who calls schedule_digest_delivery?",
+    "mcp_tool": "find_callers",
+    "mcp_args": {
+      "symbol_name": "schedule_digest_delivery"
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "schedule_digest_delivery\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/billing/src/billing/invoice_reminders.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "call_03",
+    "category": "caller_tracing",
+    "prompt": "Who calls normalize_partner_alias?",
+    "mcp_tool": "find_callers",
+    "mcp_args": {
+      "symbol_name": "normalize_partner_alias"
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "normalize_partner_alias\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/onboarding.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "call_04",
+    "category": "caller_tracing",
+    "prompt": "Who calls emit_partner_metric?",
+    "mcp_tool": "find_callers",
+    "mcp_args": {
+      "symbol_name": "emit_partner_metric"
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "emit_partner_metric\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "apps/worker/src/worker/audit_fanout.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "call_05",
+    "category": "caller_tracing",
+    "prompt": "What does prepare_partner_onboarding_context call?",
+    "mcp_tool": "find_callees",
+    "mcp_args": {
+      "symbol_name": "prepare_partner_onboarding_context"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "prepare_partner_onboarding_context",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "build_actor_context",
+      "load_partner_profile"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "call_06",
+    "category": "caller_tracing",
+    "prompt": "What does queue_invoice_reminder_job call?",
+    "mcp_tool": "find_callees",
+    "mcp_args": {
+      "symbol_name": "queue_invoice_reminder_job"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "queue_invoice_reminder_job",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "schedule_digest_delivery",
+      "build_invoice_reminder_message"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_01",
+    "category": "semantic_search",
+    "prompt": "Find the code that prepares the dashboard context used before partner onboarding review.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "prepare the dashboard context used before partner onboarding review",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "dashboard context|partner onboarding review|normalized alias",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/onboarding.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_02",
+    "category": "semantic_search",
+    "prompt": "Find the code that builds the reminder body sent when enterprise invoices are overdue.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "build the reminder body sent when enterprise invoices are overdue",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "reminder body|enterprise invoices|overdue",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/billing/src/billing/invoice_reminders.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_03",
+    "category": "semantic_search",
+    "prompt": "Find the code that chooses delivery channels from user notification preferences.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "choose delivery channels from user notification preferences",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "delivery channels|notification preferences|channels",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/notifications/src/notifications/preferences.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_04",
+    "category": "semantic_search",
+    "prompt": "Find the code that normalizes alias keys before loading partner records.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "normalize alias keys before loading partner records",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "normalize alias|loading partner records|alias keys",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/aliases.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_05",
+    "category": "semantic_search",
+    "prompt": "Find the code that refreshes denormalized search rows after partner changes.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "refresh denormalized search rows after partner changes",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "denormalized search rows|projection rows|partner changes",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/search/src/search/projections.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_06",
+    "category": "semantic_search",
+    "prompt": "Find the code that computes weighted ranking for partner discovery hits.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "compute weighted ranking for partner discovery hits",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "weighted ranking|partner discovery hits|freshness_score",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/search/src/search/ranking.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_07",
+    "category": "semantic_search",
+    "prompt": "Find the code that evaluates if a staged rollout gate should open for an actor.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "evaluate if a staged rollout gate should open for an actor",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "staged rollout gate|sample_size|bucket",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/experiments/src/experiments/rollouts.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "search_08",
+    "category": "semantic_search",
+    "prompt": "Find the code that serializes projection rows for downstream fan-out workers.",
+    "mcp_tool": "search",
+    "mcp_args": {
+      "query": "serialize projection rows for downstream fan-out workers",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "projection rows|fan-out workers|serialize",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/shared/src/shared/serializers.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "explain_01",
+    "category": "code_understanding",
+    "prompt": "Explain PartnerProfileProjector.",
+    "mcp_tool": "explain",
+    "mcp_args": {
+      "symbol_name": "PartnerProfileProjector"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "PartnerProfileProjector",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/catalog/src/catalog/profile_projector.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "explain_02",
+    "category": "code_understanding",
+    "prompt": "Explain prepare_partner_onboarding_context.",
+    "mcp_tool": "explain",
+    "mcp_args": {
+      "symbol_name": "prepare_partner_onboarding_context"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "prepare_partner_onboarding_context",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/onboarding.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "explain_03",
+    "category": "code_understanding",
+    "prompt": "Explain build_retry_plan.",
+    "mcp_tool": "explain",
+    "mcp_args": {
+      "symbol_name": "build_retry_plan"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "build_retry_plan",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/workflows/src/workflows/retry_policies.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "explain_04",
+    "category": "code_understanding",
+    "prompt": "Explain queue_invoice_reminder_job.",
+    "mcp_tool": "explain",
+    "mcp_args": {
+      "symbol_name": "queue_invoice_reminder_job"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "queue_invoice_reminder_job",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/billing/src/billing/invoice_reminders.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "explain_05",
+    "category": "code_understanding",
+    "prompt": "Explain refresh_partner_search_projection.",
+    "mcp_tool": "explain",
+    "mcp_args": {
+      "symbol_name": "refresh_partner_search_projection"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "refresh_partner_search_projection",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/search/src/search/projections.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "explain_06",
+    "category": "code_understanding",
+    "prompt": "Explain emit_auth_audit_event.",
+    "mcp_tool": "explain",
+    "mcp_args": {
+      "symbol_name": "emit_auth_audit_event"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "emit_auth_audit_event",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/auth/src/auth/audit_bridge.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "impact_01",
+    "category": "impact_analysis",
+    "prompt": "What would changing normalize_partner_alias affect?",
+    "mcp_tool": "impact",
+    "mcp_args": {
+      "symbol_name": "normalize_partner_alias",
+      "max_depth": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "normalize_partner_alias\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/onboarding.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "impact_02",
+    "category": "impact_analysis",
+    "prompt": "What would changing resolve_notification_channels affect?",
+    "mcp_tool": "impact",
+    "mcp_args": {
+      "symbol_name": "resolve_notification_channels",
+      "max_depth": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "resolve_notification_channels\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "apps/worker/src/worker/invoice_digests.py",
+      "apps/console/src/console/preferences_view.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "impact_03",
+    "category": "impact_analysis",
+    "prompt": "What would changing emit_partner_metric affect?",
+    "mcp_tool": "impact",
+    "mcp_args": {
+      "symbol_name": "emit_partner_metric",
+      "max_depth": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "emit_partner_metric\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "apps/worker/src/worker/audit_fanout.py",
+      "packages/auth/src/auth/audit_bridge.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "impact_04",
+    "category": "impact_analysis",
+    "prompt": "What would changing build_actor_context affect?",
+    "mcp_tool": "impact",
+    "mcp_args": {
+      "symbol_name": "build_actor_context",
+      "max_depth": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "build_actor_context\\(",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/onboarding.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "git_01",
+    "category": "git_history",
+    "prompt": "Find the commit that adjusted digest delay handling for billing alerts.",
+    "mcp_tool": "commit_search",
+    "mcp_args": {
+      "query": "digest delay handling for billing alerts",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_log",
+        "query": "digest delay handling",
+        "path": "packages/notifications/src/notifications/digest_scheduler.py",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "Adjust digest delay handling for billing alerts"
+    ],
+    "max_reads": 0
+  },
+  {
+    "id": "git_02",
+    "category": "git_history",
+    "prompt": "Find the commit that normalized partner alias keys before onboarding lookup.",
+    "mcp_tool": "commit_search",
+    "mcp_args": {
+      "query": "normalized partner alias keys before onboarding lookup",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_log",
+        "query": "Normalize partner alias keys before onboarding lookup",
+        "path": "packages/partners/src/partners/aliases.py",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "Normalize partner alias keys before onboarding lookup"
+    ],
+    "max_reads": 0
+  },
+  {
+    "id": "code_01",
+    "category": "code_tool",
+    "prompt": "Use code search_symbols to locate the profile projector symbol.",
+    "mcp_tool": "code",
+    "mcp_args": {
+      "operation": "search_symbols",
+      "symbol_name": "ProfileProjector",
+      "path": "packages/catalog/src",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "ProfileProjector",
+        "path": "packages/catalog/src",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/catalog/src/catalog/profile_projector.py"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "code_02",
+    "category": "code_tool",
+    "prompt": "List top-level symbols in the digest scheduler document.",
+    "mcp_tool": "code",
+    "mcp_args": {
+      "operation": "get_document_symbols",
+      "file_path": "packages/notifications/src/notifications/digest_scheduler.py",
+      "top_level_only": true
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "schedule_digest_delivery",
+        "path": "packages/notifications/src/notifications",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "schedule_digest_delivery"
+    ],
+    "max_reads": 1
+  },
+  {
+    "id": "code_03",
+    "category": "code_tool",
+    "prompt": "Map the worker jobs directory to find invoice digest code.",
+    "mcp_tool": "code",
+    "mcp_args": {
+      "operation": "search_codebase_map",
+      "path": "apps/worker/src/worker",
+      "limit": 10
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "run_invoice_digest",
+        "path": "apps/worker/src/worker",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "invoice_digests",
+      "run_invoice_digest"
+    ],
+    "max_reads": 4
+  },
+  {
+    "id": "focus_01",
+    "category": "focus",
+    "prompt": "Focus the onboarding context file.",
+    "mcp_tool": "focus",
+    "mcp_args": {
+      "path": "packages/partners/src/partners/onboarding.py",
+      "include_code": true
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "prepare_partner_onboarding_context",
+        "path": "packages/partners/src/partners",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "packages/partners/src/partners/onboarding.py",
+      "normalize_partner_alias"
+    ],
+    "max_reads": 1
+  },
+  {
+    "id": "focus_02",
+    "category": "focus",
+    "prompt": "Focus the invoice digest worker file.",
+    "mcp_tool": "focus",
+    "mcp_args": {
+      "path": "apps/worker/src/worker/invoice_digests.py",
+      "include_code": true
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "run_invoice_digest",
+        "path": "apps/worker/src/worker",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "expected_any": [
+      "apps/worker/src/worker/invoice_digests.py",
+      "queue_invoice_reminder_job"
+    ],
+    "max_reads": 1
+  }
+]
