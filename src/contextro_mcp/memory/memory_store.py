@@ -259,7 +259,8 @@ class MemoryStore:
     def expire_ttl(self) -> int:
         """Delete memories past their TTL. Returns count deleted."""
         table = self._get_or_create_table()
-        if table.count_rows() == 0:
+        count_before = table.count_rows()
+        if count_before == 0:
             return 0
 
         now = datetime.now(timezone.utc)
@@ -269,18 +270,16 @@ class MemoryStore:
             "month": timedelta(days=30),
         }
 
-        total_deleted = 0
         with self._lock:
             for ttl_value, delta in ttl_deltas.items():
                 cutoff = (now - delta).isoformat()
                 try:
-                    count_before = table.count_rows()
                     table.delete(f"ttl = '{ttl_value}' AND created_at < '{_escape_sql(cutoff)}'")
-                    count_after = table.count_rows()
-                    total_deleted += count_before - count_after
                 except Exception as e:
                     logger.warning("TTL expiration failed for %s: %s", ttl_value, e)
 
+        count_after = table.count_rows()
+        total_deleted = count_before - count_after
         if total_deleted > 0:
             logger.info("Expired %d memories", total_deleted)
         return total_deleted
