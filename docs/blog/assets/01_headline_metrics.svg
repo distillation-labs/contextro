@@ -7,23 +7,23 @@
   <text x="180" y="110" text-anchor="middle" font-size="13" font-weight="600" fill="#4b5563">Total Tokens</text>
   <rect x="100" y="125" width="60" height="240" rx="4" fill="#dc2626" opacity="0.9"/>
   <rect x="200" y="355" width="60" height="10" rx="4" fill="#0f3460"/>
-  <text x="130" y="120" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">335,100</text>
-  <text x="230" y="352" text-anchor="middle" font-size="11" fill="#0f3460" font-weight="600">14,327</text>
+  <text x="130" y="120" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">328,272</text>
+  <text x="230" y="352" text-anchor="middle" font-size="11" fill="#0f3460" font-weight="600">14,407</text>
   <text x="130" y="390" text-anchor="middle" font-size="10" fill="#6b7280">No MCP</text>
   <text x="230" y="390" text-anchor="middle" font-size="10" fill="#6b7280">MCP</text>
   <rect x="95" y="405" width="170" height="28" rx="6" fill="#ecfdf5"/>
-  <text x="180" y="424" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">↓ 95.7% reduction</text>
+  <text x="180" y="424" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">↓ 95.6% reduction</text>
 
   <!-- Median Latency -->
   <text x="450" y="110" text-anchor="middle" font-size="13" font-weight="600" fill="#4b5563">Median Latency (ms)</text>
   <rect x="370" y="145" width="60" height="220" rx="4" fill="#dc2626" opacity="0.9"/>
   <rect x="470" y="360" width="60" height="5" rx="4" fill="#0f3460"/>
-  <text x="400" y="138" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">471ms</text>
-  <text x="500" y="356" text-anchor="middle" font-size="11" fill="#0f3460" font-weight="600">5.8ms</text>
+  <text x="400" y="138" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">448.35ms</text>
+  <text x="500" y="356" text-anchor="middle" font-size="11" fill="#0f3460" font-weight="600">5.21ms</text>
   <text x="400" y="390" text-anchor="middle" font-size="10" fill="#6b7280">No MCP</text>
   <text x="500" y="390" text-anchor="middle" font-size="10" fill="#6b7280">MCP</text>
   <rect x="365" y="405" width="170" height="28" rx="6" fill="#ecfdf5"/>
-  <text x="450" y="424" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">81× faster</text>
+  <text x="450" y="424" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">86× faster</text>
 
   <!-- Tool Calls -->
   <text x="720" y="110" text-anchor="middle" font-size="13" font-weight="600" fill="#4b5563">Mean Tool Calls</text>
