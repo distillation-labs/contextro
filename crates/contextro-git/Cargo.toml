@@ -1,0 +1,17 @@
+[package]
+name = "contextro-git"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Git integration: commit indexing, branch watching, cross-repo"
+
+[dependencies]
+contextro-core = { workspace = true }
+contextro-config = { workspace = true }
+git2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+parking_lot = { workspace = true }

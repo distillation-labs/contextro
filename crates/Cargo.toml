@@ -1,0 +1,97 @@
+[workspace]
+resolver = "2"
+members = [
+    "contextro-core",
+    "contextro-config",
+    "contextro-parsing",
+    "contextro-indexing",
+    "contextro-engines",
+    "contextro-memory",
+    "contextro-git",
+    "contextro-tools",
+    "contextro-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["Distillation Labs"]
+repository = "https://github.com/jassskalkat/contextro"
+
+[workspace.dependencies]
+# Core
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["full"] }
+
+# MCP
+rmcp = { version = "0.1", features = ["server", "transport-io", "transport-sse-server", "macros"] }
+
+# Embedding
+model2vec = "0.2"
+
+# Vector search
+lancedb = "0.14"
+arrow = { version = "53", features = ["ipc"] }
+
+# Full-text search
+tantivy = "0.22"
+
+# Graph
+petgraph = "0.6"
+
+# Code parsing
+tree-sitter = "0.24"
+
+# AST pattern matching
+ast-grep-core = "0.27"
+
+# File operations
+ignore = "0.4"
+rayon = "1"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+walkdir = "2"
+
+# Git
+git2 = { version = "0.19", default-features = false }
+
+# Persistence
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# HTTP
+axum = "0.7"
+tower = "0.5"
+
+# Async
+async-trait = "0.1"
+
+# Config
+dotenvy = "0.15"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+parking_lot = "0.12"
+dashmap = "6"
+once_cell = "1"
+
+# Workspace crates
+contextro-core = { path = "contextro-core" }
+contextro-config = { path = "contextro-config" }
+contextro-parsing = { path = "contextro-parsing" }
+contextro-indexing = { path = "contextro-indexing" }
+contextro-engines = { path = "contextro-engines" }
+contextro-memory = { path = "contextro-memory" }
+contextro-git = { path = "contextro-git" }
+contextro-tools = { path = "contextro-tools" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
