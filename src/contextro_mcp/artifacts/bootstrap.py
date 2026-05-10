@@ -39,16 +39,22 @@ def build_bootstrap_block() -> str:
                 "3. Prefer Contextro tools over raw file reads: `search`, "
                 "`find_symbol`, `impact`, `focus`, `audit`."
             ),
-            "4. If sidecars exist (`*.graph.*`), read them before opening the source file.",
             (
-                "5. Use `contextro audit` or the MCP `audit()` tool for complexity, "
+                "4. Initialize the graph workflow with `contextro graph init --bootstrap-target "
+                "claude` (or `agents` / `cursor`) and keep it fresh with `contextro graph watch`."
+            ),
+            (
+                "5. If sidecars exist (`*.graph.*`), read them before opening the source file."
+            ),
+            (
+                "6. Use `contextro audit` or the MCP `audit()` tool for complexity, "
                 "dead code, cycles, and static coverage gaps."
             ),
             (
-                "6. Use `contextro restore` / `session_snapshot()` when resuming "
+                "7. Use `contextro restore` / `session_snapshot()` when resuming "
                 "after compaction or a long pause."
             ),
-            "7. Retrieve full code only when the focused or sidecar summary is not enough.",
+            "8. Retrieve full code only when the focused or sidecar summary is not enough.",
             END_MARKER,
         ]
     )
