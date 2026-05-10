@@ -15,7 +15,7 @@ metadata:
   version: "1.0.0"
   category: content
   tags: [svg, diagrams, visualization, design, charts]
-license: MIT
+license: Proprietary
 ---
 
 # SVG Diagram Engineer
