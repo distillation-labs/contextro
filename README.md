@@ -488,4 +488,4 @@ docker pull ghcr.io/jassskalkat/contextro-mcp:latest
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+Proprietary — see [LICENSE](LICENSE) for internal-use terms.
