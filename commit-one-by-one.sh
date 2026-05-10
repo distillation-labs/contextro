@@ -36,12 +36,13 @@ get_commit_message() {
 commit_file() {
     local file=$1
     local message=$(get_commit_message "$file")
+    local trailer="Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
     
     echo "Adding $file..."
     git add "$file"
     
     echo "Committing with message: $message"
-    git commit -m "$message"
+    git commit -m "$message" -m "$trailer"
     
     echo "✓ Committed $file"
     echo "---"
