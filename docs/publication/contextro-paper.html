@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Contextro: Local Code Intelligence for Code Discovery</title>
+  <title>Contextro: Token-Efficient Repository Discovery for MCP-Based Coding Workflows</title>
   <style>
     :root {
       --page-bg: #f3f0ea;
@@ -111,6 +111,39 @@
       border-top: 1px solid var(--light-rule);
       font-size: 10pt;
       line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .cover-page {
+      max-width: 6.5in;
+      padding-top: 0.45in;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .paper-title {
+      margin: 0 auto;
+      max-width: 6.2in;
+      text-align: center;
+      font-size: 22pt;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+
+    .paper-subtitle {
+      margin: 10px auto 0;
+      max-width: 5.9in;
+      text-align: center;
+      font-size: 12.4pt;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .paper-authors {
+      margin: 18px 0 26px;
+      text-align: center;
+      font-size: 10.8pt;
       color: var(--muted);
     }
 
@@ -347,23 +380,32 @@
         margin: 0;
         box-shadow: none;
         width: auto;
+        padding: 0.3in 0.45in;
+      }
+
+      .cover-page,
+      .front-page,
+      .abstract-page {
+        max-width: none;
+      }
+
+      .paper-title,
+      .paper-subtitle,
+      .title-note {
+        max-width: none;
+      }
+
+      .cover-page {
+        padding-top: 0.35in;
       }
     }
   </style>
 </head>
 <body>
-  <section class="sheet title-page" id="title-page">
-    <div class="report-type">Technical Report</div>
-    <h1>Contextro: Token-Efficient Repository Discovery for MCP-Based Coding Workflows</h1>
-    <div class="title-subtitle">Paired evaluation on an 8,496-file production monorepo</div>
-    <div class="title-meta">
-      <div>Distillation Labs</div>
-      <div>May 2026</div>
-    </div>
-    <p class="title-note">Contextro is a proprietary system. The public artifact package accompanying this report contains sanitized task catalogs, aggregate study summaries, and public benchmark reruns; the private study repository and product source are not redistributed.</p>
-  </section>
-
-  <section class="sheet front-page abstract-page" id="abstract">
+  <section class="sheet cover-page" id="front-page">
+    <h1 class="paper-title">Contextro: Token-Efficient Repository Discovery for MCP-Based Coding Workflows</h1>
+    <div class="paper-subtitle">Paired evaluation on an 8,496-file production monorepo</div>
+    <div class="paper-authors">Distillation Labs</div>
     <h2 class="front-title">Abstract</h2>
     <p>Repository discovery is a major source of token overhead in MCP-based coding workflows. This report evaluates Contextro, a proprietary local code-intelligence server for repository search, symbol navigation, structural analysis, and persistent memory, using a 60-task paired study on an 8,496-file production TypeScript monorepo. Relative to a lexical baseline based on grep plus bounded file reads, the Contextro pipeline reduced total token consumption from 328,272 to 14,407, reduced median latency from 448.35 ms to 5.21 ms, and eliminated file reads. On the directly comparable 39-task subset, token consumption fell to 6,638, a 98.0% reduction; across 100 deterministic bootstrap subsets, reduction remained between 97.24% and 98.48%. Public reruns on the open <code>src/</code> tree reproduced low-token and high-retrieval-quality behavior. These results describe discovery efficiency rather than end-to-end coding correctness.</p>
     <p class="keywords"><span class="keywords-label">Keywords:</span> Model Context Protocol, repository discovery, code intelligence, semantic retrieval, structural search, technical evaluation</p>
@@ -423,7 +465,7 @@
       <p>The evaluation uses a paired two-condition design on a single production repository. Each task is executed once with a lexical discovery workflow and once with the Contextro interface. The full task inventory contains 60 tasks across 16 categories. Among these, 39 tasks have direct lexical analogues and therefore support strict paired comparison; the remaining 21 tasks represent MCP-native capabilities with no meaningful file-centric baseline.</p>
 
       <figure class="figure" id="fig-2">
-        <img src="figures/contextro-study-design.svg" alt="Study design showing one shared task set run through both a grep-based pipeline and the Contextro pipeline on the same repository." />
+        <img src="figures/contextro-study-design.svg" alt="Study design showing one shared task set run through both a lexical baseline and the Contextro condition on the same repository." />
         <figcaption><strong>Figure 2.</strong> Study design. The same task set is evaluated under both conditions on the same repository, preserving a paired comparison.</figcaption>
       </figure>
 
@@ -475,7 +517,7 @@
       <p>The stricter comparison is the 39-task subset with direct lexical analogues. On that subset, token use fell to 6,638, a 98.0% reduction, while median latency fell from 498.89 ms to 4.89 ms and mean tool calls fell from 4.9 to 1.0. The gap between the 60-task and 39-task summaries reflects the presence of 21 MCP-native tasks that expose analysis surfaces absent from the lexical baseline.</p>
 
       <figure class="figure" id="fig-3">
-        <img src="../blog/assets/01_headline_metrics.svg" alt="Bar chart comparing total tokens, latency, tool calls, and files read in the grep-based pipeline and the Contextro pipeline." />
+        <img src="../blog/assets/01_headline_metrics.svg" alt="Bar chart comparing total tokens, latency, tool calls, and files read in the lexical baseline and the Contextro condition." />
         <figcaption><strong>Figure 3.</strong> Headline outcomes from the paired study. The figure summarizes the full task inventory; the stricter directly comparable subset is reported separately in Table 4.</figcaption>
       </figure>
 
@@ -497,7 +539,7 @@
       <p>Tail latency is concentrated in a small number of heavier operations. The <code>focus</code> category is bimodal because one request returns in 4.81 ms while another deep file-context request takes 7.01 s. The comparable <code>code</code> category also contains a repository-wide <code>pattern_search</code> outlier at 11.22 s.</p>
 
       <figure class="figure" id="fig-4">
-        <img src="../blog/assets/02_token_by_category.svg" alt="Token consumption by category for the grep-based pipeline and the Contextro pipeline." />
+        <img src="../blog/assets/02_token_by_category.svg" alt="Token consumption by category for the lexical baseline and the Contextro condition." />
         <figcaption><strong>Figure 4.</strong> Results by task category. The visualization focuses on discovery categories with direct lexical analogues.</figcaption>
       </figure>
 
@@ -513,8 +555,8 @@
           <tr><td>Impact analysis</td><td class="num">4</td><td class="num">16,225</td><td class="num">377</td><td>97.7%</td><td>0.93 ms median<br>0.90-3.68 ms</td></tr>
           <tr><td>Code understanding</td><td class="num">6</td><td class="num">23,526</td><td class="num">944</td><td>96.0%</td><td>6.68 ms median<br>6.22-8.26 ms</td></tr>
           <tr><td>Git history search</td><td class="num">2</td><td class="num">46,106</td><td class="num">1,117</td><td>97.6%</td><td>6.51 ms median<br>5.21-7.80 ms</td></tr>
-          <tr><td>Code tool (comparable slice)</td><td class="num">3</td><td class="num">51,459</td><td class="num">1,318</td><td>97.4%</td><td>1.92 ms median<br>0.97-11,222.49 ms</td></tr>
-          <tr><td>Focus / file context</td><td class="num">2</td><td class="num">34,194</td><td class="num">540</td><td>98.4%</td><td>3,507.21 ms median<br>4.81-7,009.60 ms</td></tr>
+          <tr><td>Code tool (comparable slice)</td><td class="num">3</td><td class="num">51,459</td><td class="num">1,318</td><td>97.4%</td><td>1.92 ms median<br>0.97 ms-11.22 s</td></tr>
+          <tr><td>Focus / file context</td><td class="num">2</td><td class="num">34,194</td><td class="num">540</td><td>98.4%</td><td>3.51 s median<br>4.81 ms-7.01 s</td></tr>
         </tbody>
       </table>
 
@@ -538,17 +580,12 @@
           <tr><td><code>search</code></td><td class="num">131.53 ms median</td><td>Hybrid retrieval</td></tr>
           <tr><td><code>architecture</code></td><td class="num">436.75 ms</td><td>Deep structural summary</td></tr>
           <tr><td><code>dead_code</code></td><td class="num">1,307.18 ms</td><td>Reachability analysis</td></tr>
-          <tr><td><code>code(pattern_search, ...)</code></td><td class="num">11,222.49 ms</td><td>Repository-wide AST search outlier</td></tr>
+          <tr><td><code>code(pattern_search, ...)</code></td><td class="num">11.22 s</td><td>Repository-wide AST search outlier</td></tr>
         </tbody>
       </table>
 
-      <h3 id="iterative-optimization">5.4. Iterative Optimization</h3>
+      <h3 id="iterative-optimization">5.4. Public Verification</h3>
       <p>Public benchmark reruns on the open <code>src/</code> tree reproduce the low-token and high-retrieval-quality behavior reported in the paired study. These public checks do not substitute for the private monorepo evaluation, but they do provide an observable external reference for token output and retrieval quality on a redistributable codebase.</p>
-
-      <figure class="figure" id="fig-5">
-        <img src="../blog/assets/06_autoresearch_loop.png" alt="Loop diagram showing baseline, hypothesis, implementation, benchmark, and keep or discard decision." />
-        <figcaption><strong>Figure 5.</strong> Evaluation loop used during system refinement. Candidate changes were retained only when benchmark results improved under repeated measurement.</figcaption>
-      </figure>
 
       <div class="table-caption" id="table-7"><strong>Table 7.</strong> Optimization and verification artifacts.</div>
       <table>
@@ -582,7 +619,7 @@
         </thead>
         <tbody>
           <tr><td>Paired-study codebase availability</td><td>The original 8,496-file monorepo is private and cannot be redistributed with the paper</td><td>Mitigated by shipping the harness, sanitized task inventory, rerun summary, and public benchmark reruns</td></tr>
-          <tr><td>Control baseline approximation</td><td>The grep-based pipeline models naive discovery with grep plus up to five file reads, not a full autonomous agent policy</td><td>Interpret as a discovery-cost baseline rather than a universal baseline for agent quality; end-to-end correctness benchmark is future work</td></tr>
+          <tr><td>Control baseline approximation</td><td>The lexical baseline models bounded file-centric discovery with grep plus up to five file reads, not a full autonomous agent policy</td><td>Interpret as a discovery-cost baseline rather than a universal baseline for agent quality; end-to-end correctness benchmark is future work</td></tr>
           <tr><td>Tail latency</td><td><code>focus_01</code> and repository-wide <code>pattern_search</code> dominate the latency tail at 7.01 s and 11.22 s</td><td>Reported explicitly in Appendix C and excluded from any misleading latency simplification</td></tr>
           <tr><td>Public proxy repository</td><td>The paired study corpus is a private monorepo; the public benchmark reruns use only the 78-file <code>src/</code> tree</td><td>A public proxy repository (≥1,000 files) for full rerun reproducibility is planned as future work</td></tr>
           <tr><td>End-to-end correctness</td><td>The study measures discovery cost (tokens, latency, file reads), not downstream coding correctness</td><td>An end-to-end edit-task correctness benchmark is future work</td></tr>

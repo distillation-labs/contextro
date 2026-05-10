@@ -10,7 +10,7 @@
 
   <rect width="1100" height="640" fill="#ffffff"/>
   <text x="550" y="42" text-anchor="middle" font-size="24" font-weight="700" fill="#111111">Paired Evaluation Design</text>
-  <text x="550" y="66" text-anchor="middle" font-size="13" fill="#555555">The same task set is run through both pipelines on the same repository</text>
+  <text x="550" y="66" text-anchor="middle" font-size="13" fill="#555555">The same task set is evaluated under both conditions on the same repository</text>
 
   <rect x="350" y="110" width="400" height="92" rx="4" fill="#ffffff" stroke="#111111" stroke-width="1.2" filter="url(#shadow)"/>
   <text x="550" y="146" text-anchor="middle" font-size="18" font-weight="700" fill="#111111">Shared task set</text>
@@ -20,12 +20,12 @@
   <line x1="630" y1="202" x2="845" y2="280" stroke="#444444" stroke-width="1.4" marker-end="url(#arrow)"/>
 
   <rect x="90" y="282" width="330" height="128" rx="4" fill="#ffffff" stroke="#444444" filter="url(#shadow)"/>
-  <text x="255" y="322" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">Grep-based pipeline</text>
+  <text x="255" y="322" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">Lexical baseline</text>
   <text x="255" y="350" text-anchor="middle" font-size="12" fill="#555555">grep + file reads</text>
   <text x="255" y="372" text-anchor="middle" font-size="12" fill="#555555">manual file-by-file discovery</text>
 
   <rect x="680" y="282" width="330" height="128" rx="4" fill="#ffffff" stroke="#444444" filter="url(#shadow)"/>
-  <text x="845" y="322" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">Contextro pipeline</text>
+  <text x="845" y="322" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">Contextro condition</text>
   <text x="845" y="350" text-anchor="middle" font-size="12" fill="#555555">Contextro MCP tools</text>
   <text x="845" y="372" text-anchor="middle" font-size="12" fill="#555555">symbol, graph, impact, search, history, memory</text>
 
@@ -33,7 +33,7 @@
   <line x1="845" y1="410" x2="845" y2="474" stroke="#444444" stroke-width="1.4" marker-end="url(#arrow)"/>
 
   <rect x="70" y="476" width="370" height="104" rx="4" fill="#ffffff" stroke="#777777" filter="url(#shadow)"/>
-  <text x="255" y="514" text-anchor="middle" font-size="18" font-weight="700" fill="#111111">Grep-based outcome</text>
+  <text x="255" y="514" text-anchor="middle" font-size="18" font-weight="700" fill="#111111">Lexical outcome</text>
   <text x="255" y="540" text-anchor="middle" font-size="12" fill="#555555">328,272 tokens total</text>
   <text x="255" y="562" text-anchor="middle" font-size="12" fill="#555555">448.35 ms median latency</text>
 
