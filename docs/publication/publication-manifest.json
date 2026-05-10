@@ -1,0 +1,85 @@
+{
+  "paper": {
+    "source": "docs/publication/contextro-paper.html",
+    "output": "docs/publication/contextro-paper.pdf",
+    "format": "html-to-pdf"
+  },
+  "artifacts": [
+    {
+      "id": "paired-study-tasks",
+      "file": "docs/publication/paired-study-tasks.json",
+      "caption": "Sanitized machine-readable full 60-task paired-study inventory"
+    },
+    {
+      "id": "paired-study-comparable-tasks",
+      "file": "docs/publication/paired-study-comparable-tasks.json",
+      "caption": "Sanitized machine-readable 39-task comparable subset"
+    },
+    {
+      "id": "paired-study-rerun-summary",
+      "file": "docs/publication/paired-study-rerun-summary.json",
+      "caption": "Fresh 60-task paired-study rerun summary"
+    },
+    {
+      "id": "paired-study-rerun-config",
+      "file": "docs/publication/paired-study-rerun-config.json",
+      "caption": "Fresh paired-study rerun aggregate configuration"
+    },
+    {
+      "id": "paired-study-subset-robustness",
+      "file": "docs/publication/paired-study-subset-robustness.json",
+      "caption": "Deterministic 100-subset robustness analysis"
+    },
+    {
+      "id": "open-token-benchmark",
+      "file": "docs/publication/open-token-benchmark.json",
+      "caption": "Fresh public token-efficiency benchmark"
+    },
+    {
+      "id": "open-retrieval-quality",
+      "file": "docs/publication/open-retrieval-quality.json",
+      "caption": "Fresh public retrieval-quality benchmark"
+    }
+  ],
+  "figures": [
+    {
+      "id": "fig-1",
+      "file": "docs/publication/figures/contextro-system-overview.svg",
+      "caption": "System overview"
+    },
+    {
+      "id": "fig-2",
+      "file": "docs/publication/figures/contextro-study-design.svg",
+      "caption": "Study design"
+    },
+    {
+      "id": "fig-3",
+      "file": "docs/blog/assets/01_headline_metrics.svg",
+      "caption": "Headline outcomes"
+    },
+    {
+      "id": "fig-4",
+      "file": "docs/blog/assets/02_token_by_category.svg",
+      "caption": "Results by category"
+    },
+    {
+      "id": "fig-5",
+      "file": "docs/blog/assets/06_autoresearch_loop.png",
+      "caption": "Iterative optimization loop"
+    }
+  ],
+  "social": {
+    "twitter": {
+      "copy": "docs/publication/social/twitter-thread.txt",
+      "image": "docs/publication/social/contextro-social-hero.png"
+    },
+    "linkedin": {
+      "copy": "docs/publication/social/linkedin-post.txt",
+      "image": "docs/publication/social/contextro-linkedin-card.png"
+    },
+    "bluesky": {
+      "copy": "docs/publication/social/bluesky-post.txt",
+      "image": "docs/publication/social/contextro-social-hero.png"
+    }
+  }
+}
