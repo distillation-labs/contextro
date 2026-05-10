@@ -2,9 +2,9 @@
 
 Contextro is a unified Model Context Protocol (MCP) server that combines vector search, full-text search, code graph analysis, and semantic memory into a single process. It is designed to run locally with <350MB RAM.
 
-Contextro consolidates two predecessor projects into a single server ([ADR-001](adr/ADR-001-single-mcp-consolidation.md)):
-- **Contextro** (by  / , MIT license) — Contributed the symbol extraction pipeline, embedding service, parallel indexing, core data models, and memory retrieval system.
-- **Contextro** (by [](https://github.com/)) — Contributed the ast-grep structural parser, rustworkx graph engine, code complexity analysis, and relationship extraction.
+Contextro consolidates two predecessor internal efforts into a single server ([ADR-001](adr/ADR-001-single-mcp-consolidation.md)):
+- **Contextro lineage A** — Contributed the symbol extraction pipeline, embedding service, parallel indexing, core data models, and memory retrieval system.
+- **Contextro lineage B** — Contributed the ast-grep structural parser, rustworkx graph engine, code complexity analysis, and relationship extraction.
 
 ## System Overview
 
