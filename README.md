@@ -29,10 +29,6 @@ With:     search("authentication flow") → exact result in <1ms
 ## Install
 
 ```bash
-# Pre-built binary (recommended)
-curl -fsSL https://install.contextro.dev | sh
-
-# Or via npm
 npm install -g contextro
 ```
 
