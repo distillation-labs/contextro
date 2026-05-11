@@ -7,7 +7,7 @@ const path = require("path");
 const zlib = require("zlib");
 const { execSync } = require("child_process");
 
-const REPO = "jassskalkat/contextro";
+const REPO = "distillation-labs/contextro";
 const pkg = require("./package.json");
 const VERSION = `v${pkg.version}`;
 
@@ -103,7 +103,7 @@ async function main() {
 
 main().catch((err) => {
   console.error(`contextro install failed: ${err.message}`);
-  console.error("You can install manually: https://github.com/jassskalkat/contextro#install");
+  console.error("You can install manually: https://github.com/distillation-labs/contextro#install");
   // Don't fail npm install — the package still works if the binary is installed separately
   process.exit(0);
 });
