@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "contextro",
+  "description": "Contextro plugins — give your AI coding agent a brain.",
+  "plugins": [
+    {
+      "name": "contextro",
+      "description": "Semantic search, call graphs, impact analysis, AST rewrite, git history, and memory for your codebase. Runs locally, no cloud.",
+      "source": {
+        "source": "relative",
+        "path": "./plugins/contextro"
+      },
+      "tags": ["mcp", "code-search", "code-graph", "semantic-search", "impact-analysis"]
+    }
+  ]
+}
