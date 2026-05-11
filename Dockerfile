@@ -17,7 +17,7 @@ RUN apt-get update && \
 
 COPY crates ./
 
-RUN cargo build --locked --release --bin contextro -p contextro-server
+RUN cargo build --locked --release --bin contextro -p contextro
 
 FROM debian:bookworm-slim AS runtime
 
