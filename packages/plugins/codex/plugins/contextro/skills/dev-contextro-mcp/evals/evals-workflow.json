@@ -1,0 +1,41 @@
+{
+  "skill_name": "dev-contextro-mcp",
+  "version": "0.1.0",
+  "eval_set": "workflow-functional-performance",
+  "description": "Functional workflow evals for the Contextro skill. Covers the highest-value problem-first flows: orientation, safe refactor, bug investigation, compaction recovery, AST rewrite safety, and output-handling discipline.",
+  "categories": {
+    "workflow": "Multi-step tool sequences happen in the right order",
+    "functional": "The chosen tools solve the user task correctly",
+    "output_format": "The agent handles confidence, sandbox_ref, and text-first outputs correctly",
+    "performance_comparison": "The skill reduces reads and tool chatter relative to baseline"
+  },
+  "evals": [
+    {
+      "id": 101,
+      "name": "workflow-safe-refactor-order",
+      "category": "workflow",
+      "prompt": "I want to rename BaseEmbeddingService to EmbeddingBackend across the codebase.",
+      "expected_behavior": "Agent calls impact first, then explain and/or find_callers before giving rename guidance.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "impact is called first",
+          "type": "workflow",
+          "passing_condition": "impact('BaseEmbeddingService') called before any rename recommendation"
+        }
+      ]
+    }
+  ],
+  "baseline_comparison": {
+    "without_skill": {
+      "orientation": {
+        "tool_calls": 15,
+        "readFile_calls": 8,
+        "tokens_consumed": 18060
+      }
+    },
+    "with_skill_target": {
+      "orientation": { "tool_calls": 3, "readFile_calls": 0 }
+    }
+  }
+}
