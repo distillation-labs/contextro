@@ -31,7 +31,7 @@ Publication-specific figures in `figures/`:
 - `contextro-system-overview.svg`
 - `contextro-study-design.svg`
 
-Existing project figures reused from `docs/blog/assets/`:
+Existing project figures reused from `docs/publication/figures/`:
 
 - `01_headline_metrics.svg`
 - `02_token_by_category.svg`
