@@ -119,8 +119,8 @@ jobs:
       - name: Write alpha environment file
         if: steps.deploy_check.outputs.enabled == 'true'
         run: |
-          ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" <<EOF
-          cat > "${{ steps.deploy_check.outputs.remote_dir }}/.env" <<ENVVARS
+          ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" <<'EOF'
+          cat > "${{ steps.deploy_check.outputs.remote_dir }}/.env" <<'ENVVARS'
           CONTEXTRO_IMAGE=${{ needs.docker.outputs.image_ref }}
           ALPHA_HTTP_PORT=${{ steps.deploy_check.outputs.http_port }}
           ENVVARS
@@ -129,7 +129,7 @@ jobs:
       - name: Pull and restart alpha host
         if: steps.deploy_check.outputs.enabled == 'true' && (github.event_name == 'push' || github.event.inputs.deploy != 'false')
         run: |
-          ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" <<EOF
+          ssh -p "${{ steps.deploy_check.outputs.port }}" "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}" <<'EOF'
           cd "${{ steps.deploy_check.outputs.remote_dir }}"
           export GHCR_USERNAME="${{ github.actor }}"
           export GHCR_TOKEN="${{ secrets.GITHUB_TOKEN }}"
