@@ -24,23 +24,23 @@ env:
 
 jobs:
   validate:
-    name: Lint and test
+    name: Rust validate
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install --index-url https://download.pytorch.org/whl/cpu torch
-          pip install -e ".[dev,reranker,model2vec]"
-      - name: Ruff
-        run: ruff check .
-      - name: Pytest
-        run: pytest -v -m "not slow"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - name: Cargo fmt
+        run: cargo fmt --all --check
+      - name: Cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Cargo test
+        run: cargo test --workspace --all-targets --locked
 
   docker:
     name: Build and publish alpha image
