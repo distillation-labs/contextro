@@ -2,7 +2,7 @@
 
 **Distribute the canonical Contextro MCP skill bundle for coding agents.**
 
-This package distributes exactly one user-facing skill bundle: `.agents/skills/dev-contextro-mcp/`.
+This package distributes exactly one user-facing skill bundle: `packages/skills/skills/dev-contextro-mcp/`.
 
 That canonical bundle contains:
 - `SKILL.md`
@@ -172,7 +172,7 @@ If you already have a hand-written `.github/copilot-instructions.md` or `AGENTS.
 npx @contextro/skills install --force
 ```
 
-In this repo, `.agents/skills/dev-contextro-mcp/` is the canonical source bundle. The packaged copy under `packages/skills/skills/dev-contextro-mcp/` exists as the npm fallback when the package is used outside the source repository.
+In this repo, `.agents/skills/dev-contextro-mcp/` is development-only Contextro context. The packaged copy under `packages/skills/skills/dev-contextro-mcp/` is the distribution source that ships to end users.
 
 ## License
 
