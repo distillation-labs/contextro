@@ -25,7 +25,7 @@ services:
       CTX_SEARCH_PREVIEW_CODE_CHARS: "220"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "/app/scripts/docker_healthcheck.py"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
