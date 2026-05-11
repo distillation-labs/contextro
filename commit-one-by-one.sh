@@ -11,45 +11,38 @@ MODE=${1:-"all"}
 # Function to get commit message for a file
 get_commit_message() {
     local file=$1
-    echo "Commit changes to: $file"
-    echo "Enter commit message (or press Enter for default):"
-    read -r message
-    
-    if [ -z "$message" ]; then
-        # Default message based on file type
-        local extension="${file##*.}"
-        case "$extension" in
-            py)
-                echo "Update $file"
-                ;;
-            js|ts|tsx|jsx)
-                echo "Update $file"
-                ;;
-            md)
-                echo "Update documentation in $file"
-                ;;
-            sh)
-                echo "Update script $file"
-                ;;
-            *)
-                echo "Update $file"
-                ;;
-        esac
-    else
-        echo "$message"
-    fi
+    # Default message based on file type
+    local extension="${file##*.}"
+    case "$extension" in
+        py)
+            echo "Update $file"
+            ;;
+        js|ts|tsx|jsx)
+            echo "Update $file"
+            ;;
+        md)
+            echo "Update documentation in $file"
+            ;;
+        sh)
+            echo "Update script $file"
+            ;;
+        *)
+            echo "Update $file"
+            ;;
+    esac
 }
 
 # Function to commit a single file
 commit_file() {
     local file=$1
     local message=$(get_commit_message "$file")
+    local trailer="Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
     
     echo "Adding $file..."
     git add "$file"
     
     echo "Committing with message: $message"
-    git commit -m "$message"
+    git commit -m "$message" -m "$trailer"
     
     echo "✓ Committed $file"
     echo "---"
@@ -70,6 +63,9 @@ else
     untracked=$(git ls-files --others --exclude-standard)
     files=$(echo -e "$staged\n$unstaged\n$untracked" | sort -u)
 fi
+
+# Clear staging area to ensure only the target file gets committed each time
+git reset HEAD -- . 2>/dev/null
 
 # Check if there are any files to commit
 if [ -z "$files" ]; then

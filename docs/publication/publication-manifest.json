@@ -39,6 +39,36 @@
       "id": "open-retrieval-quality",
       "file": "docs/publication/open-retrieval-quality.json",
       "caption": "Fresh public retrieval-quality benchmark"
+    },
+    {
+      "id": "public-proxy-repo",
+      "file": "docs/publication/public_proxy_repo",
+      "caption": "Tracked 1,179-file redistributable proxy repository for supplemental public reruns"
+    },
+    {
+      "id": "public-proxy-comparable-tasks",
+      "file": "docs/publication/public-proxy-comparable-tasks.json",
+      "caption": "Machine-readable 39-task public proxy discovery suite"
+    },
+    {
+      "id": "public-proxy-edit-tasks",
+      "file": "docs/publication/public-proxy-edit-tasks.json",
+      "caption": "Machine-readable 8-task deterministic discovery-plus-edit suite"
+    },
+    {
+      "id": "public-proxy-strong-baseline",
+      "file": "docs/publication/public-proxy-strong-baseline.json",
+      "caption": "Stronger local-tools versus Contextro rerun on the public proxy repository"
+    },
+    {
+      "id": "edit-correctness-benchmark",
+      "file": "docs/publication/edit-correctness-benchmark.json",
+      "caption": "Deterministic discovery-plus-edit correctness benchmark results"
+    },
+    {
+      "id": "contextro-tool-api-schemas",
+      "file": "docs/publication/contextro-tool-api-schemas.json",
+      "caption": "Exact request/response schemas and example payloads for 30 tools"
     }
   ],
   "figures": [

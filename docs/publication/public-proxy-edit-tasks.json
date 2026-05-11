@@ -1,0 +1,211 @@
+[
+  {
+    "id": "edit_01",
+    "prompt": "Increase the session grace window constant used by stale-session revocation.",
+    "discovery_tool": "find_symbol",
+    "discovery_args": {
+      "name": "revoke_stale_session_token"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "SESSION_GRACE_MINUTES",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/auth/src/auth/session_tokens.py",
+    "pattern": "SESSION_GRACE_MINUTES = 20",
+    "replacement": "SESSION_GRACE_MINUTES = 30",
+    "expected_contains": [
+      "SESSION_GRACE_MINUTES = 30"
+    ],
+    "expected_not_contains": [
+      "SESSION_GRACE_MINUTES = 20"
+    ]
+  },
+  {
+    "id": "edit_02",
+    "prompt": "Adjust the default digest delay for batched partner notifications.",
+    "discovery_tool": "find_symbol",
+    "discovery_args": {
+      "name": "schedule_digest_delivery"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "DEFAULT_DIGEST_DELAY_MINUTES",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/notifications/src/notifications/digest_scheduler.py",
+    "pattern": "DEFAULT_DIGEST_DELAY_MINUTES = 45",
+    "replacement": "DEFAULT_DIGEST_DELAY_MINUTES = 60",
+    "expected_contains": [
+      "DEFAULT_DIGEST_DELAY_MINUTES = 60"
+    ],
+    "expected_not_contains": [
+      "DEFAULT_DIGEST_DELAY_MINUTES = 45"
+    ]
+  },
+  {
+    "id": "edit_03",
+    "prompt": "Lower the rollout minimum sample size threshold.",
+    "discovery_tool": "find_symbol",
+    "discovery_args": {
+      "name": "evaluate_rollout_gate"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "MIN_SAMPLE_SIZE",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/experiments/src/experiments/rollouts.py",
+    "pattern": "MIN_SAMPLE_SIZE = 200",
+    "replacement": "MIN_SAMPLE_SIZE = 150",
+    "expected_contains": [
+      "MIN_SAMPLE_SIZE = 150"
+    ],
+    "expected_not_contains": [
+      "MIN_SAMPLE_SIZE = 200"
+    ]
+  },
+  {
+    "id": "edit_04",
+    "prompt": "Change the partner metric prefix to the activity namespace.",
+    "discovery_tool": "find_symbol",
+    "discovery_args": {
+      "name": "emit_partner_metric"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "PARTNER_METRIC_PREFIX",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/analytics/src/analytics/reporter.py",
+    "pattern": "PARTNER_METRIC_PREFIX = \"partners.lifecycle\"",
+    "replacement": "PARTNER_METRIC_PREFIX = \"partners.activity\"",
+    "expected_contains": [
+      "PARTNER_METRIC_PREFIX = \"partners.activity\""
+    ],
+    "expected_not_contains": [
+      "PARTNER_METRIC_PREFIX = \"partners.lifecycle\""
+    ]
+  },
+  {
+    "id": "edit_05",
+    "prompt": "Make email and slack the default notification channels.",
+    "discovery_tool": "find_symbol",
+    "discovery_args": {
+      "name": "resolve_notification_channels"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "DEFAULT_CHANNELS",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/notifications/src/notifications/preferences.py",
+    "pattern": "DEFAULT_CHANNELS = (\"email\",)",
+    "replacement": "DEFAULT_CHANNELS = (\"email\", \"slack\")",
+    "expected_contains": [
+      "DEFAULT_CHANNELS = (\"email\", \"slack\")"
+    ],
+    "expected_not_contains": [
+      "DEFAULT_CHANNELS = (\"email\",)"
+    ]
+  },
+  {
+    "id": "edit_06",
+    "prompt": "Increase the projection batch size used by search refreshes.",
+    "discovery_tool": "find_symbol",
+    "discovery_args": {
+      "name": "refresh_partner_search_projection"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "PROJECTION_BATCH_SIZE",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/search/src/search/projections.py",
+    "pattern": "PROJECTION_BATCH_SIZE = 100",
+    "replacement": "PROJECTION_BATCH_SIZE = 120",
+    "expected_contains": [
+      "PROJECTION_BATCH_SIZE = 120"
+    ],
+    "expected_not_contains": [
+      "PROJECTION_BATCH_SIZE = 100"
+    ]
+  },
+  {
+    "id": "edit_07",
+    "prompt": "Reduce the default retry backoff factor for digest delivery jobs.",
+    "discovery_tool": "find_symbol",
+    "discovery_args": {
+      "name": "build_retry_plan"
+    },
+    "baseline_steps": [
+      {
+        "tool": "git_grep",
+        "query": "DEFAULT_BACKOFF_FACTOR",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/workflows/src/workflows/retry_policies.py",
+    "pattern": "DEFAULT_BACKOFF_FACTOR = 2.0",
+    "replacement": "DEFAULT_BACKOFF_FACTOR = 1.5",
+    "expected_contains": [
+      "DEFAULT_BACKOFF_FACTOR = 1.5"
+    ],
+    "expected_not_contains": [
+      "DEFAULT_BACKOFF_FACTOR = 2.0"
+    ]
+  },
+  {
+    "id": "edit_08",
+    "prompt": "Rename the onboarding review audit event to screened.",
+    "discovery_tool": "search",
+    "discovery_args": {
+      "query": "partner onboarding review audit event",
+      "limit": 5
+    },
+    "baseline_steps": [
+      {
+        "tool": "rg",
+        "query": "partner_onboarding.reviewed",
+        "path": ".",
+        "glob": "*.py",
+        "max_results": 25
+      }
+    ],
+    "target_file": "packages/partners/src/partners/onboarding.py",
+    "pattern": "\"partner_onboarding.reviewed\"",
+    "replacement": "\"partner_onboarding.screened\"",
+    "expected_contains": [
+      "\"partner_onboarding.screened\""
+    ],
+    "expected_not_contains": [
+      "\"partner_onboarding.reviewed\""
+    ]
+  }
+]

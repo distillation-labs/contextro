@@ -42,7 +42,7 @@
 
   <rect x="600" y="450" width="120" height="160" rx="14" fill="#0f3460"/>
   <text x="660" y="494" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">Contextro</text>
-  <text x="660" y="522" text-anchor="middle" font-size="12" fill="#93c5fd">35 tools</text>
+  <text x="660" y="522" text-anchor="middle" font-size="12" fill="#93c5fd">30 tools</text>
   <text x="660" y="546" text-anchor="middle" font-size="12" fill="#93c5fd">Local-first</text>
   <text x="660" y="570" text-anchor="middle" font-size="12" fill="#93c5fd">No cloud</text>
 
