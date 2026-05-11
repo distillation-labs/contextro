@@ -7,6 +7,7 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Git integration: commit indexing, branch watching, cross-repo"
+publish = false
 
 [dependencies]
 contextro-core = { workspace = true }

@@ -7,6 +7,7 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "All 35 MCP tool implementations for Contextro"
+publish = false
 
 [dependencies]
 contextro-core = { workspace = true }

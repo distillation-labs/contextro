@@ -148,25 +148,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates
-      - name: Publish crates in dependency order
+      - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: |
-          for crate in \
-            contextro-core \
-            contextro-config \
-            contextro-parsing \
-            contextro-indexing \
-            contextro-engines \
-            contextro-memory \
-            contextro-git \
-            contextro-tools \
-            contextro-server; do
-            echo "Publishing $crate..."
-            cargo publish -p "$crate" --no-verify
-            # crates.io needs a moment to index before dependents can resolve it
-            sleep 20
-          done
+          cargo publish -p contextro --no-verify
 
   publish-npm:
     name: Publish npm package

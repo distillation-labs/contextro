@@ -7,6 +7,7 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Search engines: vector (LanceDB), BM25 (Tantivy), graph (petgraph), fusion"
+publish = false
 
 [dependencies]
 contextro-core = { workspace = true }

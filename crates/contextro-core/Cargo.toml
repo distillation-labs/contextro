@@ -7,6 +7,7 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Core domain types, traits, and errors for Contextro"
+publish = false
 
 [dependencies]
 serde = { workspace = true }

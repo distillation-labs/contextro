@@ -337,6 +337,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "contextro"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "contextro-config",
+ "contextro-core",
+ "contextro-engines",
+ "contextro-git",
+ "contextro-indexing",
+ "contextro-memory",
+ "contextro-parsing",
+ "contextro-tools",
+ "dirs",
+ "parking_lot",
+ "reqwest",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "contextro-config"
 version = "0.1.0"
 dependencies = [
@@ -433,32 +459,6 @@ dependencies = [
  "rayon",
  "tracing",
  "tree-sitter",
-]
-
-[[package]]
-name = "contextro-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum 0.7.9",
- "contextro-config",
- "contextro-core",
- "contextro-engines",
- "contextro-git",
- "contextro-indexing",
- "contextro-memory",
- "contextro-parsing",
- "contextro-tools",
- "dirs",
- "parking_lot",
- "reqwest",
- "rmcp",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

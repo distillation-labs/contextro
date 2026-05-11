@@ -7,6 +7,7 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Code parsing with tree-sitter and ast-grep for Contextro"
+publish = false
 
 [dependencies]
 contextro-core = { workspace = true }
