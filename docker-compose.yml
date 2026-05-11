@@ -1,7 +1,7 @@
 services:
   contextro:
     container_name: contextro-mcp
-    image: ${CONTEXTRO_IMAGE:-ghcr.io/jassskalkat/contextro-mcp:latest}
+    image: ${CONTEXTRO_IMAGE:-ghcr.io/distillation-labs/contextro-mcp:latest}
     ports:
       - "8000:8000"
     volumes:
