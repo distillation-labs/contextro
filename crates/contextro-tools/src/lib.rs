@@ -8,3 +8,7 @@ pub mod session;
 pub mod git_tools;
 pub mod code;
 pub mod artifacts;
+
+// Re-export key types for server use
+pub use memory::KnowledgeStore;
+pub use git_tools::RepoRegistry;

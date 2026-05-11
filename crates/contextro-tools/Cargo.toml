@@ -19,3 +19,6 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 git2 = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+regex-lite = "0.1"

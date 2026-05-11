@@ -1,16 +1,16 @@
 //! Session tools: compact, session_snapshot, restore, retrieve.
 
 use contextro_engines::sandbox::OutputSandbox;
+use contextro_memory::archive::CompactionArchive;
 use contextro_memory::session::SessionTracker;
 use serde_json::{json, Value};
 
-pub fn handle_compact(args: &Value) -> Value {
+pub fn handle_compact(args: &Value, archive: &CompactionArchive) -> Value {
     let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
     if content.is_empty() {
         return json!({"error": "Missing required parameter: content"});
     }
-    // TODO: archive content for later retrieval
-    let ref_id = format!("arc_{:08x}", content.len());
+    let ref_id = archive.archive(content, args.get("metadata").cloned());
     json!({"archived": true, "ref_id": ref_id, "chars": content.len()})
 }
 
