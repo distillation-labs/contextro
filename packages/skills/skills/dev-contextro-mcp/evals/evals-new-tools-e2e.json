@@ -1,0 +1,33 @@
+{
+  "skill_name": "dev-contextro-mcp",
+  "version": "0.0.5",
+  "eval_set": "new-tools-and-e2e",
+  "description": "Extended eval coverage for Contextro-specific tools and end-to-end problem-first tasks.",
+  "categories": {
+    "new_tools": "Contextro-specific tools are invoked correctly",
+    "e2e": "Real user requests complete with the expected Contextro workflow",
+    "distinctions": "The agent distinguishes nearby tools with different purposes"
+  },
+  "evals": [
+    {
+      "id": 401,
+      "name": "new-tool-retrieve-with-filter",
+      "category": "new_tools",
+      "prompt": "From the sandboxed results sx_def67890, show me only the authentication-related ones.",
+      "expected_behavior": "Agent calls retrieve with the ref id and a filter query.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "retrieve is called with ref id and filter",
+          "type": "tool_selection",
+          "passing_condition": "retrieve called with ref_id='sx_def67890' and query='authentication'"
+        }
+      ]
+    }
+  ],
+  "targets": {
+    "new_tool_accuracy": 0.95,
+    "archive_vs_memory_distinction": 0.95,
+    "sandbox_retrieve_rate": 0.95
+  }
+}
