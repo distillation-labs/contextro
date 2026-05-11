@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  checks: write
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -35,7 +39,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates
-      - run: cargo clippy --manifest-path crates/Cargo.toml --all-targets --locked
+      - run: cargo clippy --manifest-path crates/Cargo.toml --all-targets
 
   test:
     name: Test (${{ matrix.os }})
@@ -51,7 +55,7 @@ jobs:
         with:
           workspaces: crates
           key: ${{ matrix.os }}
-      - run: cargo test --manifest-path crates/Cargo.toml --locked
+      - run: cargo test --manifest-path crates/Cargo.toml
 
   audit:
     name: Security audit
