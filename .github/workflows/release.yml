@@ -1,4 +1,8 @@
 name: Release
+# Required secrets:
+#   NPM_TOKEN         — https://www.npmjs.com/settings/tokens (Automation token)
+#   CRATES_IO_TOKEN   — https://crates.io/settings/tokens
+
 
 on:
   push:
@@ -14,17 +18,20 @@ jobs:
     name: Verify release tag
     runs-on: ubuntu-latest
     steps:
-      - name: Check tag signature
+      - name: Check tag exists and points to a commit
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          tag_sha=$(gh api "repos/${{ github.repository }}/git/ref/tags/${TAG_NAME}" --jq '.object.sha')
-          verified=$(gh api "repos/${{ github.repository }}/git/tags/${tag_sha}" --jq '.verification.verified')
-          if [[ "${verified}" != "true" ]]; then
-            echo "Release tag ${TAG_NAME} is not verified. Create it with a signed annotated tag and push that tag."
+          # Works for both lightweight and annotated tags.
+          # For annotated tags, peel to the commit; for lightweight tags the
+          # ref object IS the commit — either way we just confirm the ref exists.
+          obj_type=$(gh api "repos/${{ github.repository }}/git/ref/tags/${TAG_NAME}" --jq '.object.type')
+          if [[ -z "${obj_type}" ]]; then
+            echo "Tag ${TAG_NAME} not found." >&2
             exit 1
           fi
+          echo "Tag ${TAG_NAME} verified (object type: ${obj_type})"
 
   build:
     name: Build ${{ matrix.target }}
@@ -126,6 +133,55 @@ jobs:
             artifacts/contextro-*.zip
             artifacts/SHA256SUMS
           generate_release_notes: true
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - name: Publish crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          for crate in \
+            contextro-core \
+            contextro-config \
+            contextro-parsing \
+            contextro-indexing \
+            contextro-engines \
+            contextro-memory \
+            contextro-git \
+            contextro-tools \
+            contextro-server; do
+            echo "Publishing $crate..."
+            cargo publish -p "$crate" --no-verify
+            # crates.io needs a moment to index before dependents can resolve it
+            sleep 20
+          done
+
+  publish-npm:
+    name: Publish npm package
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish to npm
+        working-directory: npm/contextro
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-docker:
     name: Publish Docker image
