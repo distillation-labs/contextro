@@ -4,14 +4,10 @@ services:
     build:
       context: .
     image: contextro-mcp-dev:local
-    command: ["python", "/app/scripts/dev_http_server.py"]
     ports:
       - "${CONTEXTRO_DEV_HTTP_PORT:-8000}:8000"
     volumes:
       - contextro-dev-data:/data
-      - ./src:/app/src
-      - ./scripts:/app/scripts
-      - ./pyproject.toml:/app/pyproject.toml:ro
       - ${CTX_CODEBASE_HOST_PATH:?set CTX_CODEBASE_HOST_PATH to the repo Contextro should index}:/repos/platform:ro
     environment:
       CTX_STORAGE_DIR: /data/.contextro
@@ -33,11 +29,9 @@ services:
       CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS: "1200"
       CTX_SEARCH_PREVIEW_RESULTS: "4"
       CTX_SEARCH_PREVIEW_CODE_CHARS: "220"
-      CONTEXTRO_DEV_DEBOUNCE_SECONDS: ${CONTEXTRO_DEV_DEBOUNCE_SECONDS:-1.0}
-      CONTEXTRO_DEV_LOG_LEVEL: ${CONTEXTRO_DEV_LOG_LEVEL:-INFO}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "/app/scripts/docker_healthcheck.py"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 12
