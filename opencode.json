@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "browser-use": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "/opt/homebrew/bin/uvx",
+        "--from",
+        "browser-use[cli]",
+        "browser-use",
+        "--mcp"
+      ]
+    },
+    "exa": {
+      "type": "remote",
+      "url": "https://mcp.exa.ai/mcp",
+      "headers": {
+        "EXA_API_KEY": "{env:EXA_API_KEY}"
+      }
+    },
+    "crawl4ai": {
+      "type": "remote",
+      "url": "http://localhost:11235/mcp/sse",
+      "enabled": true
+    },
+    "markitdown": {
+      "type": "local",
+      "enabled": true,
+      "command": ["/opt/homebrew/bin/uvx", "--from", "markitdown-mcp", "markitdown-mcp"]
+    },
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+      }
+    }
+  }
+}
