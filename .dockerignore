@@ -1,17 +1,14 @@
 .git
-.venv
-__pycache__
-*.pyc
 .contextro
 data
 scratch
 tests
-.pytest_cache
-.ruff_cache
-.hypothesis
+target
+crates/target
+# Local environment files
+.env
+.env.*
 # Large data files
 *.json
-scripts/bench_*.py
-scripts/benchmark_*.py
 # Docs that aren't needed at runtime
 docs
