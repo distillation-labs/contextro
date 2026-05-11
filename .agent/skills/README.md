@@ -11,6 +11,9 @@ All skill definitions live here. The platform-specific directories are derived c
 └── evals/            # Eval cases for skill quality testing
 ```
 
+`dev-contextro-mcp` is the only skill distributed by the `@contextro/skills` package.
+The other skills in this directory are internal development skills and are not shipped to end users.
+
 ## Platform copies (SKILL.md only)
 
 | Platform       | Directory           | Reads skills from                          |
@@ -19,7 +22,9 @@ All skill definitions live here. The platform-specific directories are derived c
 | OpenCode       | `.opencode/skills/` | `.opencode/skills/<name>/SKILL.md`         |
 | Kiro CLI       | `.kiro/skills/`     | `.kiro/skills/<name>/SKILL.md`             |
 
-Platform directories contain only `SKILL.md`. Evals and references stay here.
+In-repo derived copies may contain only `SKILL.md` for compatibility. The published
+`@contextro/skills` package distributes the full `dev-contextro-mcp` bundle, including
+`references/` and `evals/`, to each supported skill surface.
 
 ## Updating a skill
 
