@@ -1,0 +1,39 @@
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "CC0-1.0",
+    "OpenSSL",
+]
+# Proprietary crates in this workspace are exempt
+exceptions = [
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-core" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-config" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-parsing" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-indexing" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-engines" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-memory" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-git" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-tools" },
+    { allow = ["LicenseRef-Proprietary"], name = "contextro-server" },
+]
+
+[bans]
+# Deny multiple versions of the same crate (forces dep resolution hygiene)
+multiple-versions = "warn"
+# Deny crates known to be problematic
+deny = []
+
+[advisories]
+# Handled by cargo-audit separately
+ignore = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
