@@ -2,7 +2,7 @@
 
 **Distribute the canonical Contextro MCP skill bundle for coding agents.**
 
-This package distributes exactly one user-facing skill bundle: `.agent/skills/dev-contextro-mcp/`.
+This package distributes exactly one user-facing skill bundle: `.agents/skills/dev-contextro-mcp/`.
 
 That canonical bundle contains:
 - `SKILL.md`
@@ -24,7 +24,7 @@ npx @contextro/skills install
 
 By default the installer writes these repo-local artifacts:
 - `.claude/skills/dev-contextro-mcp/` for Claude Code skills
-- `.agent/skills/dev-contextro-mcp/` as the canonical skill bundle path and compatibility surface
+- `.agents/skills/dev-contextro-mcp/` as the canonical skill bundle path
 - `.github/skills/dev-contextro-mcp/` plus `.github/copilot-instructions.md` for GitHub Copilot
 - `AGENTS.md` plus `docs/contextro-agent-guide.md` for Codex-style agents
 - `.kiro/skills/dev-contextro-mcp/` for Kiro skills
@@ -52,6 +52,7 @@ npx @contextro/skills install dev-contextro-mcp
 
 # Install to a specific platform only
 npx @contextro/skills install --platform claude
+npx @contextro/skills install --platform agents
 npx @contextro/skills install --platform github
 npx @contextro/skills install --platform codex
 
@@ -81,7 +82,7 @@ No other internal Contextro skills are distributed by this package.
 | Flag | Description |
 |------|-------------|
 | `--dir <path>` | Target project directory (default: current directory) |
-| `--platform <name>` | Install to one platform only: `claude`, `agent`, `github`, `codex`, `kiro`, `opencode` |
+| `--platform <name>` | Install to one platform only: `claude`, `agents`, `github`, `codex`, `kiro`, `opencode` |
 | `--force` | Overwrite existing skill files |
 
 ## Prerequisites
@@ -136,7 +137,7 @@ Concept split:
 | Target | Surface type | Installed artifacts |
 |--------|--------------|---------------------|
 | Claude Code | Skill bundle | `.claude/skills/dev-contextro-mcp/` |
-| `.agent` compatibility | Skill bundle | `.agent/skills/dev-contextro-mcp/` |
+| Repo skills | Skill bundle | `.agents/skills/dev-contextro-mcp/` |
 | GitHub Copilot | Skill bundle + instructions | `.github/skills/dev-contextro-mcp/`, `.github/copilot-instructions.md`, fallback `.github/instructions/contextro.instructions.md` |
 | Codex-style agents | Instructions | `AGENTS.md`, `docs/contextro-agent-guide.md` |
 | Kiro | Skill bundle | `.kiro/skills/dev-contextro-mcp/` |
@@ -149,7 +150,7 @@ Concept split:
 Make sure the generated files match the target agent you care about:
 ```bash
 ls .claude/skills/dev-contextro-mcp
-ls .agent/skills/dev-contextro-mcp
+ls .agents/skills/dev-contextro-mcp
 ls .github/skills/dev-contextro-mcp
 ls .github/copilot-instructions.md
 ls AGENTS.md
@@ -171,7 +172,7 @@ If you already have a hand-written `.github/copilot-instructions.md` or `AGENTS.
 npx @contextro/skills install --force
 ```
 
-In this repo, `.agent/skills/dev-contextro-mcp/` is the canonical source bundle. The packaged copy under `packages/skills/skills/dev-contextro-mcp/` exists as the npm fallback when the package is used outside the source repository.
+In this repo, `.agents/skills/dev-contextro-mcp/` is the canonical source bundle. The packaged copy under `packages/skills/skills/dev-contextro-mcp/` exists as the npm fallback when the package is used outside the source repository.
 
 ## License
 
