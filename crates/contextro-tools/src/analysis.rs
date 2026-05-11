@@ -27,7 +27,7 @@ pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
             (n.name.clone(), n.location.file_path.clone(), in_d + out_d)
         })
         .collect();
-    scored.sort_by(|a, b| b.2.cmp(&a.2));
+    scored.sort_by_key(|b| std::cmp::Reverse(b.2));
 
     let hubs: Vec<Value> = scored
         .iter()
@@ -56,7 +56,7 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
             complex_fns.push(json!({"name": node.name, "file": strip_base(&node.location.file_path, codebase), "connections": in_d + out_d}));
         }
     }
-    complex_fns.sort_by(|a, b| b["connections"].as_u64().cmp(&a["connections"].as_u64()));
+    complex_fns.sort_by_key(|v| std::cmp::Reverse(v["connections"].as_u64().unwrap_or(0)));
     complex_fns.truncate(10);
 
     let mut large_files: Vec<Value> = file_sizes
@@ -64,7 +64,7 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         .filter(|(_, count)| **count > 10)
         .map(|(file, count)| json!({"file": strip_base(file, codebase), "symbols": count}))
         .collect();
-    large_files.sort_by(|a, b| b["symbols"].as_u64().cmp(&a["symbols"].as_u64()));
+    large_files.sort_by_key(|v| std::cmp::Reverse(v["symbols"].as_u64().unwrap_or(0)));
 
     json!({"high_connectivity_symbols": complex_fns, "large_files": large_files, "total_symbols": nodes.len()})
 }
@@ -251,84 +251,73 @@ fn strip_base(file: &str, codebase: Option<&str>) -> String {
 
 /// Simple iterative Tarjan's SCC.
 fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec<Vec<String>> {
-    let mut index_counter = 0u32;
-    let mut stack: Vec<String> = Vec::new();
-    let mut on_stack: HashSet<String> = HashSet::new();
-    let mut indices: HashMap<String, u32> = HashMap::new();
-    let mut lowlinks: HashMap<String, u32> = HashMap::new();
-    let mut result: Vec<Vec<String>> = Vec::new();
+    struct TarjanCtx<'a> {
+        edges: &'a HashMap<String, HashSet<String>>,
+        index_counter: u32,
+        stack: Vec<String>,
+        on_stack: HashSet<String>,
+        indices: HashMap<String, u32>,
+        lowlinks: HashMap<String, u32>,
+        result: Vec<Vec<String>>,
+    }
 
-    fn strongconnect(
-        v: &str,
-        nodes_edges: &HashMap<String, HashSet<String>>,
-        index_counter: &mut u32,
-        stack: &mut Vec<String>,
-        on_stack: &mut HashSet<String>,
-        indices: &mut HashMap<String, u32>,
-        lowlinks: &mut HashMap<String, u32>,
-        result: &mut Vec<Vec<String>>,
-    ) {
-        indices.insert(v.to_string(), *index_counter);
-        lowlinks.insert(v.to_string(), *index_counter);
-        *index_counter += 1;
-        stack.push(v.to_string());
-        on_stack.insert(v.to_string());
+    impl<'a> TarjanCtx<'a> {
+        fn strongconnect(&mut self, v: &str) {
+            self.indices.insert(v.to_string(), self.index_counter);
+            self.lowlinks.insert(v.to_string(), self.index_counter);
+            self.index_counter += 1;
+            self.stack.push(v.to_string());
+            self.on_stack.insert(v.to_string());
 
-        if let Some(neighbors) = nodes_edges.get(v) {
-            for w in neighbors {
-                if !indices.contains_key(w.as_str()) {
-                    strongconnect(
-                        w,
-                        nodes_edges,
-                        index_counter,
-                        stack,
-                        on_stack,
-                        indices,
-                        lowlinks,
-                        result,
-                    );
-                    let wl = *lowlinks.get(w.as_str()).unwrap_or(&0);
-                    let vl = lowlinks.get_mut(v).unwrap();
-                    if wl < *vl {
-                        *vl = wl;
-                    }
-                } else if on_stack.contains(w.as_str()) {
-                    let wi = *indices.get(w.as_str()).unwrap_or(&0);
-                    let vl = lowlinks.get_mut(v).unwrap();
-                    if wi < *vl {
-                        *vl = wi;
+            if let Some(neighbors) = self.edges.get(v) {
+                for w in neighbors {
+                    if !self.indices.contains_key(w.as_str()) {
+                        self.strongconnect(w);
+                        let wl = *self.lowlinks.get(w.as_str()).unwrap_or(&0);
+                        let vl = self.lowlinks.get_mut(v).unwrap();
+                        if wl < *vl {
+                            *vl = wl;
+                        }
+                    } else if self.on_stack.contains(w.as_str()) {
+                        let wi = *self.indices.get(w.as_str()).unwrap_or(&0);
+                        let vl = self.lowlinks.get_mut(v).unwrap();
+                        if wi < *vl {
+                            *vl = wi;
+                        }
                     }
                 }
             }
-        }
 
-        if lowlinks.get(v) == indices.get(v) {
-            let mut scc = Vec::new();
-            loop {
-                let w = stack.pop().unwrap();
-                on_stack.remove(&w);
-                scc.push(w.clone());
-                if w == v {
-                    break;
+            if self.lowlinks.get(v) == self.indices.get(v) {
+                let mut scc = Vec::new();
+                loop {
+                    let w = self.stack.pop().unwrap();
+                    self.on_stack.remove(&w);
+                    scc.push(w.clone());
+                    if w == v {
+                        break;
+                    }
                 }
+                self.result.push(scc);
             }
-            result.push(scc);
         }
     }
+
+    let mut ctx = TarjanCtx {
+        edges,
+        index_counter: 0,
+        stack: Vec::new(),
+        on_stack: HashSet::new(),
+        indices: HashMap::new(),
+        lowlinks: HashMap::new(),
+        result: Vec::new(),
+    };
 
     for node in nodes {
-        if !indices.contains_key(node.as_str()) {
-            strongconnect(
-                node,
-                edges,
-                &mut index_counter,
-                &mut stack,
-                &mut on_stack,
-                &mut indices,
-                &mut lowlinks,
-                &mut result,
-            );
+        if !ctx.indices.contains_key(node.as_str()) {
+            ctx.strongconnect(node);
         }
     }
-    result
+
+    ctx.result
 }

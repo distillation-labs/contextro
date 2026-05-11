@@ -3,13 +3,11 @@
 use std::path::Path;
 
 use chrono::{Duration, Utc};
+use contextro_core::models::{Memory, MemoryTtl, MemoryType};
+use contextro_core::ContextroError;
 use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
-use tracing::warn;
-
-use contextro_core::models::{Memory, MemoryTtl, MemoryType};
-use contextro_core::ContextroError;
 
 /// Memory store backed by SQLite.
 pub struct MemoryStore {
@@ -136,13 +134,7 @@ impl MemoryStore {
             })
             .map_err(|e| ContextroError::Memory(format!("Query map failed: {}", e)))?;
 
-        let mut results = Vec::new();
-        for row in rows {
-            if let Ok(mem) = row {
-                results.push(mem);
-            }
-        }
-        Ok(results)
+        Ok(rows.flatten().collect())
     }
 
     /// Delete memories by ID, tags, or memory_type.

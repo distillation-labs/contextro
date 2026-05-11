@@ -260,14 +260,13 @@ fn parse_generic_def(line: &str, filepath: &str, language: &str, line_num: u32) 
     if line.contains("func ") || line.contains("def ") || line.contains("function ") {
         let name = line
             .split(&['(', '{', ' '][..])
-            .filter(|s| {
+            .find(|s| {
                 !s.is_empty()
                     && ![
                         "func", "def", "function", "pub", "async", "export", "static",
                     ]
                     .contains(s)
-            })
-            .next()?
+            })?
             .to_string();
 
         if name.is_empty() || name.len() > 100 {
@@ -297,8 +296,7 @@ fn find_block_end_python(lines: &[&str], start: usize) -> usize {
         return start;
     }
     let indent = lines[start].len() - lines[start].trim_start().len();
-    for i in (start + 1)..lines.len() {
-        let line = lines[i];
+    for (i, line) in lines.iter().enumerate().skip(start + 1) {
         if line.trim().is_empty() {
             continue;
         }
@@ -312,8 +310,8 @@ fn find_block_end_python(lines: &[&str], start: usize) -> usize {
 
 fn find_block_end_braces(lines: &[&str], start: usize) -> usize {
     let mut depth = 0i32;
-    for i in start..lines.len() {
-        for ch in lines[i].chars() {
+    for (i, line) in lines.iter().enumerate().skip(start) {
+        for ch in line.chars() {
             if ch == '{' {
                 depth += 1;
             }
@@ -340,11 +338,11 @@ fn extract_python_docstring(lines: &[&str], def_idx: usize) -> Option<String> {
             return Some(next_line[3..next_line.len() - 3].to_string());
         }
         let mut doc = String::new();
-        for i in (next_idx + 1)..lines.len() {
-            if lines[i].trim().contains(quote) {
+        for line in lines.iter().skip(next_idx + 1) {
+            if line.trim().contains(quote) {
                 break;
             }
-            doc.push_str(lines[i].trim());
+            doc.push_str(line.trim());
             doc.push('\n');
         }
         return Some(doc.trim().to_string());
@@ -354,11 +352,13 @@ fn extract_python_docstring(lines: &[&str], def_idx: usize) -> Option<String> {
 
 fn extract_python_calls(lines: &[&str], start: usize, end: usize) -> Vec<String> {
     let mut calls = Vec::new();
-    for i in (start + 1)..=std::cmp::min(end, lines.len() - 1) {
-        let line = lines[i].trim();
+    let upper = std::cmp::min(end, lines.len().saturating_sub(1));
+    for line in lines.iter().take(upper + 1).skip(start + 1) {
+        let line = line.trim();
         // Simple heuristic: find identifiers followed by (
         for part in line.split(&[' ', '=', ',', '(', '.'][..]) {
             let trimmed = part.trim();
+            let candidate = trimmed.to_string();
             if trimmed.len() > 1
                 && trimmed
                     .chars()
@@ -371,10 +371,9 @@ fn extract_python_calls(lines: &[&str], start: usize, end: usize) -> Vec<String>
                     "in",
                 ]
                 .contains(&trimmed)
+                && !calls.contains(&candidate)
             {
-                if !calls.contains(&trimmed.to_string()) {
-                    calls.push(trimmed.to_string());
-                }
+                calls.push(candidate);
             }
         }
     }

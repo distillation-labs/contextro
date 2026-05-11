@@ -175,7 +175,7 @@ fn graph_relevance_search(graph: &CodeGraph, query: &str, limit: usize) -> Vec<S
         .collect()
 }
 
-fn apply_diversity_penalty(results: &mut Vec<SearchResult>) {
+fn apply_diversity_penalty(results: &mut [SearchResult]) {
     let mut file_counts: HashMap<String, usize> = HashMap::new();
     for r in results.iter_mut() {
         let count = file_counts.entry(r.filepath.clone()).or_insert(0);

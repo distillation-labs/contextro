@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use contextro_core::graph::{NodeType, RelationshipType, UniversalNode, UniversalRelationship};
+use contextro_core::graph::{RelationshipType, UniversalNode, UniversalRelationship};
 use parking_lot::RwLock;
 
 /// Thread-safe code graph with O(1) caller/callee lookups and token-indexed fuzzy search.
@@ -284,7 +284,7 @@ fn tokenize_name(name: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use contextro_core::graph::UniversalLocation;
+    use contextro_core::graph::{NodeType, UniversalLocation};
 
     fn make_node(id: &str, name: &str) -> UniversalNode {
         UniversalNode {

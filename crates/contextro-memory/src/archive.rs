@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 /// A single archived entry.
 struct ArchiveEntry {
     content: String,
-    metadata: serde_json::Value,
+    _metadata: serde_json::Value,
     created: Instant,
     chars: usize,
 }
@@ -60,7 +60,7 @@ impl CompactionArchive {
             ref_id.clone(),
             ArchiveEntry {
                 content: content.to_string(),
-                metadata: metadata.unwrap_or(serde_json::Value::Null),
+                _metadata: metadata.unwrap_or(serde_json::Value::Null),
                 created: Instant::now(),
                 chars: content.len(),
             },

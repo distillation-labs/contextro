@@ -39,7 +39,7 @@ pub fn embed(text: &str) -> Option<Vec<f32>> {
     let lock = get_model().read();
     let model = lock.as_ref()?;
     let texts = [text];
-    match model.encode(&texts) {
+    match model.encode(texts) {
         Ok(embeddings) => {
             let row = embeddings.row(0);
             Some(row.to_vec())
@@ -79,7 +79,7 @@ pub fn dimensions() -> usize {
     match lock.as_ref() {
         Some(model) => {
             // Embed a single word to get dimensions
-            match model.encode(&["test"]) {
+            match model.encode(["test"]) {
                 Ok(emb) => emb.ncols(),
                 Err(_) => 0,
             }

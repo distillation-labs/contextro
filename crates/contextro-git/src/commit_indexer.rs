@@ -1,7 +1,5 @@
 //! Git commit indexing using libgit2.
 
-use std::path::Path;
-
 /// Check if a path is inside a git repository.
 pub fn is_git_repo(path: &str) -> bool {
     git2::Repository::discover(path).is_ok()

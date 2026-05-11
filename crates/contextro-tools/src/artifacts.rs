@@ -7,7 +7,7 @@ use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
 /// Generate an audit report with recommendations.
-pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
+pub fn handle_audit(graph: &CodeGraph, _codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
     let mut recommendations: Vec<Value> = Vec::new();
 
@@ -82,7 +82,7 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
             (n.name.clone(), n.location.file_path.clone(), i + o)
         })
         .collect();
-    scored.sort_by(|a, b| b.2.cmp(&a.2));
+    scored.sort_by_key(|b| std::cmp::Reverse(b.2));
     for (name, file, degree) in scored.iter().take(10) {
         arch.push_str(&format!(
             "- **{}** ({}) — {} connections\n",
@@ -208,7 +208,7 @@ pub fn handle_introspect(args: &Value) -> Value {
     let matching: Vec<Value> = tools
         .iter()
         .filter(|(n, d)| {
-            n.contains(&query_lower.as_str()) || d.to_lowercase().contains(&query_lower)
+            n.contains(query_lower.as_str()) || d.to_lowercase().contains(&query_lower)
         })
         .map(|(n, d)| json!({"tool": n, "description": d}))
         .collect();
