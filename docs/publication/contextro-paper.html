@@ -334,10 +334,10 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .headline-table col.metric { width: 23%; }
-    .headline-table col.a { width: 18%; }
-    .headline-table col.b { width: 16%; }
-    .headline-table col.c { width: 43%; }
+    .headline-table col.metric { width: 20%; }
+    .headline-table col.a { width: 22%; }
+    .headline-table col.b { width: 18%; }
+    .headline-table col.c { width: 40%; }
 
     .headline-table td.num {
       white-space: normal;
@@ -424,6 +424,12 @@
         padding: 0.28in 0.42in;
         box-shadow: none;
       }
+
+      /* Prevent min-height from creating a spurious blank page after each
+         section sheet. break-after: page alone is sufficient for pagination. */
+      .sheet {
+        min-height: 0;
+      }
     }
   </style>
 </head>
@@ -435,7 +441,7 @@
     <div class="title-rule"></div>
     <div class="paper-authors">Japneet Kalkat</div>
     <div class="paper-affiliation">Distillation Labs</div>
-    <div class="paper-email">japneet@distillation.ai</div>
+    <div class="paper-email">japneetkalkat@outlook.com</div>
     <div class="paper-date">May 2026</div>
     <p class="title-note">This manuscript supersedes the earlier pre-Rust Contextro paper. All headline results here are backed by the current Rust benchmark harness and the machine-readable artifacts bundled in <code>docs/publication/</code>.</p>
   </section>
@@ -626,7 +632,7 @@
           <tr><th>Metric</th><th class="num">Stronger local baseline</th><th class="num">Contextro</th><th>Observed change</th></tr>
         </thead>
         <tbody>
-          <tr><td>Success rate</td><td class="num">99.9% (999 / 1000)</td><td class="num">100.0% (1000 / 1000)</td><td>Contextro completed every task in the inventory</td></tr>
+          <tr><td>Success rate</td><td class="num">99.9%<br>(999/1000)</td><td class="num">100.0%<br>(1000/1000)</td><td>Contextro completed every task in the inventory</td></tr>
           <tr><td>Total tokens</td><td class="num">1,068,884</td><td class="num">94,034</td><td>91.2% reduction</td></tr>
           <tr><td>Mean tokens per task</td><td class="num">1,068.9</td><td class="num">94.0</td><td>91.2% reduction</td></tr>
           <tr><td>Median handler latency per task</td><td class="num">202.969 ms</td><td class="num">0.037 ms</td><td>Direct local handler timing dropped by 202.932 ms</td></tr>
@@ -702,8 +708,8 @@
       <h3>8.2. Rerun Command</h3>
       <pre><code>cd crates
 cargo run --release -p contextro --bin contextro-study -- \
-  --codebase /Users/japneetkalkat/platform \
-  --output-dir /Users/japneetkalkat/conductor/workspaces/contextro/zurich/docs/publication \
+  --codebase &lt;path/to/your/codebase&gt; \
+  --output-dir &lt;path/to/output/directory&gt; \
   --tasks 1000</code></pre>
 
       <h3>8.3. Verification Environment</h3>
@@ -816,10 +822,10 @@ cargo run --release -p contextro --bin contextro-study -- \
           </tr>
         </thead>
         <tbody>
-          <tr><td>Symbol discovery</td><td class="num">2.763</td><td class="num">1.000</td><td class="num">1.763</td><td class="num">0.000</td><td class="num">228.248 ms</td><td class="num">0.031 ms</td></tr>
-          <tr><td>Exact search</td><td class="num">2.897</td><td class="num">1.000</td><td class="num">1.897</td><td class="num">0.000</td><td class="num">218.685 ms</td><td class="num">0.112 ms</td></tr>
-          <tr><td>Batch lookup</td><td class="num">6.000</td><td class="num">1.000</td><td class="num">3.000</td><td class="num">0.000</td><td class="num">663.968 ms</td><td class="num">0.058 ms</td></tr>
-          <tr><td>Document symbols</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">0.000</td><td class="num">0.107 ms</td><td class="num">0.131 ms</td></tr>
+          <tr><td>Symbol discovery</td><td class="num">2.763</td><td class="num">1.000</td><td class="num">1.763</td><td class="num">0.000</td><td class="num">229.197 ms</td><td class="num">0.032 ms</td></tr>
+          <tr><td>Exact search</td><td class="num">2.897</td><td class="num">1.000</td><td class="num">1.897</td><td class="num">0.000</td><td class="num">219.246 ms</td><td class="num">0.117 ms</td></tr>
+          <tr><td>Batch lookup</td><td class="num">6.000</td><td class="num">1.000</td><td class="num">3.000</td><td class="num">0.000</td><td class="num">669.866 ms</td><td class="num">0.063 ms</td></tr>
+          <tr><td>Document symbols</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">0.000</td><td class="num">0.116 ms</td><td class="num">0.155 ms</td></tr>
         </tbody>
       </table>
     </section>
