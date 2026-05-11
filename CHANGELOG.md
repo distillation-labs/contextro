@@ -60,7 +60,7 @@ All notable changes to this project will be documented in this file.
 - **Research documentation** — Full experiment methodology, statistical approach, and reproducibility guide in `docs/EXPERIMENT_FRAMEWORK.md`.
 
 ### Changed
-- Skills now sync to all 4 platform directories (`.agent/`, `.github/`, `.kiro/`, `.opencode/`) via `scripts/sync-skills.sh`.
+- Skills now sync to the canonical `.agents/` tree plus `.github/`, `.kiro/`, and `.opencode/` via `scripts/sync-skills.sh`.
 - `dev-contextro-mcp` skill updated to v0.0.6 with latest tool routing and benchmark data.
 
 ## [0.0.5] - 2026-05-09
