@@ -14,7 +14,7 @@ when_to_use: >
   agents, harness design, evaluation design, benchmarking strategy, architecture tradeoffs,
   and research-backed roadmap decisions.
 metadata:
-  version: "1.0.0"
+  version: "0.1.0"
   category: research
   tags: [research, hypotheses, literature, evaluation, architecture, benchmarking]
 license: Proprietary
