@@ -13,6 +13,7 @@ All skill definitions live here. The platform-specific directories are derived c
 
 `dev-contextro-mcp` is the only skill distributed by the `@contextro/skills` package.
 The other skills in this directory are internal development skills and are not shipped to end users.
+The distributable bundle lives in `packages/skills/skills/dev-contextro-mcp/` and is kept in sync with this development copy.
 
 ## Platform copies (SKILL.md only)
 
