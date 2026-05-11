@@ -5,7 +5,7 @@ All skill definitions live here. The platform-specific directories are derived c
 ## Source of truth
 
 ```
-.agent/skills/<skill-name>/
+.agents/skills/<skill-name>/
 ├── SKILL.md          # Canonical skill definition
 ├── references/       # Reference docs used in skill instructions
 └── evals/            # Eval cases for skill quality testing
@@ -18,9 +18,10 @@ The other skills in this directory are internal development skills and are not s
 
 | Platform       | Directory           | Reads skills from                          |
 |----------------|---------------------|--------------------------------------------|
+| Claude Code    | `.claude/skills/`   | `.claude/skills/<name>/SKILL.md`           |
 | GitHub Copilot | `.github/skills/`   | `.github/skills/<name>/SKILL.md`           |
-| OpenCode       | `.opencode/skills/` | `.opencode/skills/<name>/SKILL.md`         |
 | Kiro CLI       | `.kiro/skills/`     | `.kiro/skills/<name>/SKILL.md`             |
+| OpenCode       | `.opencode/skills/` | `.opencode/skills/<name>/SKILL.md`         |
 
 In-repo derived copies may contain only `SKILL.md` for compatibility. The published
 `@contextro/skills` package distributes the full `dev-contextro-mcp` bundle, including
@@ -28,20 +29,20 @@ In-repo derived copies may contain only `SKILL.md` for compatibility. The publis
 
 ## Updating a skill
 
-1. Edit `.agent/skills/<name>/SKILL.md`
-2. Copy to all three platform directories:
+1. Edit `.agents/skills/<name>/SKILL.md`
+2. Copy to the platform directories:
 
 ```bash
-for platform in .github/skills .opencode/skills .kiro/skills; do
-  cp .agent/skills/<name>/SKILL.md $platform/<name>/SKILL.md
+for platform in .claude/skills .github/skills .opencode/skills .kiro/skills; do
+  cp .agents/skills/<name>/SKILL.md $platform/<name>/SKILL.md
 done
 ```
 
 Or to sync all skills at once:
 
 ```bash
-for platform in .github/skills .opencode/skills .kiro/skills; do
-  for skill in .agent/skills/*/; do
+for platform in .claude/skills .github/skills .opencode/skills .kiro/skills; do
+  for skill in .agents/skills/*/; do
     name=$(basename "$skill")
     cp "$skill/SKILL.md" "$platform/$name/SKILL.md"
   done
