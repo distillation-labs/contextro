@@ -2,57 +2,44 @@
 
 ## Getting Started
 
-### Installation
-
-```bash
-# Install from PyPI
-pip install contextro
-
-# Optional: with FlashRank reranker for better search quality
-pip install contextro[reranker]
-
-# Optional: with GPU (CUDA) support
-pip install contextro[gpu]
-```
-
-Or install from source for development:
-
-```bash
-git clone <internal-contextro-repo-url>
-cd contextro
-pip install -e ".[dev,reranker]"
-```
-
-### Running the Server
+Install or build the `contextro` binary, then run it through your MCP client.
 
 ```bash
 contextro
 ```
 
-The server starts on stdio (the default MCP transport). Configure your MCP client to connect to `contextro`.
+The default transport is stdio. For HTTP mode:
 
-### MCP Client Configuration
+```bash
+CTX_TRANSPORT=http contextro
+```
 
-**Claude Code:**
+The HTTP server exposes:
+
+- `GET /health`
+- `POST /mcp`
+
+## MCP Client Configuration
+
+Claude Code:
 
 ```bash
 claude mcp add contextro -- contextro
 ```
 
-**Claude Desktop** (add to `~/Library/Application Support/Claude/claude_desktop_config.json`):
+Claude Desktop:
 
 ```json
 {
   "mcpServers": {
     "contextro": {
-      "command": "contextro",
-      "args": []
+      "command": "contextro"
     }
   }
 }
 ```
 
-**Other MCP clients** (Cursor, Windsurf, Cline, etc.):
+Other MCP clients:
 
 ```json
 {
@@ -63,234 +50,164 @@ claude mcp add contextro -- contextro
 }
 ```
 
-See the full [Installation Guide](INSTALLATION.md) for client-specific instructions.
+## Typical Session
+
+1. Start Contextro through your MCP client.
+2. Run `index(path="/path/to/project")`.
+3. Use search, graph, and analysis tools against the indexed project.
+4. Re-run `index` after significant code changes.
 
 ## Tool Reference
 
-### Core Tools
+### Required First Step: `index`
 
-#### `index`
-Index a codebase directory. Must be called before any other tool (except `status`).
+Index a codebase before using search and graph tools.
 
-```
-# Single directory
+```text
 index(path="/path/to/your/project")
-
-# Multiple directories (comma-separated)
-index(path="/path/to/project/src,/path/to/project/lib,/path/to/project/tests")
-
-# Multiple directories (using paths parameter)
-index(path="/path/to/project/src", paths="/path/to/project/lib,/path/to/project/tests")
 ```
 
-Parameters:
-- `path` — Absolute path to the codebase directory. Accepts comma-separated paths for multi-folder indexing.
-- `paths` — (Optional) Additional comma-separated paths to index alongside `path`.
+Returns indexing statistics including file count, symbol count, chunk count, graph size, and elapsed time.
 
-When multiple paths are provided, each folder is indexed sequentially (discover → parse → embed → store) and results are merged into shared engines. This keeps peak RAM low since each folder's data is freed before processing the next. Duplicate files across overlapping paths are automatically deduplicated.
+### Search and Navigation
 
-Returns indexing statistics: file count, symbol count, chunk count, timing. On subsequent calls with a single path, performs incremental reindexing (only changed files).
+`search`
 
-#### `search`
-Preferred over Grep/Glob for finding code. Semantic + keyword + graph search with code snippets.
-
-```
-search(query="authentication middleware", limit=10, language="python", mode="hybrid")
+```text
+search(query="authentication middleware", limit=10, mode="hybrid")
 ```
 
-Parameters:
-- `query` — Natural language or code query
-- `limit` — Max results (1-100, default 10)
-- `language` — Filter by language (e.g., "python", "javascript")
-- `symbol_type` — Filter by type (e.g., "function", "class")
-- `mode` — "hybrid" (default), "vector", or "bm25"
-- `rerank` — Enable FlashRank reranking (default True)
+Hybrid retrieval combines semantic search, BM25, and graph signals.
 
-Returns results with `filepath` (relative), `absolute_path`, `code_snippet` (truncated to 2000 chars), `score`, `symbol_name`, `line_start`/`line_end`, and a `hint` field. Raw embedding vectors are stripped from results.
+`find_symbol`
 
-#### `status`
-Check server health, indexing stats, and memory usage.
-
-```
-status()
+```text
+find_symbol(name="IndexingPipeline", exact=true)
 ```
 
-Returns version, indexing state, chunk counts, graph stats, peak RSS memory, and a `hint` field suggesting which tools to use next.
+`find_callers`
 
-### Graph Analysis Tools
-
-#### `find_symbol`
-Preferred over Grep for finding symbol definitions. Returns file path, line numbers, docstring, type annotations, and all relationships (callers, callees).
-
-```
-find_symbol(name="UserService", exact=True)
-```
-
-Use `exact=False` for case-insensitive fuzzy matching.
-
-#### `find_callers`
-Find all functions that call a given symbol. More accurate than Grep — uses the call graph, so no false positives from comments or strings.
-
-```
+```text
 find_callers(symbol_name="authenticate")
 ```
 
-#### `find_callees`
-Trace execution flow — find all functions called by a given function. More reliable than reading source and manually tracing imports.
+`find_callees`
 
-```
-find_callees(symbol_name="process_request")
-```
-
-#### `analyze`
-Run code analysis on the indexed codebase: complexity metrics, dependency analysis, code smells, and quality scores.
-
-```
-analyze(path="src/auth/")
+```text
+find_callees(symbol_name="authenticate")
 ```
 
-The optional `path` parameter filters analysis to a subdirectory.
+`explain`
 
-#### `impact`
-Use before refactoring. Transitive change impact analysis — shows all functions affected if a given symbol changes.
-
-```
-impact(symbol_name="DatabaseConnection", max_depth=5)
+```text
+explain(symbol_name="ReciprocalRankFusion")
 ```
 
-#### `explain`
-Preferred over Read for understanding code symbols. Combines graph analysis, vector search, and code metrics into a structured explanation.
+`impact`
 
+```text
+impact(symbol_name="TokenBudget", max_depth=5)
 ```
-explain(symbol_name="Router", verbosity="detailed")
+
+### Project-Level Analysis
+
+`status`
+
+```text
+status()
 ```
 
-Verbosity levels: "summary" (concise), "detailed" (default), "full" (everything).
+`health`
 
-### Project Documentation Tools
-
-#### `overview`
-Get a high-level overview of the indexed project: file counts, language breakdown, symbol counts by type, directory structure, quality metrics, and top modules.
-
+```text
+health()
 ```
+
+`overview`
+
+```text
 overview()
 ```
 
-No parameters required. Returns a structured summary of the entire indexed project.
+`architecture`
 
-#### `architecture`
-Document the architecture of the indexed project: layers, module dependencies, class hierarchies, entry points, hub symbols (highest connectivity), and complexity hotspots.
-
-```
+```text
 architecture()
 ```
 
-No parameters required. Returns architectural analysis with layers, dependencies, classes, entry points, and structural insights.
+`analyze`
 
-### Memory Tools
-
-#### `remember`
-Store a semantic memory for later recall.
-
-```
-remember(
-    content="The auth service uses JWT tokens with 24h expiry",
-    memory_type="decision",
-    tags="auth,jwt",
-    ttl="permanent"
-)
+```text
+analyze(path="src/auth")
 ```
 
-Memory types: note, decision, conversation, status, preference, doc.
-TTL options: permanent, month, week, day, session.
+`focus`
 
-#### `recall`
-Search memories by semantic similarity.
-
-```
-recall(query="how does authentication work?", limit=5, tags="auth")
+```text
+focus(path="src/auth.rs")
 ```
 
-#### `forget`
-Delete memories by ID, tags, or type.
+`dead_code`, `circular_dependencies`, and `test_coverage_map` provide additional static analysis views once the codebase is indexed.
 
+### Code-Aware Operations
+
+The `code` tool exposes AST-oriented operations.
+
+```text
+code(operation="get_document_symbols", file_path="src/main.rs")
+code(operation="search_symbols", symbol_name="auth")
+code(operation="pattern_search", pattern="fn $F($$$) -> Result", path="src")
 ```
+
+### Memory and Session Tools
+
+```text
+remember(content="JWT expires after 24h", memory_type="decision", tags="auth,jwt")
+recall(query="JWT expiry")
 forget(tags="temporary")
-forget(memory_type="session")
-forget(memory_id="abc-123")
+session_snapshot()
+restore()
+compact(content="Finished indexing and auth investigation")
+retrieve(ref_id="...")
+```
+
+### Git and Multi-Repo Tools
+
+```text
+commit_search(query="when was the payment flow refactored")
+commit_history(limit=10)
+repo_add(path="/path/to/another/repo")
+repo_status()
 ```
 
 ## Configuration
 
-Set via environment variables before starting the server:
+Common runtime settings:
 
 ```bash
-# Embedding model selection
-export CTX_EMBEDDING_MODEL=jina-code          # Default: jina-code (768d, code-specific)
-                                                 # Options: bge-small-en (384d)
-export CTX_EMBEDDING_DEVICE=auto               # auto (CUDA > MPS > CPU), cuda, mps, cpu
-
-# Search tuning
-export CTX_SEARCH_MODE=hybrid          # hybrid, vector, or bm25
-export CTX_FUSION_WEIGHT_VECTOR=0.5    # Vector weight in RRF
-export CTX_FUSION_WEIGHT_BM25=0.3      # BM25 weight in RRF
-export CTX_FUSION_WEIGHT_GRAPH=0.2     # Graph weight in RRF
-
-# Resource limits
-export CTX_MAX_FILE_SIZE_MB=10         # Skip files larger than this
-export CTX_MAX_MEMORY_MB=350           # Memory budget target
-
-# Logging
-export CTX_LOG_LEVEL=INFO              # DEBUG, INFO, WARNING, ERROR
-export CTX_LOG_FORMAT=json             # text or json (json for production)
-
-# Storage
-export CTX_STORAGE_DIR=.contextro          # Where indexes are stored
+export CTX_STORAGE_DIR="$HOME/.contextro"
+export CTX_EMBEDDING_MODEL=potion-code-16m
+export CTX_SEARCH_MODE=hybrid
+export CTX_LOG_LEVEL=INFO
+export CTX_TRANSPORT=stdio
 ```
 
-### Embedding Models
+For HTTP deployments:
 
-Contextro supports two embedding models. Only registered model names are accepted; custom model names raise a `ConfigurationError`.
-
-| Model | HuggingFace ID | Dims | Code-specific? | Notes |
-|-------|---------------|------|:-:|---|
-| `jina-code` (default) | `jinaai/jina-embeddings-v2-base-code` | 768 | Yes | Best code search quality, ONNX |
-| `bge-small-en` | `BAAI/bge-small-en-v1.5` | 384 | No | Smallest download (~50MB), general text |
-
-GPU/MPS auto-detection (`CTX_EMBEDDING_DEVICE=auto`) tries CUDA first, then Apple MPS, then falls back to CPU. For explicit GPU support, install with `pip install -e ".[gpu]"`.
+```bash
+export CTX_TRANSPORT=http
+export CTX_HTTP_HOST=0.0.0.0
+export CTX_HTTP_PORT=8000
+```
 
 ## Best Practices
 
-### Indexing
+1. Index the project root, not an arbitrary subdirectory.
+2. Start with `search` or `find_symbol` before manually reading files.
+3. Use `impact` before changing shared symbols.
+4. Use `overview` and `architecture` when starting in an unfamiliar repository.
+5. Keep Contextro running as the `contextro` binary rather than wrapping it in another runtime.
 
-1. **Index from the project root** — Point `index` at the top-level directory, not a subdirectory. This ensures .gitignore is respected and relative paths are meaningful.
+## Language Support
 
-2. **Use multi-folder indexing for monorepos** — For projects with multiple source roots (e.g., `src/`, `lib/`, `plugins/`), pass them as comma-separated paths in a single `index` call. Each folder is processed sequentially to keep RAM usage low.
-
-3. **Let incremental reindex handle changes** — After the first full index, subsequent `index` calls only process changed files. No need to clear and re-index.
-
-4. **Check status after indexing** — Use `status` to verify chunk counts and graph stats look reasonable.
-
-### Searching
-
-1. **Start with hybrid mode** — The default `hybrid` mode combines all three engines for the best results. Only switch to `vector` or `bm25` if you have a specific reason.
-
-2. **Use filters to narrow results** — The `language` and `symbol_type` filters are applied before search, making results more relevant and queries faster.
-
-3. **Adjust verbosity for context** — When using `explain`, start with "summary" for quick overviews and "detailed" for investigation.
-
-### Memory
-
-1. **Tag everything** — Tags make recall much more effective. Use consistent tag conventions (e.g., "auth", "api", "bug").
-
-2. **Use TTL for ephemeral context** — Set `ttl="session"` or `ttl="day"` for temporary context that shouldn't persist.
-
-3. **Use memory types semantically** — "decision" for architectural choices, "note" for observations, "status" for current state.
-
-### Performance
-
-1. **Monitor memory** — Check `status()` memory stats periodically. Peak RSS should stay under 350MB for typical codebases.
-
-2. **Large codebases** — For codebases >10K files, consider increasing `CTX_MAX_WORKERS` for faster parallel parsing, or increasing `CTX_EMBEDDING_BATCH_SIZE` for faster embedding.
-
-3. **Search latency** — If search is slow, try `mode="vector"` (skips BM25 and graph) or reduce the `limit`.
+Contextro parses many languages through tree-sitter, including Rust, TypeScript, JavaScript, Go, Java, C, C++, and Python source. Python is a supported target language for indexing and search, not a runtime dependency.
