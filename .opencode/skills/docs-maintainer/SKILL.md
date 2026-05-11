@@ -9,7 +9,7 @@ when_to_use: >
   when changelog or README content must be updated, or when multiple docs need a
   consistent maintenance pass.
 metadata:
-  version: "1.0.0"
+  version: "0.1.0"
   category: docs-ops
   tags: [docs, changelog, readme, release-notes, publication, release, sync]
 license: Proprietary
