@@ -16,7 +16,7 @@ pub struct Bm25Engine {
     index: Index,
     reader: IndexReader,
     writer: Arc<RwLock<IndexWriter>>,
-    schema: Schema,
+    _schema: Schema,
     // Field handles
     f_id: Field,
     f_text: Field,
@@ -83,7 +83,7 @@ impl Bm25Engine {
             index,
             reader,
             writer: Arc::new(RwLock::new(writer)),
-            schema,
+            _schema: schema,
         }
     }
 

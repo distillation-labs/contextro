@@ -386,27 +386,20 @@ fn extract_imports_simple(content: &str, language: &str) -> Vec<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         match language {
-            "python" => {
-                if trimmed.starts_with("import ") || trimmed.starts_with("from ") {
-                    imports.push(trimmed.to_string());
-                }
+            "python" if trimmed.starts_with("import ") || trimmed.starts_with("from ") => {
+                imports.push(trimmed.to_string());
             }
-            "javascript" | "typescript" => {
+            "javascript" | "typescript"
                 if trimmed.starts_with("import ")
-                    || trimmed.starts_with("const ") && trimmed.contains("require(")
-                {
-                    imports.push(trimmed.to_string());
-                }
+                    || trimmed.starts_with("const ") && trimmed.contains("require(") =>
+            {
+                imports.push(trimmed.to_string());
             }
-            "rust" => {
-                if trimmed.starts_with("use ") {
-                    imports.push(trimmed.to_string());
-                }
+            "rust" if trimmed.starts_with("use ") => {
+                imports.push(trimmed.to_string());
             }
-            "go" => {
-                if trimmed.starts_with("import ") {
-                    imports.push(trimmed.to_string());
-                }
+            "go" if trimmed.starts_with("import ") => {
+                imports.push(trimmed.to_string());
             }
             _ => {}
         }
