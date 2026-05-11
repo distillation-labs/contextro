@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "eval_set": "new-tools-and-e2e",
   "description": "Extended eval coverage for Contextro-specific tools and end-to-end problem-first tasks.",
   "categories": {
