@@ -1,8 +1,20 @@
 # @contextro/skills
 
-**Teach your AI coding agent how to use Contextro.**
+**Distribute the canonical Contextro MCP skill bundle for coding agents.**
 
-One command installs agent skills that make Claude, Cursor, Copilot, Kiro, and OpenCode use Contextro MCP for code discovery instead of reading files one by one.
+This package distributes exactly one user-facing skill bundle: `.agent/skills/dev-contextro-mcp/`.
+
+That canonical bundle contains:
+- `SKILL.md`
+- `references/`
+- `evals/`
+
+The installer copies that bundle to the agent surfaces that support skills and writes the smallest repo-local instruction files needed for agents that rely on instructions instead of skills.
+
+This package does not build vendor plugin packages. It installs:
+- skill bundles for hosts that support `SKILL.md`
+- instruction files for hosts that use repo guidance
+- nothing that replaces MCP server setup itself
 
 ## Install
 
@@ -10,11 +22,15 @@ One command installs agent skills that make Claude, Cursor, Copilot, Kiro, and O
 npx @contextro/skills install
 ```
 
-That's it. Skills are installed into your project's standard skill directories:
-- `.agent/skills/` (Claude Code)
-- `.github/skills/` (GitHub Copilot)
-- `.kiro/skills/` (Kiro)
-- `.opencode/skills/` (OpenCode)
+By default the installer writes these repo-local artifacts:
+- `.claude/skills/dev-contextro-mcp/` for Claude Code skills
+- `.agent/skills/dev-contextro-mcp/` as the canonical skill bundle path and compatibility surface
+- `.github/skills/dev-contextro-mcp/` plus `.github/copilot-instructions.md` for GitHub Copilot
+- `AGENTS.md` plus `docs/contextro-agent-guide.md` for Codex-style agents
+- `.kiro/skills/dev-contextro-mcp/` for Kiro skills
+- `.opencode/skills/dev-contextro-mcp/` for OpenCode skills
+
+When you install into a normal project, each skill target receives the full bundle: `SKILL.md`, `references/`, and `evals/`.
 
 ## What It Does
 
@@ -28,14 +44,16 @@ After installation, your AI agent will:
 ## Commands
 
 ```bash
-# Install all skills (default)
+# Install the distributed skill to all supported targets
 npx @contextro/skills install
 
-# Install a specific skill
+# Install the skill explicitly
 npx @contextro/skills install dev-contextro-mcp
 
 # Install to a specific platform only
-npx @contextro/skills install --platform kiro
+npx @contextro/skills install --platform claude
+npx @contextro/skills install --platform github
+npx @contextro/skills install --platform codex
 
 # List available skills
 npx @contextro/skills list
@@ -43,8 +61,8 @@ npx @contextro/skills list
 # Show skill details
 npx @contextro/skills info dev-contextro-mcp
 
-# Remove a skill
-npx @contextro/skills uninstall contextro-quickstart
+# Remove the skill from one platform
+npx @contextro/skills uninstall dev-contextro-mcp --platform github
 
 # Run the MCP vs no-MCP benchmark on your codebase
 npx @contextro/skills benchmark --dir /path/to/your/project
@@ -55,14 +73,15 @@ npx @contextro/skills benchmark --dir /path/to/your/project
 | Skill | Description |
 |-------|-------------|
 | `dev-contextro-mcp` | Full Contextro integration: search, symbols, call graphs, impact analysis, git history, memory, AST rewrite |
-| `contextro-quickstart` | Minimal setup: teaches search, find_symbol, explain, impact |
+
+No other internal Contextro skills are distributed by this package.
 
 ## Options
 
 | Flag | Description |
 |------|-------------|
 | `--dir <path>` | Target project directory (default: current directory) |
-| `--platform <name>` | Install to one platform only: `agent`, `github`, `kiro`, `opencode` |
+| `--platform <name>` | Install to one platform only: `claude`, `agent`, `github`, `codex`, `kiro`, `opencode` |
 | `--force` | Overwrite existing skill files |
 
 ## Prerequisites
@@ -98,25 +117,47 @@ Output is written to `./experiment_results/`:
 
 ## How Skills Work
 
-Skills are markdown files (`SKILL.md`) that teach AI agents specific workflows. When your agent encounters a task that matches the skill's trigger conditions, it follows the skill's instructions instead of its default behavior.
+The distributed skill is a markdown bundle (`SKILL.md` plus `references/` and `evals/`) that teaches AI agents how to use Contextro for repository discovery.
 
-For example, the `dev-contextro-mcp` skill teaches agents to:
+Concept split:
+- `skill bundle`: reusable workflow content loaded by hosts that support `SKILL.md`
+- `instruction file`: repo guidance such as `.github/copilot-instructions.md` or `AGENTS.md`
+- `MCP server`: the actual Contextro tool/runtime integration
+- `plugin`: a vendor-specific packaging surface; this package does not generate plugins
+
+`dev-contextro-mcp` teaches agents to:
 - Use `search("query")` instead of reading multiple files
 - Run `impact("Symbol")` before any rename or delete
 - Use `explain("Symbol")` before editing unfamiliar code
 - Prefer `find_callers()` over grep for usage discovery
 
+## Platform Mapping
+
+| Target | Surface type | Installed artifacts |
+|--------|--------------|---------------------|
+| Claude Code | Skill bundle | `.claude/skills/dev-contextro-mcp/` |
+| `.agent` compatibility | Skill bundle | `.agent/skills/dev-contextro-mcp/` |
+| GitHub Copilot | Skill bundle + instructions | `.github/skills/dev-contextro-mcp/`, `.github/copilot-instructions.md`, fallback `.github/instructions/contextro.instructions.md` |
+| Codex-style agents | Instructions | `AGENTS.md`, `docs/contextro-agent-guide.md` |
+| Kiro | Skill bundle | `.kiro/skills/dev-contextro-mcp/` |
+| OpenCode | Skill bundle | `.opencode/skills/dev-contextro-mcp/` |
+
 ## Troubleshooting
 
 ### Skills not being picked up
 
-Make sure your agent's skill directory matches one of the installed paths:
+Make sure the generated files match the target agent you care about:
 ```bash
-ls .agent/skills/     # Claude Code
-ls .github/skills/    # GitHub Copilot
-ls .kiro/skills/      # Kiro
-ls .opencode/skills/  # OpenCode
+ls .claude/skills/dev-contextro-mcp
+ls .agent/skills/dev-contextro-mcp
+ls .github/skills/dev-contextro-mcp
+ls .github/copilot-instructions.md
+ls AGENTS.md
+ls .kiro/skills/dev-contextro-mcp
+ls .opencode/skills/dev-contextro-mcp
 ```
+
+If you already have a hand-written `.github/copilot-instructions.md` or `AGENTS.md`, the installer will not overwrite it unless you pass `--force`. In that case it falls back to a namespaced Copilot instruction file and leaves your existing top-level docs untouched.
 
 ### Contextro not responding
 
@@ -129,6 +170,8 @@ ls .opencode/skills/  # OpenCode
 ```bash
 npx @contextro/skills install --force
 ```
+
+In this repo, `.agent/skills/dev-contextro-mcp/` is the canonical source bundle. The packaged copy under `packages/skills/skills/dev-contextro-mcp/` exists as the npm fallback when the package is used outside the source repository.
 
 ## License
 
