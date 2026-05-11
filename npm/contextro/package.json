@@ -7,7 +7,7 @@
     "type": "git",
     "url": "git+https://github.com/distillation-labs/contextro.git"
   },
-  "homepage": "https://contextro.dev",
+  "homepage": "https://distillation-labs.netlify.app/en/contextro/",
   "bin": {
     "contextro": "run.js"
   },
