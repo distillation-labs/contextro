@@ -4,7 +4,16 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
-- Ongoing documentation and release work.
+## [0.2.0] - 2026-05-11
+
+### Added
+
+- `packages/plugins/` — pre-built, marketplace-ready plugins for Claude Code, GitHub Copilot CLI, OpenAI Codex, and Kiro.
+- Claude Code / Copilot CLI plugin: `.claude-plugin/marketplace.json` catalog, `plugin.json` manifest, `.mcp.json` MCP server wiring, `hooks/hooks.json` SessionStart binary check, and full `dev-contextro-mcp` skill bundle.
+- Codex plugin: same structure as Claude Code plugin plus `/contextro:setup` command.
+- Kiro plugin: `plugin.json` with inline MCP config, skill bundle, and setup guide.
+- `shared/` directory with canonical MCP config and hooks shared across all plugin targets.
+- `npx @contextro/skills plugin <claude-code|codex|kiro>` command to generate a complete plugin package on demand.
 
 ## [0.1.0] - 2026-05-11
 
