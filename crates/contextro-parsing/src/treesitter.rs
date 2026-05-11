@@ -6,7 +6,7 @@ use contextro_core::models::{ParsedFile, Symbol, SymbolType};
 use contextro_core::traits::Parser;
 use contextro_core::ContextroError;
 
-use crate::language::{get_language_for_file, get_supported_extensions};
+use crate::language::get_language_for_file;
 
 /// Production tree-sitter parser for symbol extraction.
 pub struct TreeSitterParser;

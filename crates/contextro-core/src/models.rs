@@ -199,20 +199,15 @@ impl std::fmt::Display for MemoryType {
 }
 
 /// Valid TTL values for memory entries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum MemoryTtl {
     Session,
     Day,
     Week,
     Month,
+    #[default]
     Permanent,
-}
-
-impl Default for MemoryTtl {
-    fn default() -> Self {
-        Self::Permanent
-    }
 }
 
 /// A semantic memory entry.
