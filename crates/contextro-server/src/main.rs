@@ -13,6 +13,7 @@ use contextro_config::get_settings;
 
 mod http;
 mod state;
+mod update_check;
 use state::AppState;
 
 /// The Contextro MCP server.
@@ -264,6 +265,8 @@ async fn main() -> Result<()> {
         .init();
 
     info!("Starting Contextro MCP server v{}", env!("CARGO_PKG_VERSION"));
+
+    update_check::spawn();
 
     let server = ContextroServer::new();
     let transport = get_settings().read().transport.clone();
