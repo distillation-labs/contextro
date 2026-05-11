@@ -57,6 +57,7 @@ Commands:
   list                   List distributed skills
   info <skill>           Show details about a distributed skill
   uninstall <skill...>   Remove installed skill artifacts
+  plugin <target>        Generate a plugin package for a target agent
   benchmark              Run MCP vs no-MCP experiment (requires contextro)
 
 Options:
@@ -73,6 +74,9 @@ Examples:
   npx @contextro/skills install --platform claude
   npx @contextro/skills install --platform agents
   npx @contextro/skills install --platform codex
+  npx @contextro/skills plugin claude-code
+  npx @contextro/skills plugin codex
+  npx @contextro/skills plugin kiro
   npx @contextro/skills list
   npx @contextro/skills uninstall dev-contextro-mcp --platform github
 `);
@@ -356,6 +360,185 @@ function resolvePlatforms(platformArg) {
   return [p];
 }
 
+// --- Plugin Generation ---
+
+const PLUGIN_MCP_CONFIG = JSON.stringify({
+  mcpServers: { contextro: { command: "contextro" } }
+}, null, 2);
+
+const PLUGIN_HOOKS_CONFIG = JSON.stringify({
+  hooks: {
+    SessionStart: [{
+      hooks: [{
+        type: "command",
+        command: "command -v contextro >/dev/null 2>&1 || echo '[contextro] Warning: contextro binary not found in PATH. Install with: npm install -g contextro'"
+      }]
+    }]
+  }
+}, null, 2);
+
+function generatePlugin(target, outDir, force) {
+  if (existsSync(outDir) && !force) {
+    console.error(`  ✗ Directory exists: ${outDir} (use --force to overwrite)`);
+    process.exit(1);
+  }
+  mkdirSync(outDir, { recursive: true });
+
+  const skillSrc = getSkillSourceDir("dev-contextro-mcp");
+  const generators = { "claude-code": generateClaudeCodePlugin, codex: generateCodexPlugin, kiro: generateKiroPlugin };
+  generators[target](outDir, skillSrc);
+}
+
+function copySkillBundle(skillSrc, destDir) {
+  mkdirSync(destDir, { recursive: true });
+  cpSync(skillSrc, destDir, { recursive: true });
+  console.log(`  ✓ skills/dev-contextro-mcp/`);
+}
+
+function generateClaudeCodePlugin(outDir, skillSrc) {
+  const pluginDir = join(outDir, "plugins", "contextro");
+  mkdirSync(join(pluginDir, ".claude-plugin"), { recursive: true });
+  mkdirSync(join(pluginDir, "hooks"), { recursive: true });
+
+  // Marketplace manifest
+  mkdirSync(join(outDir, ".claude-plugin"), { recursive: true });
+  writeFileSync(join(outDir, ".claude-plugin", "marketplace.json"), JSON.stringify({
+    name: "contextro",
+    description: "Contextro plugins — give your AI coding agent a brain.",
+    plugins: [{
+      name: "contextro",
+      description: "Semantic search, call graphs, impact analysis, AST rewrite, git history, and memory for your codebase.",
+      source: { source: "relative", path: "./plugins/contextro" },
+      tags: ["mcp", "code-search", "code-graph", "semantic-search"]
+    }]
+  }, null, 2));
+  console.log(`  ✓ .claude-plugin/marketplace.json`);
+
+  // Plugin manifest
+  writeFileSync(join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({
+    name: "contextro",
+    version: VERSION,
+    description: "Give your AI coding agent a brain. Semantic search, call graphs, impact analysis, and memory — all running locally.",
+    author: { name: "Distillation Labs", url: "https://github.com/distillation-labs" },
+    homepage: "https://github.com/distillation-labs/contextro",
+    license: "BUSL-1.1",
+    keywords: ["contextro", "mcp", "code-search", "code-graph", "semantic-search"]
+  }, null, 2));
+  console.log(`  ✓ plugins/contextro/.claude-plugin/plugin.json`);
+
+  // MCP config
+  writeFileSync(join(pluginDir, ".mcp.json"), PLUGIN_MCP_CONFIG);
+  console.log(`  ✓ plugins/contextro/.mcp.json`);
+
+  // Hooks
+  writeFileSync(join(pluginDir, "hooks", "hooks.json"), PLUGIN_HOOKS_CONFIG);
+  console.log(`  ✓ plugins/contextro/hooks/hooks.json`);
+
+  // Skill bundle
+  copySkillBundle(skillSrc, join(pluginDir, "skills", "dev-contextro-mcp"));
+}
+
+function generateCodexPlugin(outDir, skillSrc) {
+  const pluginDir = join(outDir, "plugins", "contextro");
+  mkdirSync(join(pluginDir, ".claude-plugin"), { recursive: true });
+  mkdirSync(join(pluginDir, "hooks"), { recursive: true });
+  mkdirSync(join(pluginDir, "commands"), { recursive: true });
+
+  // Marketplace manifest
+  mkdirSync(join(outDir, ".claude-plugin"), { recursive: true });
+  writeFileSync(join(outDir, ".claude-plugin", "marketplace.json"), JSON.stringify({
+    name: "contextro-codex",
+    description: "Contextro plugin for OpenAI Codex — give your coding agent a brain.",
+    plugins: [{
+      name: "contextro",
+      description: "Semantic search, call graphs, impact analysis, AST rewrite, git history, and memory for your codebase.",
+      source: { source: "relative", path: "./plugins/contextro" },
+      tags: ["mcp", "code-search", "code-graph", "semantic-search"]
+    }]
+  }, null, 2));
+  console.log(`  ✓ .claude-plugin/marketplace.json`);
+
+  // Plugin manifest
+  writeFileSync(join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({
+    name: "contextro",
+    version: VERSION,
+    description: "Give your AI coding agent a brain. Semantic search, call graphs, impact analysis, and memory — all running locally.",
+    author: { name: "Distillation Labs", url: "https://github.com/distillation-labs" },
+    homepage: "https://github.com/distillation-labs/contextro",
+    license: "BUSL-1.1",
+    keywords: ["contextro", "mcp", "code-search", "code-graph", "semantic-search"]
+  }, null, 2));
+  console.log(`  ✓ plugins/contextro/.claude-plugin/plugin.json`);
+
+  // MCP config
+  writeFileSync(join(pluginDir, ".mcp.json"), PLUGIN_MCP_CONFIG);
+  console.log(`  ✓ plugins/contextro/.mcp.json`);
+
+  // Hooks
+  writeFileSync(join(pluginDir, "hooks", "hooks.json"), PLUGIN_HOOKS_CONFIG);
+  console.log(`  ✓ plugins/contextro/hooks/hooks.json`);
+
+  // Setup command
+  writeFileSync(join(pluginDir, "commands", "setup.md"), [
+    "---",
+    "name: setup",
+    "description: Check whether Contextro is installed and ready.",
+    "disable-model-invocation: true",
+    "allowed-tools: Bash(contextro *) Bash(command *)",
+    "---",
+    "",
+    "Check whether Contextro is installed and ready to use:",
+    "",
+    "1. Run `command -v contextro` to verify the binary is in PATH.",
+    "2. If missing, tell the user to install with `npm install -g contextro`.",
+    "3. If present, run `contextro --version` to confirm it responds.",
+    "4. Report the status clearly.",
+    ""
+  ].join("\n"));
+  console.log(`  ✓ plugins/contextro/commands/setup.md`);
+
+  // Skill bundle
+  copySkillBundle(skillSrc, join(pluginDir, "skills", "dev-contextro-mcp"));
+}
+
+function generateKiroPlugin(outDir, skillSrc) {
+  mkdirSync(join(outDir, "guides"), { recursive: true });
+
+  // Plugin manifest with inline MCP config
+  writeFileSync(join(outDir, "plugin.json"), JSON.stringify({
+    name: "contextro",
+    version: VERSION,
+    description: "Give your AI coding agent a brain. Semantic search, call graphs, impact analysis, and memory — all running locally.",
+    author: { name: "Distillation Labs", url: "https://github.com/distillation-labs" },
+    homepage: "https://github.com/distillation-labs/contextro",
+    license: "BUSL-1.1",
+    keywords: ["contextro", "mcp", "code-search", "code-graph", "semantic-search"],
+    mcpServers: { contextro: { command: "contextro" } }
+  }, null, 2));
+  console.log(`  ✓ plugin.json`);
+
+  // Setup guide
+  writeFileSync(join(outDir, "guides", "setup.md"), [
+    "# Contextro Setup for Kiro",
+    "",
+    "## Prerequisites",
+    "",
+    "1. Install the Contextro binary: `npm install -g contextro`",
+    "2. Verify it's available: `command -v contextro`",
+    "",
+    "## First Use",
+    "",
+    '1. Tell Kiro: "Index this project at /path/to/your/project"',
+    "2. Wait for indexing to complete (check with `status()`)",
+    "3. Start searching by meaning, tracing call graphs, and checking impact",
+    ""
+  ].join("\n"));
+  console.log(`  ✓ guides/setup.md`);
+
+  // Skill bundle
+  copySkillBundle(skillSrc, join(outDir, "skills", "dev-contextro-mcp"));
+}
+
 // --- Main ---
 
 const args = process.argv.slice(2);
@@ -450,6 +633,21 @@ switch (command) {
     } catch (e) {
       process.exit(e.status || 1);
     }
+    break;
+  }
+
+  case "plugin": {
+    const PLUGIN_TARGETS = ["claude-code", "codex", "kiro"];
+    const target = positional[0];
+    if (!target || !PLUGIN_TARGETS.includes(target)) {
+      console.error(`Usage: plugin <${PLUGIN_TARGETS.join("|")}>`);
+      console.error(`Generates a plugin package for the specified agent target.`);
+      process.exit(1);
+    }
+    const outDir = resolve(flags.dir || process.cwd(), `contextro-plugin-${target}`);
+    console.log(`Generating ${target} plugin at ${outDir}\n`);
+    generatePlugin(target, outDir, flags.force);
+    console.log(`\n✓ Plugin generated at ${outDir}`);
     break;
   }
 
