@@ -1,209 +1,106 @@
 # Contextro Project Information
 
 ## Overview
-Contextro is a unified code intelligence MCP (Model Context Protocol) server that consolidates two existing servers:
-- **Contextro** — semantic vector search + memory layer
-- **Contextro** — structural AST analysis + call graphs
-- **Live Grep** — 100% coverage fallback via ripgrep/grep
 
-Into a **single, memory-efficient MCP server** (<350MB RAM) with 15 tools for code search, navigation, analysis, and memory.
+Contextro is a local code-intelligence MCP server shipped as a single compiled Rust binary named `contextro`.
 
----
+It provides:
 
-## Problem Statement
+- semantic and keyword code search
+- call-graph navigation and impact analysis
+- semantic memory and session recovery
+- git-aware and documentation-oriented tools
+- stdio and HTTP transports
 
-### Current Pain Points
-1. **Two separate MCP servers** — double the memory, double the startup time, two connections to manage
-2. **High memory usage** — PyTorch + ChromaDB + large embedding models consumed 1-2GB+ RAM
-3. **No hybrid search** — Contextro only does vector search; Contextro only does structural analysis
-4. **No cross-engine intelligence** — can't combine "semantic meaning" with "who calls this function"
+The active implementation lives in the Rust workspace under `crates/`.
 
-### What Contextro Solves
-- Single process, single MCP connection, 15 tools
-- <350MB RAM via ONNX Runtime + LanceDB mmap + lightweight models
-- Hybrid search combining vector + BM25 + graph signals + live-grep fallback
-- Cross-engine tools like `explain` (graph + vector) and `impact` (graph traversal)
+## Current Architecture Snapshot
 
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│              Contextro Server (FastMCP, stdio)   │
-├─────────────────────────────────────────────────┤
-│  15 MCP Tools                                    │
-│  index | search | status | health | find_symbol  │
-│  find_callers | find_callees | analyze | impact  │
-│  explain | overview | architecture | remember    │
-│  recall | forget                                 │
-├─────────────────────────────────────────────────┤
-│  Response Formatter (token budget optimization)  │
-│  FlashRank Re-ranker (two-stage retrieval)       │
-│  Reciprocal Rank Fusion (0.5/0.3/0.2 weights)   │
-├─────────────────────────────────────────────────┤
-│  Three Search Engines (parallel)                 │
-│  ┌─────────┐ ┌──────────┐ ┌──────────────┐     │
-│  │ Vector  │ │  BM25    │ │    Graph     │     │
-│  │(LanceDB)│ │(LanceDB) │ │ (rustworkx)  │     │
-│  │   ANN   │ │   FTS    │ │  traversal   │     │
-│  └─────────┘ └──────────┘ └──────────────┘     │
-├─────────────────────────────────────────────────┤
-│  Dual Parsing Pipeline                           │
-│  tree-sitter → symbols → embeddings → vectors   │
-│  ast-grep → structure → relationships → graph    │
-├─────────────────────────────────────────────────┤
-│  Storage Layer                                   │
-│  .contextro/lance/   → LanceDB (vectors + memories)  │
-│  .contextro/contextro.db → SQLite (graph persistence)    │
-│  .contextro/metadata.json → Index stats              │
-└─────────────────────────────────────────────────┘
+```text
+crates/
+├── contextro-core/
+├── contextro-config/
+├── contextro-parsing/
+├── contextro-indexing/
+├── contextro-engines/
+├── contextro-memory/
+├── contextro-git/
+├── contextro-tools/
+└── contextro-server/
 ```
 
----
+The server entrypoint is the `contextro` binary in `crates/contextro-server`.
 
-## Tech Stack
+## Key Technical Facts
 
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| MCP Framework | FastMCP ≥2.0 | Standard MCP server framework |
-| Vector + FTS Storage | LanceDB ≥0.4 | Embedded, mmap, vectors + FTS in one DB |
-| Inference | ONNX Runtime ≥1.16 | 50MB vs 500MB (PyTorch), 2.5x faster CPU |
-| Embedding Model | jina-code (default) | 768 dims, code-specific; also bge-small-en (384d) |
-| Symbol Parsing | tree-sitter 0.21.3 | Extract code symbols for embeddings |
-| Structural Analysis | ast-grep-py ≥0.28 | Build call/import graphs, 25+ languages |
-| Graph Engine | rustworkx ≥0.15 | In-memory directed graph, Rust-backed |
-| Re-ranking | FlashRank ≥0.2 | ONNX-based two-stage re-ranking |
-| Live Grep | ripgrep (rg) / grep | 100% coverage fallback for unindexed files |
-| File Watching | watchdog ≥3.0 | Debounced file change detection |
+- Pure Rust runtime
+- No Python interpreter or virtual environment required
+- Local-first storage under `CTX_STORAGE_DIR`
+- HTTP mode exposes `GET /health` and `POST /mcp`
+- Test and release workflows are Cargo-based from `crates/`
 
----
+## Workspace Responsibilities
 
-## Source Repositories
+| Crate | Responsibility |
+|---|---|
+| `contextro-core` | Shared domain models, traits, and errors |
+| `contextro-config` | `CTX_` configuration and storage paths |
+| `contextro-parsing` | tree-sitter parsing and supported-language detection |
+| `contextro-indexing` | File scanning, symbol extraction pipeline, chunk creation |
+| `contextro-engines` | BM25, graph, fusion, cache, sandbox |
+| `contextro-memory` | Memory store and session/archive state |
+| `contextro-git` | Git history and repo helpers |
+| `contextro-tools` | User-facing MCP tool logic |
+| `contextro-server` | Binary, stdio transport, HTTP transport |
 
-### Internal lineage A (vector search + memory)
-- **Repository:** internal Distillation Labs source control
-- **Local clone:** `Contextro_mcp/`
-- **What we port:** models, tree-sitter parser, embedding service, parallel indexer, memory retriever, state management
-- **What we rewrite:** vector storage (ChromaDB → LanceDB), chunking pipeline
+## Tool Surface
 
-### Internal lineage B (graph analysis)
-- **Repository:** internal Distillation Labs source control
-- **Local clone:** `Contextro/`
-- **What we port:** graph models, rustworkx graph engine, ast-grep parser, code analyzer, file watcher
-- **What we rewrite:** server layer (merge into single server)
+Contextro exposes 35 MCP tools, including:
 
----
+- indexing and search tools such as `index`, `search`, `find_symbol`, and `impact`
+- project-analysis tools such as `overview`, `architecture`, and `dead_code`
+- session and memory tools such as `remember`, `recall`, `compact`, and `restore`
+- git and multi-repo tools such as `commit_search`, `commit_history`, and `repo_status`
+- code-aware tools such as `code`, `docs_bundle`, and `sidecar_export`
 
-## 15 Tools
+## Performance Guidance
 
-### Indexing & Search
-| Tool | Description | Engine |
-|------|-------------|--------|
-| `index` | Index a codebase (auto/full/incremental) | Pipeline → all engines |
-| `search` | Hybrid search with re-ranking | Vector + BM25 + Graph + FlashRank |
-| `status` | Index stats, memory usage, language breakdown | All engines |
+Per `AGENTS.md`, the intended profile is:
 
-### Code Navigation
-| Tool | Description | Engine |
-|------|-------------|--------|
-| `find_symbol` | Find definition + references | Graph |
-| `find_callers` | Who calls this function? | Graph (predecessors) |
-| `find_callees` | What does this function call? | Graph (successors) |
+- cold start under roughly 50ms
+- warm search latency under roughly 1ms
+- indexing around 2 seconds for a 3,000-file project
+- idle memory under roughly 50MB
 
-### Code Analysis
-| Tool | Description | Engine |
-|------|-------------|--------|
-| `analyze` | Complexity, code smells, dependencies, quality score | Graph + Code Analyzer |
-| `impact` | What breaks if I change X? | Graph (transitive callers) |
-| `explain` | Architecture narrative for codebase/module/file | Graph + Vector (synthesis) |
+## Supported Languages
 
-### Memory
-| Tool | Description | Engine |
-|------|-------------|--------|
-| `remember` | Store semantic memory with TTL and tags | Memory (LanceDB) |
-| `recall` | Retrieve memories via semantic search | Memory (LanceDB) |
-| `forget` | Delete memories by ID, type, or age | Memory (LanceDB) |
+Contextro indexes many languages through tree-sitter. Python source files remain a supported target language for indexing and search, but Python is not part of the runtime or installation model.
 
----
+## Development Commands
 
-## Performance Targets
+Run from `crates/`:
 
-| Metric | Target | Previous (two MCPs) |
-|--------|--------|--------------------|
-| Total RAM | <350MB | ~1-2GB |
-| Warm start | <5s | ~13s combined |
-| Incremental reindex (1 file) | <1s | ~2s |
-| Hybrid search + re-rank | <500ms | ~200ms (vector only) |
-| `find_symbol` | <100ms | <1s |
-| `explain` (codebase) | <2s | N/A (new) |
-| Processes | 1 | 2 |
-
----
-
-## Supported Languages (25+)
-
-| Category | Languages |
-|----------|-----------|
-| Web & Frontend | JavaScript, TypeScript, HTML, CSS |
-| Backend & Systems | Python, Java, C#, C++, C, Rust, Go |
-| JVM | Java, Kotlin, Scala |
-| Functional | Elixir, Elm, Haskell, OCaml, F# |
-| Mobile | Swift, Dart |
-| Scripting | Ruby, PHP, Lua |
-| Data & Config | SQL, YAML, JSON, TOML |
-| Markup | XML, Markdown |
-
----
-
-## Storage Structure
-
-```
-.contextro/                          # Per-project, created by `index` tool
-├── lance/                       # LanceDB tables
-│   ├── codebase.lance/         # Code chunks + embeddings
-│   └── memories.lance/         # Semantic memories
-├── contextro.db                    # SQLite (graph nodes + edges)
-└── metadata.json               # Index stats, config snapshot
+```bash
+cargo build
+cargo test
+cargo fmt --all
+cargo clippy --workspace --all-targets
+cargo build --release
 ```
 
----
+## Running the Server
 
-## Configuration
+```bash
+# stdio MCP transport
+cargo run -p contextro-server --bin contextro
 
-All settings via environment variables with `CTX_` prefix:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CTX_EMBEDDING_MODEL` | `jina-code` | Embedding model (`jina-code`, `bge-small-en`) |
-| `CTX_STORAGE_DIR` | `.contextro` | Per-project storage directory |
-| `CTX_MAX_FILE_SIZE` | `1048576` | Max file size in bytes (1MB) |
-| `CTX_LOG_FORMAT` | `text` | Logging format (`text` or `json`) |
-| `CTX_BATCH_SIZE` | `32` | Embedding batch size |
-
----
+# HTTP transport
+CTX_TRANSPORT=http cargo run -p contextro-server --bin contextro
+```
 
 ## Related Documents
 
-| Document | Location | Purpose |
-|----------|----------|---------|
-| Implementation Plan | [docs/IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | 5-phase build plan |
-| Research Notes | [docs/RESEARCH.md](RESEARCH.md) | Tech research (LanceDB, models, memory) |
-| Market Research | [MARKET_RESEARCH_codegrpk.md](../MARKET_RESEARCH_codegrpk.md) | Competitive analysis |
-| Original Spec | [CTX_PLAN.md](../CTX_PLAN.md) | Original architecture spec |
-| MCP Integration | [MCP_Integration_Plan.md](../MCP_Integration_Plan.md) | MCP ecosystem integration |
-| Agentic Setup | [agentic-setup-template.md](../agentic-setup-template.md) | Agent-ready project template |
-
----
-
-## Key Decisions Log
-
-| Decision | Rationale |
-|----------|-----------|
-| LanceDB over ChromaDB | Embedded, mmap (disk-backed), native FTS, fewer dependencies |
-| ONNX Runtime over PyTorch | 50MB vs 500MB RAM, 2.5x faster CPU inference |
-| jina-code default | Code-specific 768d embeddings; 3 models supported, GPU/MPS auto-detection |
-| rustworkx over Neo4j | In-memory graph is sufficient, no DB server dependency |
-| Single MCP over two | Halves memory, eliminates cross-process coordination |
-| Dual parsers (tree-sitter + ast-grep) | Each excels at different task: symbols vs structure |
-| Spec-driven development | Tests first ensures robustness across phases |
+- `README.md` for installation, usage, and tool overview
+- `docs/INSTALLATION.md` for binary install and MCP client setup
+- `docs/DEVELOPER_GUIDE.md` for Rust workspace workflows
+- `docs/ARCHITECTURE.md` for subsystem layout
