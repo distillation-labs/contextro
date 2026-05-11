@@ -1,44 +1,27 @@
-FROM python:3.12-slim AS builder
+FROM rust:bookworm AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    VIRTUAL_ENV=/opt/venv \
-    PATH="/opt/venv/bin:$PATH" \
-    HF_HOME=/opt/hf-cache
+WORKDIR /app/crates
 
-RUN python -m venv "$VIRTUAL_ENV"
-
-# Build deps: compilers + cargo for the Rust extension, git for commit history,
-# ripgrep for live grep fallback.
+# Native dependencies required by the Rust workspace.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates git gcc g++ cargo ripgrep && \
+        ca-certificates \
+        clang \
+        cmake \
+        git \
+        libclang-dev \
+        libssl-dev \
+        make \
+        pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-COPY pyproject.toml README.md ./
-COPY rust ./rust
-COPY src ./src
-COPY scripts ./scripts
+COPY crates ./
 
-RUN pip install --upgrade pip && \
-    pip install --index-url https://download.pytorch.org/whl/cpu torch && \
-    pip install -e ".[reranker,model2vec]"
+RUN cargo build --locked --release --bin contextro -p contextro-server
 
-# Pre-cache the default embedding model so first search does not hit Hugging Face.
-RUN python -c "from model2vec import StaticModel; StaticModel.from_pretrained('minishlab/potion-code-16M')"
+FROM debian:bookworm-slim AS runtime
 
-
-FROM python:3.12-slim AS runtime
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    VIRTUAL_ENV=/opt/venv \
-    PATH="/opt/venv/bin:$PATH" \
-    HF_HOME=/opt/hf-cache \
-    CTX_STORAGE_DIR=/data/.contextro \
+ENV CTX_STORAGE_DIR=/data/.contextro \
     CTX_EMBEDDING_MODEL=potion-code-16m \
     CTX_LOG_LEVEL=INFO \
     CTX_LOG_FORMAT=json \
@@ -53,21 +36,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates git ripgrep && \
+        ca-certificates \
+        curl \
+        git && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /opt/hf-cache /opt/hf-cache
-COPY pyproject.toml README.md ./
-COPY rust ./rust
-COPY src ./src
-COPY scripts ./scripts
+
+COPY --from=builder /app/crates/target/release/contextro /usr/local/bin/contextro
 
 VOLUME /data
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["python", "/app/scripts/docker_healthcheck.py"]
+    CMD ["curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
 
 ENTRYPOINT ["contextro"]
