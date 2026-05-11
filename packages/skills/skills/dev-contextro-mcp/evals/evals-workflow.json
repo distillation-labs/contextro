@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "eval_set": "workflow-functional-performance",
   "description": "Functional workflow evals for the Contextro skill. Covers the highest-value problem-first flows: orientation, safe refactor, bug investigation, compaction recovery, AST rewrite safety, and output-handling discipline.",
   "categories": {
