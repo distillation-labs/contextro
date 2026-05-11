@@ -32,11 +32,11 @@ With:     search("authentication flow") → exact result in <1ms
 # Pre-built binary (recommended)
 curl -fsSL https://install.contextro.dev | sh
 
-# Or via cargo
-cargo install contextro
+# Or via npm
+npm install -g contextro
 ```
 
-Single static binary. No runtime dependencies. No Python. No interpreter.
+Single binary. No runtime dependencies. No setup.
 
 ---
 
@@ -205,37 +205,6 @@ focus(path="src/auth.rs")
 
 ---
 
-## Architecture
-
-Single compiled Rust binary. No interpreter, no GIL, no runtime dependencies.
-
-| Component | Crate |
-|---|---|
-| MCP Server | `rmcp` (official Rust SDK) |
-| Embeddings | `model2vec` (potion-base-8M, 50k emb/sec) |
-| Vector Search | `lancedb` (native Rust) |
-| Full-Text Search | `tantivy` (BM25) |
-| Call Graph | `petgraph` |
-| Code Parsing | `tree-sitter` |
-| Git | `git2` (libgit2) |
-| Persistence | `rusqlite` (bundled SQLite) |
-| Async Runtime | `tokio` |
-| HTTP Transport | `axum` |
-
----
-
-## Performance
-
-| Metric | Value |
-|---|---|
-| Cold start | <50ms |
-| Search latency | <1ms (warm) |
-| Indexing speed | ~2s for 3,000 files |
-| Memory at idle | <50MB |
-| Binary size | ~9MB |
-
----
-
 ## Configuration
 
 All settings via `CTX_` environment variables:
@@ -255,7 +224,7 @@ All settings via `CTX_` environment variables:
 ```yaml
 services:
   contextro:
-    image: ghcr.io/jassskalkat/contextro-mcp:latest
+    image: ghcr.io/distillation-labs/contextro-mcp:latest
     ports:
       - "8000:8000"
     volumes:
