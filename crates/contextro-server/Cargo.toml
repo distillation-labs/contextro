@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
 description = "Contextro MCP server binary"
 
 [[bin]]
@@ -13,6 +15,7 @@ path = "src/main.rs"
 [[bin]]
 name = "contextro-bench"
 path = "src/bench.rs"
+doc = false
 
 [dependencies]
 contextro-core = { workspace = true }
@@ -33,3 +36,5 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 parking_lot = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+dirs = "5"
