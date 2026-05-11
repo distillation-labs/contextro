@@ -65,7 +65,7 @@ describe("@contextro/skills CLI", () => {
       const out = run(`install --dir "${tmpDir}"`);
       assert.match(out, /artifact\(s\) updated/);
 
-      for (const platform of [".claude/skills", ".agent/skills", ".github/skills", ".kiro/skills", ".opencode/skills"]) {
+      for (const platform of [".claude/skills", ".agents/skills", ".github/skills", ".kiro/skills", ".opencode/skills"]) {
         assert.ok(
           existsSync(join(tmpDir, platform, "dev-contextro-mcp", "SKILL.md")),
           `Missing: ${platform}/dev-contextro-mcp/SKILL.md`
@@ -77,8 +77,8 @@ describe("@contextro/skills CLI", () => {
       assert.ok(existsSync(join(tmpDir, "docs", "contextro-agent-guide.md")));
       assert.ok(existsSync(join(tmpDir, ".claude", "skills", "dev-contextro-mcp", "references", "tool-decision-tree.md")));
       assert.ok(existsSync(join(tmpDir, ".claude", "skills", "dev-contextro-mcp", "evals", "evals.json")));
-      assert.ok(existsSync(join(tmpDir, ".agent", "skills", "dev-contextro-mcp", "references", "tool-decision-tree.md")));
-      assert.ok(existsSync(join(tmpDir, ".agent", "skills", "dev-contextro-mcp", "evals", "evals.json")));
+      assert.ok(existsSync(join(tmpDir, ".agents", "skills", "dev-contextro-mcp", "references", "tool-decision-tree.md")));
+      assert.ok(existsSync(join(tmpDir, ".agents", "skills", "dev-contextro-mcp", "evals", "evals.json")));
     });
 
     it("installs a single skill", () => {
@@ -110,8 +110,8 @@ describe("@contextro/skills CLI", () => {
       assert.ok(!existsSync(join(dir4, ".claude/skills/dev-contextro-mcp/SKILL.md")));
     });
 
-    it("does not overwrite the canonical .agent skill bundle in this repo", () => {
-      const out = run(`install dev-contextro-mcp --dir "${REPO_ROOT}" --platform agent`);
+    it("does not overwrite the canonical .agents skill bundle in this repo", () => {
+      const out = run(`install dev-contextro-mcp --dir "${REPO_ROOT}" --platform agents`);
       assert.match(out, /canonical source bundle, no copy needed/);
     });
 
@@ -184,10 +184,10 @@ describe("@contextro/skills CLI", () => {
       assert.ok(!existsSync(join(dir2, "docs/contextro-agent-guide.md")));
     });
 
-    it("does not remove the canonical .agent skill bundle in this repo", () => {
-      const out = run(`uninstall dev-contextro-mcp --dir "${REPO_ROOT}" --platform agent`);
+    it("does not remove the canonical .agents skill bundle in this repo", () => {
+      const out = run(`uninstall dev-contextro-mcp --dir "${REPO_ROOT}" --platform agents`);
       assert.match(out, /canonical source bundle, not removing/);
-      assert.ok(existsSync(join(REPO_ROOT, ".agent/skills/dev-contextro-mcp/SKILL.md")));
+      assert.ok(existsSync(join(REPO_ROOT, ".agents/skills/dev-contextro-mcp/SKILL.md")));
     });
   });
 });
