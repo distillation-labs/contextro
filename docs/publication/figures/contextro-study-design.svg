@@ -1,54 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" font-family="Inter, -apple-system, system-ui, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 540" font-family="Inter, -apple-system, system-ui, sans-serif">
   <defs>
-    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
-      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.08"/>
+    <filter id="sh" x="-6%" y="-6%" width="112%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.07"/>
     </filter>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#0f3460"/>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0.5 L7,4 L0,7.5 Z" fill="#64748b"/>
     </marker>
   </defs>
 
-  <rect width="1200" height="640" fill="#fafafa"/>
-  <text x="600" y="42" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a2e">Deterministic paired-study design</text>
-  <text x="600" y="64" text-anchor="middle" font-size="12" fill="#6b7280">Shared repository snapshot, matched task inventory, and direct comparison of workflow cost</text>
+  <rect width="1100" height="540" fill="#f8fafc"/>
 
-  <rect x="250" y="102" width="700" height="94" rx="18" fill="#ffffff" stroke="#e5e7eb" filter="url(#shadow)"/>
-  <text x="600" y="138" text-anchor="middle" font-size="16" font-weight="700" fill="#1a1a2e">Shared repository snapshot</text>
-  <text x="600" y="162" text-anchor="middle" font-size="12" fill="#374151">platform • 10,889 tracked files • 8,498 indexed source files • 11,534 symbols • 11,534 chunks</text>
+  <!-- Title -->
+  <text x="550" y="40" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">Deterministic paired-study design</text>
+  <text x="550" y="60" text-anchor="middle" font-size="11" fill="#64748b">Shared repository snapshot, matched task inventory, and direct comparison of workflow cost</text>
 
-  <rect x="470" y="222" width="260" height="60" rx="30" fill="#e8eef8"/>
-  <text x="600" y="246" text-anchor="middle" font-size="12" font-weight="700" fill="#0f3460">1,000 deterministic tasks</text>
-  <text x="600" y="265" text-anchor="middle" font-size="11" fill="#0f3460">300 symbol + 300 search + 200 batch lookup + 200 document symbols</text>
+  <!-- Repository snapshot card -->
+  <rect x="280" y="78" width="540" height="82" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="550" y="108" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">Shared repository snapshot</text>
+  <text x="550" y="130" text-anchor="middle" font-size="10" fill="#64748b">platform · 10,889 tracked files · 8,498 indexed source files · 11,534 symbols · 11,534 chunks</text>
+  <text x="550" y="148" text-anchor="middle" font-size="9.5" fill="#94a3b8">deterministic seed locks task inventory across runs</text>
 
-  <line x1="600" y1="196" x2="600" y2="222" stroke="#0f3460" stroke-width="3" marker-end="url(#arrow)"/>
-  <line x1="600" y1="282" x2="310" y2="326" stroke="#0f3460" stroke-width="3" marker-end="url(#arrow)"/>
-  <line x1="600" y1="282" x2="890" y2="326" stroke="#0f3460" stroke-width="3" marker-end="url(#arrow)"/>
+  <!-- Arrow down -->
+  <line x1="550" y1="160" x2="550" y2="176" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <rect x="70" y="330" width="480" height="190" rx="18" fill="#ffffff" stroke="#dc2626" stroke-width="2" filter="url(#shadow)"/>
-  <text x="310" y="365" text-anchor="middle" font-size="17" font-weight="700" fill="#dc2626">Stronger local baseline</text>
-  <text x="310" y="392" text-anchor="middle" font-size="12" fill="#374151">Exact <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">git grep</tspan> and bounded file reads</text>
-  <text x="310" y="417" text-anchor="middle" font-size="12" fill="#374151">Multi-step repository traversal per task</text>
-  <text x="310" y="442" text-anchor="middle" font-size="12" fill="#374151">999 / 1000 tasks correct</text>
-  <rect x="118" y="464" width="150" height="34" rx="17" fill="#fee2e2"/>
-  <text x="193" y="485" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">1,068,884 tokens</text>
-  <rect x="285" y="464" width="116" height="34" rx="17" fill="#fee2e2"/>
-  <text x="343" y="485" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">3.098 calls</text>
-  <rect x="418" y="464" width="90" height="34" rx="17" fill="#fee2e2"/>
-  <text x="463" y="485" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">p50 203 ms</text>
+  <!-- Task pill -->
+  <rect x="390" y="178" width="320" height="50" rx="25" fill="#eff6ff" stroke="#1e40af" stroke-width="1.5"/>
+  <text x="550" y="200" text-anchor="middle" font-size="12" font-weight="700" fill="#1e40af">1,000 deterministic tasks</text>
+  <text x="550" y="219" text-anchor="middle" font-size="9.5" fill="#1e3a8a">300 symbol · 300 search · 200 batch lookup · 200 document symbols</text>
 
-  <rect x="650" y="330" width="480" height="190" rx="18" fill="#ffffff" stroke="#0f3460" stroke-width="2" filter="url(#shadow)"/>
-  <text x="890" y="365" text-anchor="middle" font-size="17" font-weight="700" fill="#0f3460">Contextro treatment arm</text>
-  <text x="890" y="392" text-anchor="middle" font-size="12" fill="#374151">Direct Rust handler calls against a fresh local index</text>
-  <text x="890" y="417" text-anchor="middle" font-size="12" fill="#374151">Single tool invocation per task</text>
-  <text x="890" y="442" text-anchor="middle" font-size="12" fill="#374151">1000 / 1000 tasks correct</text>
-  <rect x="698" y="464" width="130" height="34" rx="17" fill="#e8eef8"/>
-  <text x="763" y="485" text-anchor="middle" font-size="12" font-weight="700" fill="#0f3460">94,034 tokens</text>
-  <rect x="845" y="464" width="92" height="34" rx="17" fill="#e8eef8"/>
-  <text x="891" y="485" text-anchor="middle" font-size="12" font-weight="700" fill="#0f3460">1.000 call</text>
-  <rect x="954" y="464" width="128" height="34" rx="17" fill="#e8eef8"/>
-  <text x="1018" y="485" text-anchor="middle" font-size="12" font-weight="700" fill="#0f3460">p50 0.037 ms</text>
+  <!-- Split arrows to arms -->
+  <line x1="450" y1="228" x2="310" y2="258" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="650" y1="228" x2="790" y2="258" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <rect x="420" y="548" width="360" height="52" rx="26" fill="#ecfdf5" stroke="#059669"/>
-  <text x="600" y="570" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">Observed paired advantage</text>
-  <text x="600" y="590" text-anchor="middle" font-size="12" fill="#059669">91.2% lower token volume • 67.7% fewer interaction steps • one fewer baseline miss</text>
+  <!-- Baseline arm -->
+  <rect x="32" y="260" width="464" height="192" rx="6" fill="#ffffff" stroke="#dc2626" stroke-width="1.5" filter="url(#sh)"/>
+  <rect x="32" y="260" width="464" height="4" rx="3" fill="#dc2626"/>
+  <text x="264" y="295" text-anchor="middle" font-size="14" font-weight="700" fill="#dc2626">Stronger local baseline</text>
+  <text x="264" y="318" text-anchor="middle" font-size="10" fill="#334155">Exact git grep and bounded file reads</text>
+  <text x="264" y="336" text-anchor="middle" font-size="10" fill="#334155">Multi-step repository traversal per task</text>
+  <text x="264" y="356" text-anchor="middle" font-size="10" font-weight="600" fill="#0f172a">999 / 1000 tasks correct</text>
+  <!-- Metric pills -->
+  <rect x="50" y="372" width="136" height="28" rx="14" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="118" y="390" text-anchor="middle" font-size="10" font-weight="700" fill="#dc2626">1,068,884 tokens</text>
+  <rect x="196" y="372" width="106" height="28" rx="14" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="249" y="390" text-anchor="middle" font-size="10" font-weight="700" fill="#dc2626">3.098 calls</text>
+  <rect x="312" y="372" width="118" height="28" rx="14" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="371" y="390" text-anchor="middle" font-size="10" font-weight="700" fill="#dc2626">p50 203 ms</text>
+  <text x="264" y="434" text-anchor="middle" font-size="9" fill="#94a3b8">1,898 file reads across 1,000 tasks</text>
+
+  <!-- Contextro arm -->
+  <rect x="604" y="260" width="464" height="192" rx="6" fill="#ffffff" stroke="#1e40af" stroke-width="1.5" filter="url(#sh)"/>
+  <rect x="604" y="260" width="464" height="4" rx="3" fill="#1e40af"/>
+  <text x="836" y="295" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">Contextro treatment arm</text>
+  <text x="836" y="318" text-anchor="middle" font-size="10" fill="#334155">Direct Rust handler calls against a fresh index</text>
+  <text x="836" y="336" text-anchor="middle" font-size="10" fill="#334155">Single tool invocation per task</text>
+  <text x="836" y="356" text-anchor="middle" font-size="10" font-weight="600" fill="#0f172a">1000 / 1000 tasks correct</text>
+  <!-- Metric pills -->
+  <rect x="624" y="372" width="116" height="28" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="682" y="390" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">94,034 tokens</text>
+  <rect x="750" y="372" width="98" height="28" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="799" y="390" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">1.000 call</text>
+  <rect x="858" y="372" width="136" height="28" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="926" y="390" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">p50 0.037 ms</text>
+  <text x="836" y="434" text-anchor="middle" font-size="9" fill="#94a3b8">zero file reads across all 1,000 tasks</text>
+
+  <!-- Advantage pill -->
+  <rect x="320" y="474" width="460" height="44" rx="22" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <text x="550" y="494" text-anchor="middle" font-size="11" font-weight="700" fill="#15803d">Observed paired advantage</text>
+  <text x="550" y="511" text-anchor="middle" font-size="9.5" fill="#15803d">91.2% lower token volume · 67.7% fewer interaction steps · one fewer baseline miss</text>
 </svg>
