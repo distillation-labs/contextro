@@ -15,7 +15,11 @@ use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
 use contextro_engines::graph::CodeGraph;
 use contextro_engines::sandbox::OutputSandbox;
+use contextro_memory::archive::CompactionArchive;
 use contextro_memory::session::SessionTracker;
+use contextro_memory::store::MemoryStore;
+use contextro_tools::KnowledgeStore;
+use contextro_tools::RepoRegistry;
 
 pub struct AppState {
     pub started_at: Instant,
@@ -24,6 +28,10 @@ pub struct AppState {
     pub query_cache: Arc<QueryCache>,
     pub sandbox: Arc<OutputSandbox>,
     pub session_tracker: Arc<SessionTracker>,
+    pub memory_store: Arc<MemoryStore>,
+    pub archive: Arc<CompactionArchive>,
+    pub knowledge: Arc<KnowledgeStore>,
+    pub repo_registry: Arc<RepoRegistry>,
     pub indexed: RwLock<bool>,
     pub codebase_path: RwLock<Option<String>>,
     pub chunk_count: AtomicUsize,
@@ -32,6 +40,13 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         let settings = get_settings().read();
+        let storage_dir = &settings.storage_dir;
+        let db_path = format!("{}/memories.db", storage_dir);
+        std::fs::create_dir_all(storage_dir).ok();
+
+        let memory_store = MemoryStore::new(&db_path)
+            .unwrap_or_else(|_| MemoryStore::in_memory().expect("in-memory DB must work"));
+
         Self {
             started_at: Instant::now(),
             graph: Arc::new(CodeGraph::new()),
@@ -39,6 +54,10 @@ impl AppState {
             query_cache: Arc::new(QueryCache::new(settings.search_cache_max_size, settings.search_cache_ttl_seconds)),
             sandbox: Arc::new(OutputSandbox::new(settings.search_sandbox_max_entries, settings.search_sandbox_ttl_seconds)),
             session_tracker: Arc::new(SessionTracker::default()),
+            memory_store: Arc::new(memory_store),
+            archive: Arc::new(CompactionArchive::new()),
+            knowledge: Arc::new(KnowledgeStore::new()),
+            repo_registry: Arc::new(RepoRegistry::new()),
             indexed: RwLock::new(false),
             codebase_path: RwLock::new(None),
             chunk_count: AtomicUsize::new(0),

@@ -106,10 +106,13 @@ impl Bm25Engine {
         self.reader.reload().ok();
     }
 
-    /// Full-text BM25 search.
+    /// Full-text BM25 search with field boosting.
+    /// symbol_name is boosted 3x, signature 2x, text 1x for better precision.
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
         let searcher = self.reader.searcher();
-        let query_parser = QueryParser::for_index(&self.index, vec![self.f_text, self.f_symbol_name]);
+        let mut query_parser = QueryParser::for_index(&self.index, vec![self.f_text, self.f_symbol_name, self.f_signature]);
+        query_parser.set_field_boost(self.f_symbol_name, 3.0);
+        query_parser.set_field_boost(self.f_signature, 2.0);
 
         let parsed = match query_parser.parse_query(query) {
             Ok(q) => q,

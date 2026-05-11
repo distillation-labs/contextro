@@ -12,7 +12,7 @@ pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&st
         return json!({"error": "Missing required parameter: symbol_name"});
     }
 
-    let matches = graph.find_nodes_by_name(name, true);
+    let matches = resolve_symbol(name, graph);
     if matches.is_empty() {
         return json!({"error": format!("Symbol '{}' not found.", name)});
     }
@@ -34,7 +34,7 @@ pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&st
         return json!({"error": "Missing required parameter: symbol_name"});
     }
 
-    let matches = graph.find_nodes_by_name(name, true);
+    let matches = resolve_symbol(name, graph);
     if matches.is_empty() {
         return json!({"error": format!("Symbol '{}' not found.", name)});
     }
@@ -56,7 +56,7 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         return json!({"error": "Missing required parameter: symbol_name"});
     }
 
-    let matches = graph.find_nodes_by_name(name, true);
+    let matches = resolve_symbol(name, graph);
     if matches.is_empty() {
         return json!({"error": format!("Symbol '{}' not found.", name)});
     }
@@ -91,7 +91,7 @@ pub fn handle_impact(args: &Value, graph: &CodeGraph, codebase: Option<&str>) ->
         return json!({"error": "Missing required parameter: symbol_name"});
     }
 
-    let matches = graph.find_nodes_by_name(name, true);
+    let matches = resolve_symbol(name, graph);
     if matches.is_empty() {
         return json!({"error": format!("Symbol '{}' not found.", name)});
     }
@@ -140,4 +140,15 @@ fn relativize(filepath: &str, codebase: Option<&str>) -> String {
             .unwrap_or_else(|_| filepath.to_string()),
         None => filepath.to_string(),
     }
+}
+
+/// Resolve a symbol name: try exact match first, fall back to fuzzy.
+fn resolve_symbol(name: &str, graph: &CodeGraph) -> Vec<contextro_core::UniversalNode> {
+    let exact = graph.find_nodes_by_name(name, true);
+    if !exact.is_empty() {
+        return exact;
+    }
+    // Fuzzy fallback — return top matches
+    let fuzzy = graph.find_nodes_by_name(name, false);
+    fuzzy.into_iter().take(5).collect()
 }

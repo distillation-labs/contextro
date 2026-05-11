@@ -4,9 +4,36 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
+## [0.1.0] - 2026-05-10
 
-### Changed
+### Breaking Changes
+- **Python removed entirely.** `pip install contextro` no longer works. Use `cargo install contextro` or a pre-built binary.
+- All Python source (`src/contextro_mcp/`), tests, and scripts deleted.
+
+### Added
+- **Pure Rust binary** — single statically-linked executable, no interpreter, no GIL, no runtime dependencies.
+- **All 35 MCP tools** fully implemented in Rust (previously stubs or Python):
+  - Memory: `remember`, `recall`, `forget` (rusqlite-backed with TTL)
+  - Knowledge: `knowledge` (in-memory doc index with substring search)
+  - Analysis: `dead_code`, `circular_dependencies`, `test_coverage_map`, `focus`
+  - Artifacts: `audit`, `docs_bundle`, `sidecar_export`, `skill_prompt`, `introspect`
+  - Code: `pattern_search` (regex + `$VAR` metavariables), `pattern_rewrite` (dry_run/apply), `edit_plan`
+  - Session: `compact`, `session_snapshot`, `restore`, `retrieve`
+  - Git: `commit_search` (token-overlap scoring), `commit_history`, `repo_add`, `repo_remove`, `repo_status`
+- **Token-based inverted index** on `CodeGraph` — 28x faster fuzzy symbol search (489µs → 17µs).
+- **BM25 field boosting** — `symbol_name` 3×, `signature` 2× for higher-precision results.
+- **Fuzzy fallback** in `explain`, `impact`, `find_callers`, `find_callees` — works with partial names.
+
+### Performance (8,498-file codebase)
+| Metric | Value |
+|---|---|
+| Search latency | ~50µs avg |
+| Throughput | 21,000+ ops/sec |
+| Graph exact lookup | 29ns |
+| Graph callers/callees | 30–42ns |
+| Cold start | 20ms |
+| Memory idle | 1.4MB |
+| Binary size | 11MB (arm64) |
 
 ## [0.0.7] - 2026-05-09
 

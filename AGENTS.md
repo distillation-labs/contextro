@@ -1,63 +1,55 @@
 # Contextro Agent Guidelines
 
 ## Architecture
-Single unified MCP server. 26 tools, <350MB RAM.
+Single compiled Rust binary. 35 MCP tools, <50MB RAM at idle.
 
 ## Stack
-- **LanceDB**: vectors + FTS (disk-backed, mmap)
-- **Model2Vec**: default embedding (potion-code-16M, 256d, 55k emb/sec)
-- **ONNX Runtime**: optional for transformer models (bge-small-en, jina-code)
-- **rustworkx**: in-memory directed graph (Rust-backed, O(1) lookups)
-- **tree-sitter + ast-grep**: dual parsing (symbols + relationships)
-- **ctx_fast**: Rust extension for parallel file ops, xxHash3, git ops
-- **SQLite**: graph persistence for warm-start recovery
+- **rmcp**: Official Rust MCP SDK (stdio + HTTP transports)
+- **model2vec**: Static embeddings (potion-base-8M, 256d, 50k emb/sec)
+- **lancedb**: Vector search (native Rust, HNSW + IVF-PQ)
+- **tantivy**: Full-text BM25 search (inverted index)
+- **petgraph**: In-memory directed call graph (O(1) lookups, SCC, BFS)
+- **tree-sitter**: Code parsing (15+ languages)
+- **git2**: Git operations via libgit2 (no subprocess)
+- **rusqlite**: Memory persistence (bundled SQLite)
+- **tokio + axum**: Async runtime + HTTP transport
 
-## Embedding Models
-| Model | Dims | Speed | Quality | Use case |
-|-------|------|-------|---------|----------|
-| `potion-code-16m` (default) | 256 | 55k/sec | 99% of SOTA | Code search, fast + accurate |
-| `potion-8m` | 256 | 80k/sec | Good | Maximum speed, general text |
-| `bge-small-en` | 384 | 22/sec | Better | Legacy, smaller codebases |
-| `jina-code` | 768 | 15/sec | Best | Maximum quality, code-specific |
+## Workspace Structure
+```
+crates/
+├── contextro-core/       # Domain types, traits, errors
+├── contextro-config/     # CTX_ env var settings
+├── contextro-parsing/    # tree-sitter symbol extraction
+├── contextro-indexing/   # Pipeline, chunker, embeddings, file scanner
+├── contextro-engines/    # BM25, graph, fusion, cache, sandbox
+├── contextro-memory/     # SQLite memory store, compaction archive
+├── contextro-git/        # Commit indexer, branch watcher
+├── contextro-tools/      # All 35 tool implementations
+└── contextro-server/     # MCP server binary (rmcp + axum)
+```
 
 ## Key Constraints
-- **Python 3.10–3.12** (tree-sitter-languages constraint)
-- **pip** (comes with Python); model2vec for fast embeddings
-- All modules lazy-import heavy deps
-- Models unloaded after indexing (`del model; gc.collect()`)
-- Batch embedding size=128, file batch=200
-- Graph payloads: {id, name, type, file, line} only
-- Graph persisted to SQLite for warm-start on restart
+- **Rust 2021 edition**, workspace with 9 crates
+- Single binary output (~9MB stripped)
+- No Python, no interpreter, no GIL
+- Models loaded lazily on first use
+- All search engines thread-safe (RwLock/Mutex)
 
 ## Performance
-- **Indexing**: 3,349 files in 8.1s (potion-code-16m) or 6.8s (potion-8m)
-- **Incremental reindex**: 22ms when no files changed
-- **Search**: <2ms query latency (warm index)
-- **File discovery**: 15ms for 3,349 files (Rust ctx_fast)
-- **Token efficiency**: 65% reduction vs raw file reading
-
-## Token Efficiency Features
-- Progressive snippet truncation (top results get more budget)
-- Result deduplication (overlapping line ranges from same file)
-- Relevance threshold filtering (drop < 30% of top score)
-- Adaptive result count (fewer results when confidence is high)
-- Query result cache (LRU + TTL, 23%+ hit rate)
-- Compact serialization (short keys, omit defaults/empty)
-- Session snapshot for context recovery after compaction
-- Output sandbox for deferred content retrieval
-- Universal progressive disclosure (~44% token savings on large responses)
-- AST-aware snippet compression (~73% reduction on code previews)
-- Searchable compaction archive for context recovery
-- Optional TOON encoding (CTX_OUTPUT_FORMAT=toon, +10% savings)
-
-## Testing
-- Tests first (spec-driven)
-- `pytest -v` for all tests
-- `ruff check .` must pass
-- 529+ tests passing
+- **Cold start**: <50ms
+- **Search latency**: <1ms (warm BM25 + graph)
+- **Indexing**: ~2s for 3,000 files (tree-sitter parsing + BM25 indexing)
+- **Memory at idle**: <50MB
 
 ## Code Style
-- ruff for linting (line-length=100)
-- Frozen dataclasses for immutable models
-- ABC interfaces for swappable components
-- Thread-safe singletons with locks
+- `cargo fmt` + `cargo clippy`
+- Workspace dependencies in root Cargo.toml
+- Error handling via `thiserror` + `anyhow`
+- Structured logging via `tracing`
+- Thread-safe state via `parking_lot` + `Arc`
+
+## Testing
+- `cargo test` from crates/ directory
+- Unit tests in each crate (mod tests)
+- Integration test in contextro-indexing/tests/
+- `cargo build --release` for production binary

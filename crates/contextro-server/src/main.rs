@@ -1,10 +1,8 @@
 //! Contextro MCP server binary — single compiled Rust binary.
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use anyhow::Result;
-use parking_lot::RwLock;
 use rmcp::model::*;
 use rmcp::Error as McpError;
 use rmcp::{ServerHandler, ServiceExt};
@@ -12,14 +10,9 @@ use serde_json::{json, Value};
 use tracing::info;
 
 use contextro_config::get_settings;
-use contextro_engines::bm25::Bm25Engine;
-use contextro_engines::cache::QueryCache;
-use contextro_engines::graph::CodeGraph;
-use contextro_engines::sandbox::OutputSandbox;
-use contextro_memory::session::SessionTracker;
 
-mod state;
 mod http;
+mod state;
 use state::AppState;
 
 /// The Contextro MCP server.
@@ -51,29 +44,29 @@ impl ContextroServer {
             "overview" => contextro_tools::analysis::handle_overview(&s.graph, cb, s.chunk_count.load(std::sync::atomic::Ordering::Relaxed)),
             "architecture" => contextro_tools::analysis::handle_architecture(&s.graph, cb),
             "analyze" => contextro_tools::analysis::handle_analyze(&args, &s.graph, cb),
-            "remember" => contextro_tools::memory::handle_remember(&args),
-            "recall" => contextro_tools::memory::handle_recall(&args),
-            "forget" => contextro_tools::memory::handle_forget(&args),
-            "knowledge" => contextro_tools::memory::handle_knowledge(&args),
-            "compact" => contextro_tools::session::handle_compact(&args),
+            "focus" => contextro_tools::analysis::handle_focus(&args, &s.graph, cb),
+            "dead_code" => contextro_tools::analysis::handle_dead_code(&s.graph, cb),
+            "circular_dependencies" => contextro_tools::analysis::handle_circular_dependencies(&s.graph, cb),
+            "test_coverage_map" => contextro_tools::analysis::handle_test_coverage_map(&s.graph, cb),
+            "remember" => contextro_tools::memory::handle_remember(&args, &s.memory_store),
+            "recall" => contextro_tools::memory::handle_recall(&args, &s.memory_store),
+            "forget" => contextro_tools::memory::handle_forget(&args, &s.memory_store),
+            "knowledge" => contextro_tools::memory::handle_knowledge(&args, &s.knowledge),
+            "compact" => contextro_tools::session::handle_compact(&args, &s.archive),
             "session_snapshot" => contextro_tools::session::handle_session_snapshot(&s.session_tracker),
             "restore" => contextro_tools::session::handle_restore(cb, s.graph.node_count(), s.graph.relationship_count()),
             "retrieve" => contextro_tools::session::handle_retrieve(&args, &s.sandbox),
             "commit_search" => contextro_tools::git_tools::handle_commit_search(&args, cb),
             "commit_history" => contextro_tools::git_tools::handle_commit_history(&args, cb),
-            "repo_add" => contextro_tools::git_tools::handle_repo_add(&args),
-            "repo_remove" => contextro_tools::git_tools::handle_repo_remove(&args),
-            "repo_status" => contextro_tools::git_tools::handle_repo_status(),
+            "repo_add" => contextro_tools::git_tools::handle_repo_add(&args, &s.repo_registry),
+            "repo_remove" => contextro_tools::git_tools::handle_repo_remove(&args, &s.repo_registry),
+            "repo_status" => contextro_tools::git_tools::handle_repo_status(&s.repo_registry),
             "code" => contextro_tools::code::handle_code(&args, &s.graph, cb),
-            "audit" => contextro_tools::artifacts::handle_audit(),
-            "docs_bundle" => contextro_tools::artifacts::handle_docs_bundle(&args),
-            "sidecar_export" => contextro_tools::artifacts::handle_sidecar_export(&args),
+            "audit" => contextro_tools::artifacts::handle_audit(&s.graph, cb),
+            "docs_bundle" => contextro_tools::artifacts::handle_docs_bundle(&args, &s.graph, cb),
+            "sidecar_export" => contextro_tools::artifacts::handle_sidecar_export(&args, &s.graph, cb),
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
-            "focus" => json!({"note": "focus tool pending full implementation"}),
-            "dead_code" => json!({"note": "dead_code analysis pending"}),
-            "circular_dependencies" => json!({"note": "circular dependency detection pending"}),
-            "test_coverage_map" => json!({"note": "test coverage map pending"}),
             _ => json!({"error": format!("Unknown tool: {}", name)}),
         };
 
@@ -95,6 +88,7 @@ impl ContextroServer {
             "graph_nodes": self.state.graph.node_count(),
             "graph_relationships": self.state.graph.relationship_count(),
             "cache_hit_rate": self.state.query_cache.hit_rate(),
+            "memories": self.state.memory_store.count(),
         })
     }
 
@@ -124,7 +118,6 @@ impl ContextroServer {
                 self.state.build_graph(&symbols);
                 self.state.bm25.clear();
 
-                // Index chunks into BM25
                 let chunks = contextro_indexing::create_chunks(&symbols);
                 self.state.bm25.index_chunks(&chunks);
                 self.state.chunk_count.store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
@@ -183,11 +176,11 @@ impl ContextroServer {
         let query_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"mode":{"type":"string"}},"required":["query"]}"#);
         let impact_schema = mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string"},"max_depth":{"type":"integer"}},"required":["symbol_name"]}"#);
         let code_schema = mk(r#"{"type":"object","properties":{"operation":{"type":"string"},"file_path":{"type":"string"},"symbol_name":{"type":"string"},"symbols":{"type":"string"},"pattern":{"type":"string"},"path":{"type":"string"}},"required":["operation"]}"#);
-        let mem_schema = mk(r#"{"type":"object","properties":{"content":{"type":"string"},"memory_type":{"type":"string"},"tags":{"type":"string"}},"required":["content"]}"#);
-        let recall_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"}},"required":["query"]}"#);
-        let knowledge_schema = mk(r#"{"type":"object","properties":{"command":{"type":"string"},"name":{"type":"string"},"query":{"type":"string"}},"required":["command"]}"#);
+        let mem_schema = mk(r#"{"type":"object","properties":{"content":{"type":"string"},"memory_type":{"type":"string"},"tags":{"type":"string"},"ttl":{"type":"string"}},"required":["content"]}"#);
+        let recall_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"memory_type":{"type":"string"},"tags":{"type":"string"}},"required":["query"]}"#);
+        let knowledge_schema = mk(r#"{"type":"object","properties":{"command":{"type":"string"},"name":{"type":"string"},"query":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"}},"required":["command"]}"#);
         let ref_schema = mk(r#"{"type":"object","properties":{"ref_id":{"type":"string"}},"required":["ref_id"]}"#);
-        let commit_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"}},"required":["query"]}"#);
+        let commit_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"author":{"type":"string"}},"required":["query"]}"#);
         let hist_schema = mk(r#"{"type":"object","properties":{"limit":{"type":"integer"}}}"#);
 
         vec![
@@ -203,10 +196,14 @@ impl ContextroServer {
             Tool::new("overview", "Project structure summary", empty.clone()),
             Tool::new("architecture", "Layers, entry points, hub symbols", empty.clone()),
             Tool::new("analyze", "Code smells and complexity", path_schema.clone()),
+            Tool::new("focus", "Low-token context slice for a file", path_schema.clone()),
+            Tool::new("dead_code", "Entry-point reachability analysis", empty.clone()),
+            Tool::new("circular_dependencies", "SCC-based circular deps", empty.clone()),
+            Tool::new("test_coverage_map", "Static test coverage map", empty.clone()),
             Tool::new("code", "AST operations: symbols, patterns, rewrites", code_schema),
             Tool::new("remember", "Store a note or decision", mem_schema),
             Tool::new("recall", "Search memories by meaning", recall_schema),
-            Tool::new("forget", "Delete memories", mk(r#"{"type":"object","properties":{"memory_id":{"type":"string"},"tags":{"type":"string"}}}"#)),
+            Tool::new("forget", "Delete memories", mk(r#"{"type":"object","properties":{"memory_id":{"type":"string"},"tags":{"type":"string"},"memory_type":{"type":"string"}}}"#)),
             Tool::new("knowledge", "Index and search docs/notes", knowledge_schema),
             Tool::new("compact", "Archive session content", mk(r#"{"type":"object","properties":{"content":{"type":"string"}},"required":["content"]}"#)),
             Tool::new("session_snapshot", "Recover state after compaction", empty.clone()),
@@ -222,10 +219,6 @@ impl ContextroServer {
             Tool::new("sidecar_export", "Generate .graph.* sidecars", mk(r#"{"type":"object","properties":{"path":{"type":"string"}}}"#)),
             Tool::new("skill_prompt", "Print agent bootstrap block", empty.clone()),
             Tool::new("introspect", "Look up Contextro docs", mk(r#"{"type":"object","properties":{"query":{"type":"string"}}}"#)),
-            Tool::new("focus", "Low-token context slice for a file", mk(r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#)),
-            Tool::new("dead_code", "Entry-point reachability analysis", empty.clone()),
-            Tool::new("circular_dependencies", "SCC-based circular deps", empty.clone()),
-            Tool::new("test_coverage_map", "Static test coverage map", empty),
         ]
     }
 }
