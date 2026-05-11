@@ -5,7 +5,7 @@ Contextro is a local code-intelligence MCP server implemented as a pure Rust wor
 ## Quick Start
 
 ```bash
-git clone <internal-contextro-repo-url>
+git clone https://github.com/distillation-labs/contextro.git
 cd contextro/crates
 
 # Build
@@ -116,4 +116,8 @@ Include:
 
 ## License
 
-Proprietary — contributions are accepted under Distillation Labs internal terms.
+Contextro is source-available under the Business Source License 1.1
+(`BUSL-1.1`). Unless you explicitly state otherwise, any contribution
+intentionally submitted for inclusion in Contextro may be distributed by
+Distillation Labs under that license and, on the Change Date in `LICENSE`,
+under Apache License 2.0.
