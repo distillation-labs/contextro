@@ -12,6 +12,7 @@ This directory now contains the Rust-era manuscript and the 1,000-task `platform
 - `platform-1000-study-summary.json` - aggregate results cited by the paper
 - `figures/contextro-system-overview.svg` - architecture figure used by the manuscript
 - `figures/contextro-study-design.svg` - study-design figure used by the manuscript
+- `figures/contextro-headline-results.svg` - publication-grade benchmark-results figure used by the manuscript
 
 ## What changed in this refresh
 
