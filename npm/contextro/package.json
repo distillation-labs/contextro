@@ -5,7 +5,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jassskalkat/contextro"
+    "url": "https://github.com/distillation-labs/contextro"
   },
   "homepage": "https://contextro.dev",
   "bin": {
