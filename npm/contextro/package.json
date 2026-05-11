@@ -2,7 +2,7 @@
   "name": "contextro",
   "version": "0.1.0",
   "description": "Contextro MCP server — give your AI coding agent a brain",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "BUSL-1.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/distillation-labs/contextro.git"
