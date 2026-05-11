@@ -1,6 +1,6 @@
 {
   "skill_name": "docs-maintainer",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "categories": {
     "triggering": "Skill loads for docs maintenance and release-facing documentation tasks",
     "accuracy": "Skill keeps documentation aligned with code and release state",
