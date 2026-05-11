@@ -116,7 +116,7 @@ impact("BaseEmbeddingService", max_depth=5)
 code(operation="get_document_symbols", file_path="src/server.rs")
 code(operation="search_symbols", symbol_name="auth")
 code(operation="pattern_search", pattern="fn $F($$$) -> Result", language="rust")
-code(operation="pattern_rewrite", pattern="println!($MSG)", replacement="tracing::info!($MSG)", dry_run=True)
+code(operation="pattern_rewrite", pattern="console.log($MSG)", replacement="logger.info($MSG)", dry_run=True)
 ```
 
 ### Search git history
