@@ -241,4 +241,7 @@ services:
 
 ## License
 
-Proprietary — see [LICENSE](LICENSE) for internal-use terms.
+Source-available under the Business Source License 1.1 (`BUSL-1.1`).
+Production use is limited by the Additional Use Grant in [LICENSE](LICENSE).
+This version converts to Apache License 2.0 on 2030-05-11, or on the fourth
+anniversary of its first public release, whichever comes first.
