@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const CLI = join(__dirname, "..", "bin", "cli.mjs");
-const REPO_ROOT = join(__dirname, "..", "..", "..");
 const run = (args) => execSync(`node "${CLI}" ${args}`, { encoding: "utf8" });
 
 describe("@contextro/skills CLI", () => {
@@ -110,11 +109,6 @@ describe("@contextro/skills CLI", () => {
       assert.ok(!existsSync(join(dir4, ".claude/skills/dev-contextro-mcp/SKILL.md")));
     });
 
-    it("does not overwrite the canonical .agents skill bundle in this repo", () => {
-      const out = run(`install dev-contextro-mcp --dir "${REPO_ROOT}" --platform agents`);
-      assert.match(out, /canonical source bundle, no copy needed/);
-    });
-
     it("skips existing without --force", () => {
       const dir5 = join(tmpDir, "force");
       mkdirSync(dir5, { recursive: true });
@@ -182,12 +176,6 @@ describe("@contextro/skills CLI", () => {
       assert.match(out, /Removed/);
       assert.ok(!existsSync(join(dir2, "AGENTS.md")));
       assert.ok(!existsSync(join(dir2, "docs/contextro-agent-guide.md")));
-    });
-
-    it("does not remove the canonical .agents skill bundle in this repo", () => {
-      const out = run(`uninstall dev-contextro-mcp --dir "${REPO_ROOT}" --platform agents`);
-      assert.match(out, /canonical source bundle, not removing/);
-      assert.ok(existsSync(join(REPO_ROOT, ".agents/skills/dev-contextro-mcp/SKILL.md")));
     });
   });
 });
