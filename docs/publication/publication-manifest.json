@@ -30,12 +30,17 @@
     {
       "id": "fig-1",
       "file": "docs/publication/figures/contextro-system-overview.svg",
-      "caption": "System overview"
+      "caption": "Current Rust-era system overview"
     },
     {
       "id": "fig-2",
       "file": "docs/publication/figures/contextro-study-design.svg",
-      "caption": "Study design"
+      "caption": "Deterministic paired-study design"
+    },
+    {
+      "id": "fig-3",
+      "file": "docs/publication/figures/contextro-headline-results.svg",
+      "caption": "Headline benchmark outcomes"
     }
   ],
   "social": {
