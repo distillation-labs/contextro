@@ -1,7 +1,7 @@
 {
   "name": "@contextro/skills",
   "version": "0.1.0",
-  "description": "Install Contextro agent skills into your project. Teaches AI coding agents how to use Contextro MCP for codebase discovery, search, and navigation.",
+  "description": "Distribute the canonical dev-contextro-mcp skill bundle and repo-local instruction adapters for Claude Code, GitHub Copilot, Codex-style agents, Kiro, and OpenCode.",
   "license": "UNLICENSED",
   "author": "Distillation Labs",
   "keywords": [
@@ -10,7 +10,6 @@
     "skills",
     "ai-agent",
     "claude",
-    "cursor",
     "copilot",
     "code-search"
   ],
@@ -28,7 +27,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test tests/*.test.mjs",
     "lint": "echo 'no lint configured'"
   }
 }
