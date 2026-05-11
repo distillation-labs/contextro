@@ -1,6 +1,6 @@
 {
   "skill_name": "mcp-protocol-architect",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "categories": {
     "triggering": "Skill loads for MCP architecture questions",
     "protocol": "Skill models tools, resources, prompts, lifecycle, discovery, and transport correctly",
