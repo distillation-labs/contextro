@@ -1,61 +1,116 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" font-family="Inter, -apple-system, system-ui, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 520" font-family="Inter, -apple-system, system-ui, sans-serif">
   <defs>
-    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
-      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.08"/>
+    <filter id="sh" x="-6%" y="-6%" width="112%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.07"/>
     </filter>
   </defs>
 
-  <rect width="1200" height="640" fill="#fafafa"/>
-  <text x="600" y="42" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a2e">Headline benchmark outcomes</text>
-  <text x="600" y="64" text-anchor="middle" font-size="12" fill="#6b7280">Each panel shows a matched baseline-versus-Contextro comparison on the same 1,000-task inventory</text>
+  <rect width="1100" height="520" fill="#f8fafc"/>
 
-  <g transform="translate(70 110)">
-    <rect width="500" height="208" rx="18" fill="#ffffff" stroke="#e5e7eb" filter="url(#shadow)"/>
-    <text x="28" y="34" font-size="16" font-weight="700" fill="#1a1a2e">Total emitted tokens</text>
-    <rect x="28" y="66" width="340" height="24" rx="12" fill="#fee2e2"/>
-    <rect x="28" y="116" width="30" height="24" rx="12" fill="#e8eef8"/>
-    <text x="380" y="83" font-size="12" font-weight="700" fill="#dc2626">Baseline · 1,068,884</text>
-    <text x="70" y="133" font-size="12" font-weight="700" fill="#0f3460">Contextro · 94,034</text>
-    <rect x="28" y="162" width="148" height="30" rx="15" fill="#ecfdf5"/>
-    <text x="102" y="181" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">91.2% reduction</text>
-  </g>
+  <!-- Title -->
+  <text x="550" y="40" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">Headline benchmark outcomes</text>
+  <text x="550" y="60" text-anchor="middle" font-size="11" fill="#64748b">Each panel shows a matched baseline-versus-Contextro comparison on the same 1,000-task inventory</text>
 
-  <g transform="translate(630 110)">
-    <rect width="500" height="208" rx="18" fill="#ffffff" stroke="#e5e7eb" filter="url(#shadow)"/>
-    <text x="28" y="34" font-size="16" font-weight="700" fill="#1a1a2e">Median handler latency</text>
-    <rect x="28" y="66" width="340" height="24" rx="12" fill="#fee2e2"/>
-    <rect x="28" y="116" width="14" height="24" rx="12" fill="#e8eef8"/>
-    <text x="380" y="83" font-size="12" font-weight="700" fill="#dc2626">Baseline · 202.969 ms</text>
-    <text x="54" y="133" font-size="12" font-weight="700" fill="#0f3460">Contextro · 0.037 ms</text>
-    <rect x="28" y="162" width="198" height="30" rx="15" fill="#ecfdf5"/>
-    <text x="127" y="181" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">202.932 ms lower</text>
-  </g>
+  <!-- Legend -->
+  <rect x="350" y="74" width="400" height="26" rx="13" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <circle cx="386" cy="87" r="6" fill="#fca5a5"/>
+  <text x="398" y="91" font-size="10" fill="#64748b">Stronger local baseline</text>
+  <circle cx="564" cy="87" r="6" fill="#93c5fd"/>
+  <text x="576" y="91" font-size="10" fill="#64748b">Contextro</text>
 
-  <g transform="translate(70 362)">
-    <rect width="500" height="208" rx="18" fill="#ffffff" stroke="#e5e7eb" filter="url(#shadow)"/>
-    <text x="28" y="34" font-size="16" font-weight="700" fill="#1a1a2e">Mean tool calls per task</text>
-    <rect x="28" y="66" width="340" height="24" rx="12" fill="#fee2e2"/>
-    <rect x="28" y="116" width="110" height="24" rx="12" fill="#e8eef8"/>
-    <text x="380" y="83" font-size="12" font-weight="700" fill="#dc2626">Baseline · 3.098</text>
-    <text x="150" y="133" font-size="12" font-weight="700" fill="#0f3460">Contextro · 1.000</text>
-    <rect x="28" y="162" width="178" height="30" rx="15" fill="#ecfdf5"/>
-    <text x="117" y="181" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">67.7% fewer calls</text>
-  </g>
+  <!-- ============================================================ -->
+  <!-- Panel 1: Total emitted tokens (top-left) x=32 y=112 -->
+  <!-- ============================================================ -->
+  <rect x="32" y="112" width="504" height="184" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="54" y="140" font-size="12.5" font-weight="700" fill="#0f172a">Total emitted tokens</text>
 
-  <g transform="translate(630 362)">
-    <rect width="500" height="208" rx="18" fill="#ffffff" stroke="#e5e7eb" filter="url(#shadow)"/>
-    <text x="28" y="34" font-size="16" font-weight="700" fill="#1a1a2e">Mean files read per task</text>
-    <rect x="28" y="66" width="340" height="24" rx="12" fill="#fee2e2"/>
-    <rect x="28" y="116" width="6" height="24" rx="12" fill="#e8eef8"/>
-    <text x="380" y="83" font-size="12" font-weight="700" fill="#dc2626">Baseline · 1.898</text>
-    <text x="46" y="133" font-size="12" font-weight="700" fill="#0f3460">Contextro · 0.000</text>
-    <rect x="28" y="162" width="220" height="30" rx="15" fill="#ecfdf5"/>
-    <text x="138" y="181" text-anchor="middle" font-size="12" font-weight="700" fill="#059669">File traversal eliminated</text>
-  </g>
+  <!-- Baseline row -->
+  <text x="148" y="168" text-anchor="end" font-size="9.5" fill="#64748b">Baseline</text>
+  <rect x="154" y="156" width="288" height="20" rx="4" fill="#fee2e2"/>
+  <text x="450" y="170" font-size="9.5" font-weight="700" fill="#dc2626">1,068,884</text>
 
-  <rect x="440" y="86" width="320" height="26" rx="13" fill="#ffffff" stroke="#e5e7eb"/>
-  <circle cx="470" cy="99" r="6" fill="#dc2626"/>
-  <text x="484" y="103" font-size="11" fill="#6b7280">Stronger local baseline</text>
-  <circle cx="676" cy="99" r="6" fill="#0f3460"/>
-  <text x="690" y="103" font-size="11" fill="#6b7280">Contextro</text>
+  <!-- Contextro row -->
+  <text x="148" y="201" text-anchor="end" font-size="9.5" fill="#64748b">Contextro</text>
+  <rect x="154" y="189" width="288" height="20" rx="4" fill="#f1f5f9"/>
+  <rect x="154" y="189" width="25" height="20" rx="4" fill="#bfdbfe"/>
+  <text x="450" y="203" font-size="9.5" font-weight="700" fill="#1e40af">94,034</text>
+
+  <!-- Badge -->
+  <rect x="54" y="228" width="118" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="113" y="244" text-anchor="middle" font-size="10" font-weight="700" fill="#15803d">91.2% reduction</text>
+
+  <!-- Annotation -->
+  <text x="54" y="285" font-size="9" fill="#94a3b8">Contextro uses 11× fewer tokens on the same tasks</text>
+
+  <!-- ============================================================ -->
+  <!-- Panel 2: Median handler latency (top-right) x=564 y=112 -->
+  <!-- ============================================================ -->
+  <rect x="564" y="112" width="504" height="184" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="586" y="140" font-size="12.5" font-weight="700" fill="#0f172a">Median handler latency</text>
+
+  <!-- Baseline row -->
+  <text x="680" y="168" text-anchor="end" font-size="9.5" fill="#64748b">Baseline</text>
+  <rect x="686" y="156" width="288" height="20" rx="4" fill="#fee2e2"/>
+  <text x="982" y="170" font-size="9.5" font-weight="700" fill="#dc2626">202.969 ms</text>
+
+  <!-- Contextro row -->
+  <text x="680" y="201" text-anchor="end" font-size="9.5" fill="#64748b">Contextro</text>
+  <rect x="686" y="189" width="288" height="20" rx="4" fill="#f1f5f9"/>
+  <rect x="686" y="189" width="4" height="20" rx="2" fill="#bfdbfe"/>
+  <text x="982" y="203" font-size="9.5" font-weight="700" fill="#1e40af">0.037 ms</text>
+
+  <!-- Badge -->
+  <rect x="586" y="228" width="148" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="660" y="244" text-anchor="middle" font-size="10" font-weight="700" fill="#15803d">202.932 ms lower</text>
+
+  <!-- Annotation -->
+  <text x="586" y="285" font-size="9" fill="#94a3b8">Contextro is 5,485× faster at p50</text>
+
+  <!-- ============================================================ -->
+  <!-- Panel 3: Mean tool calls (bottom-left) x=32 y=312 -->
+  <!-- ============================================================ -->
+  <rect x="32" y="312" width="504" height="184" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="54" y="340" font-size="12.5" font-weight="700" fill="#0f172a">Mean tool calls per task</text>
+
+  <!-- Baseline row -->
+  <text x="148" y="368" text-anchor="end" font-size="9.5" fill="#64748b">Baseline</text>
+  <rect x="154" y="356" width="288" height="20" rx="4" fill="#fee2e2"/>
+  <text x="450" y="370" font-size="9.5" font-weight="700" fill="#dc2626">3.098 calls</text>
+
+  <!-- Contextro row -->
+  <text x="148" y="401" text-anchor="end" font-size="9.5" fill="#64748b">Contextro</text>
+  <rect x="154" y="389" width="288" height="20" rx="4" fill="#f1f5f9"/>
+  <rect x="154" y="389" width="93" height="20" rx="4" fill="#bfdbfe"/>
+  <text x="450" y="403" font-size="9.5" font-weight="700" fill="#1e40af">1.000 call</text>
+
+  <!-- Badge -->
+  <rect x="54" y="428" width="138" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="123" y="444" text-anchor="middle" font-size="10" font-weight="700" fill="#15803d">67.7% fewer calls</text>
+
+  <!-- Annotation -->
+  <text x="54" y="485" font-size="9" fill="#94a3b8">Baseline requires multi-step traversal; Contextro answers in one call</text>
+
+  <!-- ============================================================ -->
+  <!-- Panel 4: Mean files read (bottom-right) x=564 y=312 -->
+  <!-- ============================================================ -->
+  <rect x="564" y="312" width="504" height="184" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#sh)"/>
+  <text x="586" y="340" font-size="12.5" font-weight="700" fill="#0f172a">Mean files read per task</text>
+
+  <!-- Baseline row -->
+  <text x="680" y="368" text-anchor="end" font-size="9.5" fill="#64748b">Baseline</text>
+  <rect x="686" y="356" width="288" height="20" rx="4" fill="#fee2e2"/>
+  <text x="982" y="370" font-size="9.5" font-weight="700" fill="#dc2626">1.898 files</text>
+
+  <!-- Contextro row -->
+  <text x="680" y="401" text-anchor="end" font-size="9.5" fill="#64748b">Contextro</text>
+  <rect x="686" y="389" width="288" height="20" rx="4" fill="#f1f5f9"/>
+  <!-- No bar - zero files read -->
+  <text x="982" y="403" font-size="9.5" font-weight="700" fill="#1e40af">0.000 files</text>
+
+  <!-- Badge -->
+  <rect x="586" y="428" width="168" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="670" y="444" text-anchor="middle" font-size="10" font-weight="700" fill="#15803d">File traversal eliminated</text>
+
+  <!-- Annotation -->
+  <text x="586" y="485" font-size="9" fill="#94a3b8">Contextro returns structured results with zero file reads</text>
 </svg>
