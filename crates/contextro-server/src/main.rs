@@ -341,6 +341,12 @@ impl ContextroServer {
     }
 }
 
+impl Default for ContextroServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ServerHandler for ContextroServer {
     fn get_info(&self) -> InitializeResult {
         InitializeResult {
@@ -399,10 +405,10 @@ async fn main() -> Result<()> {
 
     match transport.as_str() {
         "http" => {
-            let settings = get_settings().read();
-            let host = settings.http_host.clone();
-            let port = settings.http_port;
-            drop(settings);
+            let (host, port) = {
+                let settings = get_settings().read();
+                (settings.http_host.clone(), settings.http_port)
+            };
             info!("HTTP transport on {}:{}", host, port);
             http::serve_http(server, &host, port).await?;
         }

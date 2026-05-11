@@ -1,7 +1,5 @@
 //! HTTP transport for Docker/team deployments using axum.
 
-use std::sync::Arc;
-
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Json;
@@ -10,13 +8,10 @@ use axum::Router;
 use serde_json::{json, Value};
 use tracing::info;
 
-use crate::state::AppState;
 use crate::ContextroServer;
 
 /// Start the HTTP server on the configured host:port.
 pub async fn serve_http(server: ContextroServer, host: &str, port: u16) -> anyhow::Result<()> {
-    let state = server.state.clone();
-
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/mcp", post(mcp_handler))

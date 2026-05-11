@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
+type GraphOp<'a> = (&'static str, Box<dyn Fn() -> usize + 'a>);
+
 fn main() {
     let platform_path = Path::new("/Users/japneetkalkat/platform");
     if !platform_path.is_dir() {
@@ -140,7 +142,7 @@ fn main() {
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║  GRAPH OPERATIONS (100k iterations each)                    ║");
 
-    let graph_ops: Vec<(&str, Box<dyn Fn() -> usize>)> = vec![
+    let graph_ops: Vec<GraphOp<'_>> = vec![
         (
             "find_exact",
             Box::new(|| graph.find_nodes_by_name("create_user", true).len()),
