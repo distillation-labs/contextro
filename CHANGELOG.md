@@ -4,37 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-05-10
+<!-- Add changes here as they land. On release, move to a new versioned section. -->
 
-### Breaking Changes
-- **Python removed entirely.** `pip install contextro` no longer works. Use `cargo install contextro` or a pre-built binary.
-- All Python source (`src/contextro_mcp/`), tests, and scripts deleted.
+## [0.1.0] - 2026-05-11
 
 ### Added
-- **Pure Rust binary** — single statically-linked executable, no interpreter, no GIL, no runtime dependencies.
-- **All 35 MCP tools** fully implemented in Rust (previously stubs or Python):
-  - Memory: `remember`, `recall`, `forget` (rusqlite-backed with TTL)
-  - Knowledge: `knowledge` (in-memory doc index with substring search)
-  - Analysis: `dead_code`, `circular_dependencies`, `test_coverage_map`, `focus`
-  - Artifacts: `audit`, `docs_bundle`, `sidecar_export`, `skill_prompt`, `introspect`
-  - Code: `pattern_search` (regex + `$VAR` metavariables), `pattern_rewrite` (dry_run/apply), `edit_plan`
-  - Session: `compact`, `session_snapshot`, `restore`, `retrieve`
-  - Git: `commit_search` (token-overlap scoring), `commit_history`, `repo_add`, `repo_remove`, `repo_status`
-- **Token-based inverted index** on `CodeGraph` — 28x faster fuzzy symbol search (489µs → 17µs).
-- **BM25 field boosting** — `symbol_name` 3×, `signature` 2× for higher-precision results.
-- **Fuzzy fallback** in `explain`, `impact`, `find_callers`, `find_callees` — works with partial names.
+- **Pre-built binaries** for macOS (Apple Silicon + Intel), Linux (x86_64 + ARM64), and Windows — install with a single `curl` command or via npm.
+- **npm distribution** — `npm install -g contextro` installs the correct binary for your platform automatically.
+- **Docker image** — `ghcr.io/distillation-labs/contextro-mcp` for team and server deployments.
+- **All 35 MCP tools** — search, graph analysis, semantic memory, git history, AST operations, and session management.
+- **Background update check** — server notifies once per day (via stderr) when a newer version is available.
+- **Automatic release pipeline** — GitHub Actions builds and publishes binaries, npm package, and Docker image on every version tag.
 
 ### Performance (8,498-file codebase)
 | Metric | Value |
 |---|---|
 | Search latency | ~50µs avg |
 | Throughput | 21,000+ ops/sec |
-| Graph exact lookup | 29ns |
-| Graph callers/callees | 30–42ns |
-| Cold start | 20ms |
-| Memory idle | 1.4MB |
-| Binary size | 11MB (arm64) |
+| Cold start | <50ms |
+| Memory at idle | <50MB |
+| Binary size | ~9MB stripped |
 
+
+| Throughput | 21,000+ ops/sec |
+| Graph exact lookup | 29ns |
 ## [0.0.7] - 2026-05-09
 
 ### Added
