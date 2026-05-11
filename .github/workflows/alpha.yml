@@ -114,7 +114,7 @@ jobs:
             "mkdir -p '${{ steps.deploy_check.outputs.remote_dir }}'"
           scp -P "${{ steps.deploy_check.outputs.port }}" \
             deploy/alpha/docker-compose.yml \
-            deploy/alpha/pull-and-restart.sh \
+            scripts/pull-and-restart.sh \
             "${{ secrets.ALPHA_SSH_USER }}@${{ secrets.ALPHA_SSH_HOST }}:${{ steps.deploy_check.outputs.remote_dir }}/"
       - name: Write alpha environment file
         if: steps.deploy_check.outputs.enabled == 'true'
