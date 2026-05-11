@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-REPO="jassskalkat/contextro"
+REPO="distillation-labs/contextro"
 BINARY="contextro"
 
 # Resolve latest version from GitHub if not set
@@ -37,13 +37,9 @@ TARGET="${ARCH}-${OS}"
 ARCHIVE="${BINARY}-${TARGET}.tar.gz"
 BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
 
-# Determine install dir
-if [ "$(uname -s)" = "Darwin" ]; then
-  INSTALL_DIR="/usr/local/bin"
-else
-  INSTALL_DIR="${HOME}/.local/bin"
-  mkdir -p "$INSTALL_DIR"
-fi
+# Determine install dir — prefer ~/.local/bin (no sudo required on any platform)
+INSTALL_DIR="${HOME}/.local/bin"
+mkdir -p "$INSTALL_DIR"
 
 echo "Installing contextro ${VERSION} (${TARGET}) → ${INSTALL_DIR}/${BINARY}"
 
@@ -54,9 +50,13 @@ trap 'rm -rf "$TMP"' EXIT
 curl -fsSL "${BASE_URL}/${ARCHIVE}" -o "${TMP}/${ARCHIVE}"
 curl -fsSL "${BASE_URL}/SHA256SUMS" -o "${TMP}/SHA256SUMS"
 
-# Verify checksum
+# Verify checksum — sha256sum on Linux, shasum on macOS
 cd "$TMP"
-grep "${ARCHIVE}" SHA256SUMS | sha256sum -c -
+if command -v sha256sum > /dev/null 2>&1; then
+  grep "${ARCHIVE}" SHA256SUMS | sha256sum -c -
+else
+  grep "${ARCHIVE}" SHA256SUMS | shasum -a 256 -c -
+fi
 cd - > /dev/null
 
 # Extract and install
@@ -73,6 +73,8 @@ case ":${PATH}:" in
     echo ""
     echo "  Add ${INSTALL_DIR} to your PATH:"
     echo "    export PATH=\"\$PATH:${INSTALL_DIR}\""
+    echo ""
+    echo "  To make it permanent, add the above line to ~/.zshrc or ~/.bashrc"
     ;;
 esac
 
