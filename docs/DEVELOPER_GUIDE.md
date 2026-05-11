@@ -3,295 +3,173 @@
 ## Development Setup
 
 ```bash
-# Clone the repository
 git clone <internal-contextro-repo-url>
-cd contextro
+cd contextro/crates
 
-# Create virtual environment
-python3.12 -m venv .venv
-source .venv/bin/activate
+# Verify toolchain
+cargo --version
 
-# Install with dev dependencies
-pip install -e ".[dev,reranker]"
+# Build the workspace
+cargo build
 
-# Verify installation
-pytest -v
-ruff check .
-contextro --help
+# Run tests
+cargo test
 
-# Optional local HTTP smoke test
-CTX_TRANSPORT=http contextro --port 8000
-python scripts/docker_healthcheck.py
+# Format and lint
+cargo fmt --all
+cargo clippy --workspace --all-targets
+
+# Run the MCP server over stdio
+cargo run -p contextro-server --bin contextro
+
+# Optional HTTP smoke test
+CTX_TRANSPORT=http cargo run -p contextro-server --bin contextro
+curl http://127.0.0.1:8000/health
 ```
 
-## Project Structure
+## Workspace Structure
 
-```
-Contextro/
-├── src/contextro_mcp/      # Source code
-│   ├── server.py           # FastMCP server, tool registration, transport entry point
-│   ├── config.py           # Settings with CTX_ env prefix
-│   ├── state.py            # Session state singleton
-│   ├── core/               # Data models, interfaces, exceptions
-│   ├── execution/          # Shared execution/runtime layer for search flows
-│   ├── parsing/            # tree-sitter + ast-grep parsers
-│   ├── engines/            # Vector, BM25, graph, fusion, reranker
-│   ├── analysis/           # Code complexity and quality analysis
-│   ├── memory/             # Semantic memory store
-│   ├── indexing/           # Pipeline, embedding service, chunker
-│   ├── formatting/         # Token budget, response builder
-│   └── persistence/        # SQLite graph persistence
-├── tests/                  # Unit, integration, and regression tests
-├── docs/                   # Architecture, ADRs, research notes
-│   ├── adr/                # 11 Architecture Decision Records
-│   └── research/           # Research notes on libraries
-├── pyproject.toml          # Build config, dependencies
-└── LICENSE                 # Proprietary license notice
+The real implementation lives under `crates/`.
+
+```text
+crates/
+├── Cargo.toml              # Workspace manifest
+├── contextro-core/         # Domain types, traits, errors
+├── contextro-config/       # CTX_ environment configuration
+├── contextro-parsing/      # tree-sitter parsing and language support
+├── contextro-indexing/     # File scanning, indexing pipeline, chunking
+├── contextro-engines/      # BM25, graph, fusion, cache, sandbox
+├── contextro-memory/       # Memory store, archive, session tracking
+├── contextro-git/          # Git indexing and repo registry helpers
+├── contextro-tools/        # Tool handlers and user-facing tool docs
+└── contextro-server/       # `contextro` binary and HTTP transport
 ```
 
-## Running Tests
+## Core Commands
+
+Run these from `contextro/crates`.
 
 ```bash
-# Full suite
-pytest -v
+# Build everything
+cargo build
 
-# Skip slow performance benchmarks
-pytest -v -m "not slow"
+# Fast development cycle
+cargo test
 
-# Run specific test file
-pytest tests/test_security.py -v
+# One crate
+cargo test -p contextro-indexing
 
-# Run with coverage (if pytest-cov installed)
-pytest --cov=contextro_mcp --cov-report=term-missing
+# Production build
+cargo build --release
+
+# Run the server binary
+cargo run -p contextro-server --bin contextro
+
+# Run the benchmark binary
+cargo run -p contextro-server --bin contextro-bench
 ```
 
-### Test Categories
+## Project Structure Notes
 
-| File | Tests | Purpose |
-|------|-------|---------|
-| `test_tools_basic.py` | 11 | Core MCP tools (index, search, status) |
-| `test_graph_tools.py` | 14 | Graph tools (find_symbol, find_callers, find_callees) |
-| `test_analyze_tool.py` | 5 | Code analysis tool |
-| `test_impact_tool.py` | 6 | Impact analysis tool |
-| `test_explain_tool.py` | 8 | Explain tool with verbosity levels |
-| `test_hybrid_search.py` | 15 | Hybrid search, fusion, reranking |
-| `test_memory_tools.py` | 12 | Remember, recall, forget tools |
-| `test_security.py` | 17 | Input validation, SQL injection, path traversal |
-| `test_e2e.py` | 10 | End-to-end lifecycle, corrupt index recovery |
-| `test_performance.py` | 4 | Performance benchmarks (marked slow) |
-| `test_memory_usage.py` | 5 | RSS monitoring and memory stability |
-| `test_vector_engine.py` | 14 | LanceDB vector engine CRUD |
-| `test_pipeline.py` | 19 | Indexing pipeline, incremental reindex |
-| `test_chunker.py` | 22 | Symbol-to-chunk conversion |
-| ... | ... | ... |
+- `contextro-server` owns transport selection and exposes the `contextro` binary.
+- `contextro-server/src/http.rs` serves `GET /health` and `POST /mcp` for HTTP deployments.
+- `contextro-config` is the source of truth for `CTX_` settings and defaults.
+- `contextro-tools` defines the user-facing tool surface.
+- `contextro-indexing` builds searchable chunks from parsed symbols.
+- `contextro-parsing` supports many target languages, including Python source files, via tree-sitter.
 
-### Test Conventions
+## Testing
 
-- **Naming:** `test_{function}_{scenario}`
-- **Fixtures:** Shared setup in `tests/conftest.py` (`mini_codebase`, `_setup_indexed`, `_call_tool`)
-- **No mocking of core models** (Symbol, ParsedFile, etc.)
-- **Both happy path and error cases** required
-- **Fast:** Each test <5s, full suite <30s
-- **File system tests** use `tmp_path` fixture
-
-## Linting
+The project uses Cargo-based testing from the Rust workspace.
 
 ```bash
-# Check for issues
-ruff check .
+# All tests
+cargo test
 
-# Auto-fix
-ruff check --fix .
+# Single crate
+cargo test -p contextro-tools
 
-# Configuration in pyproject.toml: E, F, W, I rules, 100 char line length
+# Integration tests in the indexing crate
+cargo test -p contextro-indexing --test bench_index
 ```
 
-Repo-wide `ruff check .` is expected to pass. The only file-level allowances are explicit `E501` exceptions in `pyproject.toml` for legacy tool-doc-heavy modules where wrapping the embedded help text would hurt readability more than it would help.
+Current repository guidance from `AGENTS.md`:
 
-## Live Dev Loop
+- Run `cargo test` from `crates/`
+- Unit tests live within crates
+- Integration tests live in `contextro-indexing/tests/`
+- Use `cargo build --release` for production binaries
 
-Use `docker-compose.dev.yml` for MCP development. It runs `scripts/dev_http_server.py`, which watches `src/` and `scripts/` and restarts the HTTP server automatically when code changes land.
+## Formatting and Linting
 
 ```bash
-export CTX_CODEBASE_HOST_PATH=/absolute/path/to/repo-under-test
-docker compose -f docker-compose.dev.yml up --build
+cargo fmt --all
+cargo clippy --workspace --all-targets
 ```
 
-Notes:
+## Running the Server
 
-- source edits do not require an image rebuild
-- dependency or base-image changes still require `--build`
-- `CTX_AUTO_WARM_START=true` keeps the indexed state across restarts
-- schema changes can still require the MCP client to reconnect
-
-## Benchmarks
+Stdio transport for MCP clients:
 
 ```bash
-# Synthetic workflow benchmark for indexing/search token output
-python scripts/benchmark_token_efficiency.py
-
-# Retrieval-quality scorecard (Recall@K / MRR by search mode)
-python scripts/benchmark_retrieval_quality.py --path src --query-limit 20
-
-# Compare chunking profiles (minimal vs contextual vs smart)
-python scripts/benchmark_chunk_profiles.py --path src --query-limit 20
-
-# Real-world benchmark against browser-use
-BROWSER_USE_PATH=/path/to/browser-use python scripts/benchmark_browser_use.py
+cargo run -p contextro-server --bin contextro
 ```
 
-The benchmark harness now lives in `scripts/benchmark_utils.py` so the benchmark scripts share the same patched session setup. Run them from the activated project venv with `python`, or use an explicit Python `3.10`-`3.12` interpreter such as `python3.11` or `python3.12`.
+HTTP transport for container or team deployments:
 
-Current recommendation: keep the default `smart` chunk profile unless you have a concrete index-size constraint. In the current `src` / `20`-query benchmark, `smart` matched the best hybrid quality (`MRR 0.625`, `Recall@5 0.9`) while using fewer average response tokens than `contextual` (`491` vs `510`). `minimal` reduced token cost further but dropped hybrid `Recall@5` to `0.55`.
+```bash
+CTX_TRANSPORT=http CTX_HTTP_HOST=0.0.0.0 CTX_HTTP_PORT=8000 \
+  cargo run -p contextro-server --bin contextro
+```
 
-For search/snippet-compression changes, run the token benchmark and retrieval scorecard with the **same query limit before and after the change**. Keep the optimization only if token output drops without a meaningful Recall@K / MRR regression.
+HTTP endpoints:
 
-Search response shaping is split between `execution/compaction.py` (snippet compression) and
-`execution/response_policy.py` (inline budgeting, preview shaping, sandbox handoff). Keep new
-token-efficiency behavior in these modules instead of growing `server.py` or `execution/search.py`.
-
-## Alpha Deploys
-
-Pushes to the `alpha` branch run `.github/workflows/alpha.yml`:
-
-1. `ruff check .`
-2. `pytest -v -m "not slow"`
-3. build and push `ghcr.io/<owner>/contextro-mcp:alpha`
-4. build and push `ghcr.io/<owner>/contextro-mcp:alpha-<short-sha>`
-5. optionally deploy the new alpha image to a remote host over SSH
-
-Remote alpha deploy assets live in `deploy/alpha/`.
-
-Remote deploy secrets:
-
-- required: `ALPHA_SSH_HOST`, `ALPHA_SSH_USER`, `ALPHA_SSH_PRIVATE_KEY`
-- optional: `ALPHA_SSH_PORT`, `ALPHA_REMOTE_DIR`, `ALPHA_HTTP_PORT`
-
-Stable releases stay in `.github/workflows/publish.yml` and only publish PyPI / `latest` when the GitHub Release is not marked as a prerelease.
+- `GET /health`
+- `POST /mcp`
 
 ## Adding a New MCP Tool
 
-1. Add the tool function inside `create_server()` in `server.py`:
-   ```python
-   @mcp.tool()
-   def my_tool(param: str) -> dict[str, Any]:
-       """Tool description for MCP clients."""
-       # Validate input
-       err = _validate_query(param)
-       if err:
-           return err
+1. Add the handler in `crates/contextro-server/src/main.rs`.
+2. Implement the tool logic in the appropriate module under `crates/contextro-tools/src/`.
+3. Add the tool definition to `ContextroServer::tool_definitions()`.
+4. Add or update tests in the relevant crate.
+5. Update user-facing docs such as `README.md` if the tool surface changes.
 
-       # Require indexing if needed
-       state, err = _require_indexed()
-       if err:
-           return err
+Prefer extending the existing crates instead of creating a new abstraction layer unless the logic clearly warrants it.
 
-       # Tool logic here
-       return {"result": "..."}
-   ```
+## Adding a New Engine or Subsystem
 
-2. Add input validation if the tool accepts user input (paths, names, queries).
-
-3. If the tool shares orchestration with an existing tool (search, caching, token budgeting, sandboxing), extract that logic into `execution/` instead of growing `server.py`.
-
-4. Write tests in a new `tests/test_my_tool.py` or add to an existing file.
-
-5. Update the tools table in `README.md`.
-
-6. Register the tool in `TOOL_PERMISSIONS` in `security/permissions.py`.
-
-7. Update any architecture/docs references that describe the tool surface.
-
-## Adding a New Engine
-
-1. Create `engines/my_engine.py` implementing the `IEngine` interface (or a custom interface).
-
-2. Wire it into `IndexingPipeline.__init__()` in `pipeline.py`.
-
-3. Expose it via `SessionState` in `state.py` (add property + setter).
-
-4. Wire it into `server.py` in the `index` tool (store reference on state).
-
-5. Write tests in `tests/test_my_engine.py`.
+1. Add the implementation in the relevant crate under `crates/contextro-engines/`, `crates/contextro-indexing/`, or another focused crate.
+2. Wire it into `crates/contextro-server/src/state.rs` or the indexing pipeline as needed.
+3. Keep public types in `contextro-core` when they are shared across crates.
+4. Add tests at the crate boundary that owns the behavior.
 
 ## Architecture Decision Records
 
-All significant design decisions are documented in `docs/adr/`. When making a key decision:
+Significant design decisions belong in `docs/adr/`.
 
 1. Copy `docs/adr/ADR-000-template.md`
-2. Number it sequentially (ADR-012, etc.)
-3. Document: Context, Decision, Alternatives Considered, Consequences
-4. Add a reference to `CLAUDE.md` under "Key Decisions"
-
-## Key Design Patterns
-
-### Singleton State
-`state.py` uses a module-level singleton. Always access via `get_state()`. Reset with `reset_state()` in tests.
-
-### Lazy Loading
-Engines are `None` until indexing runs. The embedding model is loaded during indexing and unloaded afterward to free RAM. FlashRank loads on first rerank call.
-
-### Defensive Validation
-All tool inputs are validated at entry (null bytes, length limits, path traversal). SQL filter values are escaped. This happens in `server.py` before any business logic.
-
-### Graceful Degradation
-If FlashRank isn't installed, reranking falls through to passthrough. If BM25 fails, hybrid search continues with remaining engines. Each engine failure is logged but doesn't crash the server.
+2. Number it sequentially
+3. Document context, decision, alternatives, and consequences
+4. Update high-level docs if the public architecture changed
 
 ## Debugging
 
-### Enable Debug Logging
 ```bash
-CTX_LOG_LEVEL=DEBUG contextro
+CTX_LOG_LEVEL=DEBUG cargo run -p contextro-server --bin contextro
 ```
 
-### JSON Logging (for structured log analysis)
-```bash
-CTX_LOG_FORMAT=json contextro
-```
+Useful checks:
 
-### Check Index Health
-Use the `status` tool to verify:
-- `indexed: true` — Codebase has been indexed
-- `vector_chunks > 0` — Vector store has data
-- `bm25_fts_ready: true` — Full-text search index built
-- `graph.total_nodes > 0` — Graph has structure
-- `memory.peak_rss_mb < 350` — Within memory budget
-
-## Code Provenance
-
-
-- **Contextro** — Original author: . Licensed under MIT.
-- **Contextro** — Original author: [](https://github.com/).
-
-| Component | Origin | Files |
-|-----------|--------|-------|
-| Core models (Symbol, ParsedFile, Memory) | Contextro | `core/models.py`, `core/interfaces.py`, `core/exceptions.py` |
-| tree-sitter parser | Contextro | `parsing/treesitter_parser.py` |
-| Embedding service (ONNX) | Contextro | `indexing/embedding_service.py` |
-| Parallel indexer | Contextro | `indexing/parallel_indexer.py` |
-| Graph models (UniversalNode) | Contextro | `core/graph_models.py` |
-| ast-grep parser | Contextro | `parsing/astgrep_parser.py` |
-| Graph engine (rustworkx) | Contextro | `engines/graph_engine.py` |
-| Code analyzer | Contextro | `analysis/code_analyzer.py` |
-| File watcher | Contextro | `parsing/file_watcher.py` |
-| Language registry | Both (merged) | `parsing/language_registry.py` |
-
-Everything else (vector engine, BM25, fusion, reranker, memory store, pipeline, formatting, persistence, server, all hardening) was written fresh for Contextro.
+- `cargo test -p <crate>` for a focused failure loop
+- `curl http://127.0.0.1:8000/health` when running HTTP transport
+- `contextro` `status` and `health` tools once the server is connected to a client
 
 ## Release Process
 
-Stable release:
-
-1. Update version in `pyproject.toml`
-2. Run full test suite: `pytest -v`
-3. Run linter: `ruff check .`
-4. Run Snyk scan
-5. Build: `maturin build --release --sdist -o dist`
-6. Test install: `pip install dist/contextro-*.whl` in a clean venv
-7. Create a non-prerelease GitHub Release to publish PyPI + `ghcr.io/...:latest`
-
-Alpha release:
-
-1. Merge or push the candidate to `alpha`
-2. Let `.github/workflows/alpha.yml` publish `:alpha` and `:alpha-<short-sha>`
-3. If remote alpha secrets are configured, let the workflow update the hosted alpha endpoint
+1. Update the workspace version in `crates/Cargo.toml` if needed.
+2. Run `cargo fmt --all`.
+3. Run `cargo clippy --workspace --all-targets`.
+4. Run `cargo test`.
+5. Build `cargo build --release`.
+6. Validate the release binary exists and runs: `test -x ./target/release/contextro` and, for HTTP, `CTX_TRANSPORT=http ./target/release/contextro`.
