@@ -14,7 +14,7 @@ when_to_use: >
   explain this class, git history, pattern search, add repo, remember or recall,
   compact or archive, retrieve sandbox results.
 metadata:
-  version: "0.2.0"
+  version: "0.1.0"
   mcp-server: contextro
   category: mcp-enhancement
   tags: [contextro, mcp, code-search, code-graph, ast, git, memory, cross-repo]
@@ -186,7 +186,7 @@ or symbol, direct file reads are acceptable if the full implementation body is n
 
 ## Benchmarks
 
-Token efficiency (measured on 8,498-file production codebase, v0.2.0):
+Token efficiency (measured on 8,498-file production codebase, v0.1.0):
 
 | Tool | Approx tokens |
 |---|---|

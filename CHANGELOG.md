@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-05-10
+## [0.1.0] - 2026-05-10
 
 ### Breaking Changes
 - **Python removed entirely.** `pip install contextro` no longer works. Use `cargo install contextro` or a pre-built binary.
