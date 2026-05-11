@@ -16,9 +16,10 @@ pub fn handle_compact(args: &Value, archive: &CompactionArchive) -> Value {
 
 pub fn handle_session_snapshot(tracker: &SessionTracker) -> Value {
     let events = tracker.recent_events(20);
-    let event_list: Vec<Value> = events.iter().map(|e| {
-        json!({"type": e.event_type, "summary": e.summary})
-    }).collect();
+    let event_list: Vec<Value> = events
+        .iter()
+        .map(|e| json!({"type": e.event_type, "summary": e.summary}))
+        .collect();
     json!({"events": event_list, "total": event_list.len()})
 }
 

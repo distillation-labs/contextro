@@ -1,7 +1,7 @@
 //! Symbol-to-CodeChunk conversion for storage.
 
-use contextro_core::models::{CodeChunk, Symbol};
 use contextro_config::get_settings;
+use contextro_core::models::{CodeChunk, Symbol};
 
 /// Convert a list of symbols into embeddable code chunks.
 pub fn create_chunks(symbols: &[Symbol]) -> Vec<CodeChunk> {
@@ -43,12 +43,12 @@ fn create_chunk_text(symbol: &Symbol) -> String {
         symbol.filepath.clone()
     };
 
+    parts.push(format!("# {} in {}", symbol.qualified_name(), short_path));
     parts.push(format!(
-        "# {} in {}",
-        symbol.qualified_name(),
-        short_path
+        "{}: {}",
+        symbol.symbol_type,
+        symbol.qualified_name()
     ));
-    parts.push(format!("{}: {}", symbol.symbol_type, symbol.qualified_name()));
     parts.push(String::new());
 
     // Docstring first for BM25 weight

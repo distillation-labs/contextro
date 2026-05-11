@@ -7,7 +7,10 @@ use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
 pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let name = args.get("symbol_name").and_then(|v| v.as_str()).unwrap_or("");
+    let name = args
+        .get("symbol_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if name.is_empty() {
         return json!({"error": "Missing required parameter: symbol_name"});
     }
@@ -21,7 +24,10 @@ pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&st
     for node in &matches {
         for caller in graph.get_callers(&node.id) {
             let fp = relativize(&caller.location.file_path, codebase);
-            callers.push(format!("{} ({}:{})", caller.name, fp, caller.location.start_line));
+            callers.push(format!(
+                "{} ({}:{})",
+                caller.name, fp, caller.location.start_line
+            ));
         }
     }
 
@@ -29,7 +35,10 @@ pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&st
 }
 
 pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let name = args.get("symbol_name").and_then(|v| v.as_str()).unwrap_or("");
+    let name = args
+        .get("symbol_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if name.is_empty() {
         return json!({"error": "Missing required parameter: symbol_name"});
     }
@@ -43,7 +52,10 @@ pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&st
     for node in &matches {
         for callee in graph.get_callees(&node.id) {
             let fp = relativize(&callee.location.file_path, codebase);
-            callees.push(format!("{} ({}:{})", callee.name, fp, callee.location.start_line));
+            callees.push(format!(
+                "{} ({}:{})",
+                callee.name, fp, callee.location.start_line
+            ));
         }
     }
 
@@ -51,7 +63,10 @@ pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&st
 }
 
 pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let name = args.get("symbol_name").and_then(|v| v.as_str()).unwrap_or("");
+    let name = args
+        .get("symbol_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if name.is_empty() {
         return json!({"error": "Missing required parameter: symbol_name"});
     }
@@ -62,13 +77,31 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
     }
 
     let node = &matches[0];
-    let callers: Vec<String> = graph.get_callers(&node.id).iter()
+    let callers: Vec<String> = graph
+        .get_callers(&node.id)
+        .iter()
         .take(10)
-        .map(|c| format!("{} ({}:{})", c.name, relativize(&c.location.file_path, codebase), c.location.start_line))
+        .map(|c| {
+            format!(
+                "{} ({}:{})",
+                c.name,
+                relativize(&c.location.file_path, codebase),
+                c.location.start_line
+            )
+        })
         .collect();
-    let callees: Vec<String> = graph.get_callees(&node.id).iter()
+    let callees: Vec<String> = graph
+        .get_callees(&node.id)
+        .iter()
         .take(10)
-        .map(|c| format!("{} ({}:{})", c.name, relativize(&c.location.file_path, codebase), c.location.start_line))
+        .map(|c| {
+            format!(
+                "{} ({}:{})",
+                c.name,
+                relativize(&c.location.file_path, codebase),
+                c.location.start_line
+            )
+        })
         .collect();
 
     json!({
@@ -84,7 +117,10 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
 }
 
 pub fn handle_impact(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let name = args.get("symbol_name").and_then(|v| v.as_str()).unwrap_or("");
+    let name = args
+        .get("symbol_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
     if name.is_empty() {

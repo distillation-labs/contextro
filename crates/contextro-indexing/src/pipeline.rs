@@ -3,10 +3,10 @@
 use std::path::Path;
 use std::time::Instant;
 
+use contextro_config::Settings;
 use contextro_core::models::Symbol;
 use contextro_core::traits::Parser;
 use contextro_core::ContextroError;
-use contextro_config::Settings;
 use contextro_parsing::TreeSitterParser;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,10 @@ impl IndexingPipeline {
     }
 
     /// Full index of a codebase.
-    pub fn index(&self, codebase_path: &Path) -> Result<(IndexResult, Vec<Symbol>), ContextroError> {
+    pub fn index(
+        &self,
+        codebase_path: &Path,
+    ) -> Result<(IndexResult, Vec<Symbol>), ContextroError> {
         let start = Instant::now();
 
         // Step 1: Discover files
@@ -53,7 +56,13 @@ impl IndexingPipeline {
         info!("Discovered {} files in {:?}", files.len(), codebase_path);
 
         if files.is_empty() {
-            return Ok((IndexResult { time_seconds: start.elapsed().as_secs_f64(), ..Default::default() }, vec![]));
+            return Ok((
+                IndexResult {
+                    time_seconds: start.elapsed().as_secs_f64(),
+                    ..Default::default()
+                },
+                vec![],
+            ));
         }
 
         // Step 2: Parse symbols in parallel
@@ -119,7 +128,8 @@ mod tests {
         fs::write(
             tmp.join("src/main.py"),
             "def hello():\n    \"\"\"Say hello.\"\"\"\n    print(\"hello\")\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         let settings = Settings::default();
         let pipeline = IndexingPipeline::new(settings);

@@ -40,7 +40,9 @@ impl MemoryStore {
             CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project);",
         )
         .map_err(|e| ContextroError::Memory(format!("Schema init failed: {}", e)))?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Create an in-memory store (for testing).
@@ -50,7 +52,11 @@ impl MemoryStore {
 
     /// Store a memory. Returns the generated ID.
     pub fn remember(&self, memory: &Memory) -> Result<String, ContextroError> {
-        let id = if memory.id.is_empty() { Self::generate_id(&memory.content) } else { memory.id.clone() };
+        let id = if memory.id.is_empty() {
+            Self::generate_id(&memory.content)
+        } else {
+            memory.id.clone()
+        };
         let tags_str = memory.tags.join(",");
         let conn = self.conn.lock();
         conn.execute(
@@ -73,7 +79,14 @@ impl MemoryStore {
     }
 
     /// Search memories by substring match on content.
-    pub fn recall(&self, query: &str, limit: usize, memory_type: Option<&str>, tags: Option<&str>, project: Option<&str>) -> Result<Vec<Memory>, ContextroError> {
+    pub fn recall(
+        &self,
+        query: &str,
+        limit: usize,
+        memory_type: Option<&str>,
+        tags: Option<&str>,
+        project: Option<&str>,
+    ) -> Result<Vec<Memory>, ContextroError> {
         let conn = self.conn.lock();
         let mut sql = String::from("SELECT id, content, memory_type, project, tags, created_at, accessed_at, ttl, source FROM memories WHERE content LIKE ?1");
         let like = format!("%{}%", query);
@@ -97,8 +110,11 @@ impl MemoryStore {
         }
         sql.push_str(&format!(" ORDER BY created_at DESC LIMIT {}", limit));
 
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
-        let mut stmt = conn.prepare(&sql).map_err(|e| ContextroError::Memory(format!("Query failed: {}", e)))?;
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| ContextroError::Memory(format!("Query failed: {}", e)))?;
         let rows = stmt
             .query_map(params_ref.as_slice(), |row| {
                 Ok(Memory {
@@ -106,7 +122,12 @@ impl MemoryStore {
                     content: row.get(1)?,
                     memory_type: parse_memory_type(&row.get::<_, String>(2)?),
                     project: row.get(3)?,
-                    tags: row.get::<_, String>(4)?.split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
+                    tags: row
+                        .get::<_, String>(4)?
+                        .split(',')
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect(),
                     created_at: row.get(5)?,
                     accessed_at: row.get(6)?,
                     ttl: parse_ttl(&row.get::<_, String>(7)?),
@@ -125,21 +146,29 @@ impl MemoryStore {
     }
 
     /// Delete memories by ID, tags, or memory_type.
-    pub fn forget(&self, id: Option<&str>, tags: Option<&str>, memory_type: Option<&str>) -> Result<usize, ContextroError> {
+    pub fn forget(
+        &self,
+        id: Option<&str>,
+        tags: Option<&str>,
+        memory_type: Option<&str>,
+    ) -> Result<usize, ContextroError> {
         let conn = self.conn.lock();
         if let Some(id) = id {
-            let n = conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
+            let n = conn
+                .execute("DELETE FROM memories WHERE id = ?1", params![id])
                 .map_err(|e| ContextroError::Memory(format!("Delete failed: {}", e)))?;
             return Ok(n);
         }
         if let Some(t) = tags {
             let like = format!("%{}%", t);
-            let n = conn.execute("DELETE FROM memories WHERE tags LIKE ?1", params![like])
+            let n = conn
+                .execute("DELETE FROM memories WHERE tags LIKE ?1", params![like])
                 .map_err(|e| ContextroError::Memory(format!("Delete failed: {}", e)))?;
             return Ok(n);
         }
         if let Some(mt) = memory_type {
-            let n = conn.execute("DELETE FROM memories WHERE memory_type = ?1", params![mt])
+            let n = conn
+                .execute("DELETE FROM memories WHERE memory_type = ?1", params![mt])
                 .map_err(|e| ContextroError::Memory(format!("Delete failed: {}", e)))?;
             return Ok(n);
         }
@@ -151,12 +180,19 @@ impl MemoryStore {
         let now = Utc::now();
         let conn = self.conn.lock();
         let mut total = 0;
-        for (ttl_name, duration) in [("session", Duration::hours(4)), ("day", Duration::days(1)), ("week", Duration::weeks(1)), ("month", Duration::days(30))] {
+        for (ttl_name, duration) in [
+            ("session", Duration::hours(4)),
+            ("day", Duration::days(1)),
+            ("week", Duration::weeks(1)),
+            ("month", Duration::days(30)),
+        ] {
             let cutoff = (now - duration).to_rfc3339();
-            let n = conn.execute(
-                "DELETE FROM memories WHERE ttl = ?1 AND created_at < ?2",
-                params![ttl_name, cutoff],
-            ).unwrap_or(0);
+            let n = conn
+                .execute(
+                    "DELETE FROM memories WHERE ttl = ?1 AND created_at < ?2",
+                    params![ttl_name, cutoff],
+                )
+                .unwrap_or(0);
             total += n;
         }
         Ok(total)
@@ -165,7 +201,10 @@ impl MemoryStore {
     /// Count total memories.
     pub fn count(&self) -> usize {
         let conn = self.conn.lock();
-        conn.query_row("SELECT COUNT(*) FROM memories", [], |row| row.get::<_, usize>(0)).unwrap_or(0)
+        conn.query_row("SELECT COUNT(*) FROM memories", [], |row| {
+            row.get::<_, usize>(0)
+        })
+        .unwrap_or(0)
     }
 
     fn generate_id(content: &str) -> String {
@@ -242,7 +281,9 @@ mod tests {
         mem.memory_type = MemoryType::Decision;
         store.remember(&mem).unwrap();
 
-        let results = store.recall("Redis", 10, Some("decision"), None, None).unwrap();
+        let results = store
+            .recall("Redis", 10, Some("decision"), None, None)
+            .unwrap();
         assert_eq!(results.len(), 1);
 
         let results = store.recall("Redis", 10, Some("note"), None, None).unwrap();

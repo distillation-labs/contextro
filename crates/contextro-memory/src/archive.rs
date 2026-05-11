@@ -56,12 +56,15 @@ impl CompactionArchive {
             }
         }
 
-        entries.insert(ref_id.clone(), ArchiveEntry {
-            content: content.to_string(),
-            metadata: metadata.unwrap_or(serde_json::Value::Null),
-            created: Instant::now(),
-            chars: content.len(),
-        });
+        entries.insert(
+            ref_id.clone(),
+            ArchiveEntry {
+                content: content.to_string(),
+                metadata: metadata.unwrap_or(serde_json::Value::Null),
+                created: Instant::now(),
+                chars: content.len(),
+            },
+        );
 
         ref_id
     }

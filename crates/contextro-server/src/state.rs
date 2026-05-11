@@ -8,7 +8,9 @@ use std::time::Instant;
 use parking_lot::RwLock;
 
 use contextro_config::get_settings;
-use contextro_core::graph::{RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship};
+use contextro_core::graph::{
+    RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
+};
 use contextro_core::models::{Symbol, SymbolType};
 use contextro_core::NodeType;
 use contextro_engines::bm25::Bm25Engine;
@@ -51,8 +53,14 @@ impl AppState {
             started_at: Instant::now(),
             graph: Arc::new(CodeGraph::new()),
             bm25: Arc::new(Bm25Engine::new_in_memory()),
-            query_cache: Arc::new(QueryCache::new(settings.search_cache_max_size, settings.search_cache_ttl_seconds)),
-            sandbox: Arc::new(OutputSandbox::new(settings.search_sandbox_max_entries, settings.search_sandbox_ttl_seconds)),
+            query_cache: Arc::new(QueryCache::new(
+                settings.search_cache_max_size,
+                settings.search_cache_ttl_seconds,
+            )),
+            sandbox: Arc::new(OutputSandbox::new(
+                settings.search_sandbox_max_entries,
+                settings.search_sandbox_ttl_seconds,
+            )),
             session_tracker: Arc::new(SessionTracker::default()),
             memory_store: Arc::new(memory_store),
             archive: Arc::new(CompactionArchive::new()),
@@ -91,7 +99,11 @@ impl AppState {
                 },
                 language: sym.language.clone(),
                 line_count: sym.line_count(),
-                docstring: if sym.docstring.is_empty() { None } else { Some(sym.docstring.clone()) },
+                docstring: if sym.docstring.is_empty() {
+                    None
+                } else {
+                    Some(sym.docstring.clone())
+                },
                 ..Default::default()
             };
             self.graph.add_node(node);

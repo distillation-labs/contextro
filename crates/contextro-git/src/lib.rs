@@ -4,4 +4,4 @@ pub mod branch_watcher;
 pub mod commit_indexer;
 pub mod cross_repo;
 
-pub use commit_indexer::{is_git_repo, current_branch, head_hash};
+pub use commit_indexer::{current_branch, head_hash, is_git_repo};

@@ -52,7 +52,9 @@ impl Parser for TreeSitterParser {
 
     fn supported_extensions(&self) -> &[&str] {
         // Return a static slice of common extensions
-        &[".py", ".js", ".ts", ".rs", ".go", ".java", ".c", ".cpp", ".rb"]
+        &[
+            ".py", ".js", ".ts", ".rs", ".go", ".java", ".c", ".cpp", ".rb",
+        ]
     }
 }
 
@@ -94,9 +96,22 @@ fn extract_symbols_simple(content: &str, filepath: &str, language: &str) -> Vec<
     symbols
 }
 
-fn parse_python_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], idx: usize) -> Option<Symbol> {
+fn parse_python_def(
+    line: &str,
+    filepath: &str,
+    line_num: u32,
+    lines: &[&str],
+    idx: usize,
+) -> Option<Symbol> {
     let (symbol_type, prefix) = if line.starts_with("def ") || line.starts_with("async def ") {
-        (SymbolType::Function, if line.starts_with("async") { "async def " } else { "def " })
+        (
+            SymbolType::Function,
+            if line.starts_with("async") {
+                "async def "
+            } else {
+                "def "
+            },
+        )
     } else if line.starts_with("class ") {
         (SymbolType::Class, "class ")
     } else {
@@ -132,8 +147,15 @@ fn parse_python_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], i
     })
 }
 
-fn parse_rust_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], idx: usize) -> Option<Symbol> {
-    let is_fn = line.contains("fn ") && (line.starts_with("pub") || line.starts_with("fn") || line.starts_with("async"));
+fn parse_rust_def(
+    line: &str,
+    filepath: &str,
+    line_num: u32,
+    lines: &[&str],
+    idx: usize,
+) -> Option<Symbol> {
+    let is_fn = line.contains("fn ")
+        && (line.starts_with("pub") || line.starts_with("fn") || line.starts_with("async"));
     let is_struct = line.starts_with("pub struct ") || line.starts_with("struct ");
     let is_impl = line.starts_with("impl ") || line.starts_with("pub impl ");
 
@@ -149,7 +171,10 @@ fn parse_rust_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], idx
     } else if is_struct {
         let parts: Vec<&str> = line.split("struct ").collect();
         let name_part = parts.get(1)?;
-        let name = name_part.split(&['{', '<', '(', ' '][..]).next()?.to_string();
+        let name = name_part
+            .split(&['{', '<', '(', ' '][..])
+            .next()?
+            .to_string();
         (SymbolType::Class, name)
     } else {
         return None;
@@ -177,9 +202,18 @@ fn parse_rust_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], idx
     })
 }
 
-fn parse_js_def(line: &str, filepath: &str, language: &str, line_num: u32, lines: &[&str], idx: usize) -> Option<Symbol> {
-    let is_fn = line.starts_with("function ") || line.starts_with("export function ")
-        || line.starts_with("async function ") || line.starts_with("export async function ");
+fn parse_js_def(
+    line: &str,
+    filepath: &str,
+    language: &str,
+    line_num: u32,
+    lines: &[&str],
+    idx: usize,
+) -> Option<Symbol> {
+    let is_fn = line.starts_with("function ")
+        || line.starts_with("export function ")
+        || line.starts_with("async function ")
+        || line.starts_with("export async function ");
     let is_class = line.starts_with("class ") || line.starts_with("export class ");
 
     if !is_fn && !is_class {
@@ -194,7 +228,10 @@ fn parse_js_def(line: &str, filepath: &str, language: &str, line_num: u32, lines
 
     let parts: Vec<&str> = line.split(keyword).collect();
     let name_part = parts.get(1)?;
-    let name = name_part.split(&['(', '{', '<', ' '][..]).next()?.to_string();
+    let name = name_part
+        .split(&['(', '{', '<', ' '][..])
+        .next()?
+        .to_string();
 
     if name.is_empty() {
         return None;
@@ -221,8 +258,15 @@ fn parse_js_def(line: &str, filepath: &str, language: &str, line_num: u32, lines
 fn parse_generic_def(line: &str, filepath: &str, language: &str, line_num: u32) -> Option<Symbol> {
     // Very basic: look for common function patterns
     if line.contains("func ") || line.contains("def ") || line.contains("function ") {
-        let name = line.split(&['(', '{', ' '][..])
-            .filter(|s| !s.is_empty() && !["func", "def", "function", "pub", "async", "export", "static"].contains(s))
+        let name = line
+            .split(&['(', '{', ' '][..])
+            .filter(|s| {
+                !s.is_empty()
+                    && ![
+                        "func", "def", "function", "pub", "async", "export", "static",
+                    ]
+                    .contains(s)
+            })
             .next()?
             .to_string();
 
@@ -270,8 +314,12 @@ fn find_block_end_braces(lines: &[&str], start: usize) -> usize {
     let mut depth = 0i32;
     for i in start..lines.len() {
         for ch in lines[i].chars() {
-            if ch == '{' { depth += 1; }
-            if ch == '}' { depth -= 1; }
+            if ch == '{' {
+                depth += 1;
+            }
+            if ch == '}' {
+                depth -= 1;
+            }
         }
         if depth <= 0 && i > start {
             return i;
@@ -312,9 +360,17 @@ fn extract_python_calls(lines: &[&str], start: usize, end: usize) -> Vec<String>
         for part in line.split(&[' ', '=', ',', '(', '.'][..]) {
             let trimmed = part.trim();
             if trimmed.len() > 1
-                && trimmed.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+                && trimmed
+                    .chars()
+                    .next()
+                    .map(|c| c.is_alphabetic())
+                    .unwrap_or(false)
                 && line.contains(&format!("{}(", trimmed))
-                && !["if", "for", "while", "return", "print", "self", "cls", "not", "and", "or", "in"].contains(&trimmed)
+                && ![
+                    "if", "for", "while", "return", "print", "self", "cls", "not", "and", "or",
+                    "in",
+                ]
+                .contains(&trimmed)
             {
                 if !calls.contains(&trimmed.to_string()) {
                     calls.push(trimmed.to_string());
@@ -336,7 +392,9 @@ fn extract_imports_simple(content: &str, language: &str) -> Vec<String> {
                 }
             }
             "javascript" | "typescript" => {
-                if trimmed.starts_with("import ") || trimmed.starts_with("const ") && trimmed.contains("require(") {
+                if trimmed.starts_with("import ")
+                    || trimmed.starts_with("const ") && trimmed.contains("require(")
+                {
                     imports.push(trimmed.to_string());
                 }
             }

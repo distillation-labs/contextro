@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
+use contextro_core::traits::Parser;
 use contextro_engines::graph::CodeGraph;
 use contextro_parsing::TreeSitterParser;
-use contextro_core::traits::Parser;
 use serde_json::{json, Value};
 
 pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
@@ -33,15 +33,19 @@ fn get_document_symbols(args: &Value) -> Value {
     let parser = TreeSitterParser::new();
     match parser.parse_file(file_path) {
         Ok(parsed) => {
-            let symbols: Vec<Value> = parsed.symbols.iter().map(|s| {
-                json!({
-                    "name": s.name,
-                    "type": s.symbol_type.to_string(),
-                    "line": s.line_start,
-                    "end_line": s.line_end,
-                    "signature": s.signature,
+            let symbols: Vec<Value> = parsed
+                .symbols
+                .iter()
+                .map(|s| {
+                    json!({
+                        "name": s.name,
+                        "type": s.symbol_type.to_string(),
+                        "line": s.line_start,
+                        "end_line": s.line_end,
+                        "signature": s.signature,
+                    })
                 })
-            }).collect();
+                .collect();
             json!({"file": file_path, "symbols": symbols, "total": symbols.len()})
         }
         Err(e) => json!({"error": format!("Parse failed: {}", e)}),
@@ -49,7 +53,10 @@ fn get_document_symbols(args: &Value) -> Value {
 }
 
 fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let name = args.get("symbol_name").and_then(|v| v.as_str()).unwrap_or("");
+    let name = args
+        .get("symbol_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if name.is_empty() {
         return json!({"error": "Missing required parameter: symbol_name"});
     }
@@ -70,7 +77,10 @@ fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
     }
 
     let names: Vec<&str> = symbols_str.split(',').map(|s| s.trim()).collect();
-    let include_source = args.get("include_source").and_then(|v| v.as_bool()).unwrap_or(false);
+    let include_source = args
+        .get("include_source")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let mut results = Vec::new();
 
     for name in names {
@@ -113,7 +123,13 @@ fn pattern_search(args: &Value, codebase: Option<&str>) -> Value {
     let base = codebase.unwrap_or(".");
     let target = file_path
         .or(search_path)
-        .map(|p| if Path::new(p).is_absolute() { p.to_string() } else { format!("{}/{}", base, p) })
+        .map(|p| {
+            if Path::new(p).is_absolute() {
+                p.to_string()
+            } else {
+                format!("{}/{}", base, p)
+            }
+        })
         .unwrap_or_else(|| base.to_string());
 
     // Convert ast-grep-style pattern ($NAME, $$$) to regex
@@ -154,8 +170,14 @@ fn pattern_search(args: &Value, codebase: Option<&str>) -> Value {
 /// Pattern rewrite: find and replace using structural patterns.
 fn pattern_rewrite(args: &Value, codebase: Option<&str>) -> Value {
     let pattern = args.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
-    let replacement = args.get("replacement").and_then(|v| v.as_str()).unwrap_or("");
-    let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(true);
+    let replacement = args
+        .get("replacement")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let dry_run = args
+        .get("dry_run")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     if pattern.is_empty() || replacement.is_empty() {
         return json!({"error": "Missing required parameters: pattern and replacement"});
@@ -168,7 +190,13 @@ fn pattern_rewrite(args: &Value, codebase: Option<&str>) -> Value {
 
     let target = file_path
         .or(search_path)
-        .map(|p| if Path::new(p).is_absolute() { p.to_string() } else { format!("{}/{}", base, p) })
+        .map(|p| {
+            if Path::new(p).is_absolute() {
+                p.to_string()
+            } else {
+                format!("{}/{}", base, p)
+            }
+        })
         .unwrap_or_else(|| base.to_string());
 
     let regex_pattern = pattern_to_regex(pattern);
@@ -189,17 +217,23 @@ fn pattern_rewrite(args: &Value, codebase: Option<&str>) -> Value {
 
         let new_content = re.replace_all(&content, replacement);
         if new_content != content {
-            let count = content.lines().zip(new_content.lines())
+            let count = content
+                .lines()
+                .zip(new_content.lines())
                 .filter(|(a, b)| a != b)
                 .count();
             total_replacements += count;
 
             // Generate diff
-            let diff_lines: Vec<String> = content.lines().zip(new_content.lines())
+            let diff_lines: Vec<String> = content
+                .lines()
+                .zip(new_content.lines())
                 .enumerate()
                 .filter(|(_, (a, b))| a != b)
                 .take(5)
-                .map(|(i, (old, new))| format!("L{}: -{}\nL{}: +{}", i + 1, old.trim(), i + 1, new.trim()))
+                .map(|(i, (old, new))| {
+                    format!("L{}: -{}\nL{}: +{}", i + 1, old.trim(), i + 1, new.trim())
+                })
                 .collect();
 
             changes.push(json!({
@@ -246,7 +280,10 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
             let (in_d, _) = graph.get_node_degree(&node.id);
             affected_symbols.push(json!({"name": node.name, "file": strip_base(&node.location.file_path, codebase), "callers": in_d}));
             if in_d > 5 {
-                risks.push(format!("{} has {} callers — high blast radius", node.name, in_d));
+                risks.push(format!(
+                    "{} has {} callers — high blast radius",
+                    node.name, in_d
+                ));
             }
         }
     }
@@ -258,7 +295,8 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     }
 
     // Find related tests
-    let related_tests: Vec<String> = target_files.iter()
+    let related_tests: Vec<String> = target_files
+        .iter()
         .filter_map(|f| {
             let stem = Path::new(f).file_stem()?.to_string_lossy().to_string();
             let test_name = format!("test_{}", stem);
@@ -294,7 +332,9 @@ fn search_codebase_map(args: &Value, codebase: Option<&str>) -> Value {
     let target = if Path::new(path).is_absolute() {
         path.to_string()
     } else {
-        codebase.map(|b| format!("{}/{}", b, path)).unwrap_or_else(|| path.to_string())
+        codebase
+            .map(|b| format!("{}/{}", b, path))
+            .unwrap_or_else(|| path.to_string())
     };
 
     if !Path::new(&target).is_dir() {
@@ -361,7 +401,9 @@ fn collect_files(path: &str, language: Option<&str>) -> Vec<String> {
 }
 
 fn walk_dir(dir: &Path, extensions: &Option<Vec<&str>>, files: &mut Vec<String>, depth: usize) {
-    if depth == 0 { return; }
+    if depth == 0 {
+        return;
+    }
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -369,7 +411,11 @@ fn walk_dir(dir: &Path, extensions: &Option<Vec<&str>>, files: &mut Vec<String>,
     for entry in entries.flatten() {
         let path = entry.path();
         let name = path.file_name().unwrap_or_default().to_string_lossy();
-        if name.starts_with('.') || name == "node_modules" || name == "target" || name == "__pycache__" {
+        if name.starts_with('.')
+            || name == "node_modules"
+            || name == "target"
+            || name == "__pycache__"
+        {
             continue;
         }
         if path.is_dir() {

@@ -24,7 +24,10 @@ fn get_model() -> &'static RwLock<Option<Model2Vec>> {
                 RwLock::new(Some(model))
             }
             Err(e) => {
-                warn!("Failed to load embedding model: {}. Vector search disabled.", e);
+                warn!(
+                    "Failed to load embedding model: {}. Vector search disabled.",
+                    e
+                );
                 RwLock::new(None)
             }
         }

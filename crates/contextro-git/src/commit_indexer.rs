@@ -29,12 +29,18 @@ pub fn changed_files(repo_path: &str, from: Option<&str>, to: Option<&str>) -> V
     };
 
     let to_commit = match to {
-        Some(rev) => repo.revparse_single(rev).ok().and_then(|o| o.into_commit().ok()),
+        Some(rev) => repo
+            .revparse_single(rev)
+            .ok()
+            .and_then(|o| o.into_commit().ok()),
         None => repo.head().ok().and_then(|h| h.peel_to_commit().ok()),
     };
 
     let from_commit = match from {
-        Some(rev) => repo.revparse_single(rev).ok().and_then(|o| o.into_commit().ok()),
+        Some(rev) => repo
+            .revparse_single(rev)
+            .ok()
+            .and_then(|o| o.into_commit().ok()),
         None => to_commit.as_ref().and_then(|c| c.parent(0).ok()),
     };
 
@@ -65,8 +71,11 @@ pub fn changed_files(repo_path: &str, from: Option<&str>, to: Option<&str>) -> V
             }
             true
         },
-        None, None, None,
-    ).ok();
+        None,
+        None,
+        None,
+    )
+    .ok();
 
     files
 }

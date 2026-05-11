@@ -93,7 +93,10 @@ impl ParsedFile {
     }
 
     pub fn symbols_by_type(&self, symbol_type: SymbolType) -> Vec<&Symbol> {
-        self.symbols.iter().filter(|s| s.symbol_type == symbol_type).collect()
+        self.symbols
+            .iter()
+            .filter(|s| s.symbol_type == symbol_type)
+            .collect()
     }
 }
 

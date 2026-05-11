@@ -4,10 +4,16 @@
 pub struct BranchWatcher;
 
 impl BranchWatcher {
-    pub fn new() -> Self { Self }
-    pub fn is_running(&self) -> bool { false }
+    pub fn new() -> Self {
+        Self
+    }
+    pub fn is_running(&self) -> bool {
+        false
+    }
 }
 
 impl Default for BranchWatcher {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

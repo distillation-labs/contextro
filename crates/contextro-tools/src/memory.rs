@@ -14,19 +14,37 @@ pub fn handle_remember(args: &Value, store: &MemoryStore) -> Value {
     if content.is_empty() {
         return json!({"error": "Missing required parameter: content"});
     }
-    let memory_type = parse_memory_type_arg(args.get("memory_type").and_then(|v| v.as_str()).unwrap_or("note"));
-    let tags: Vec<String> = args.get("tags")
+    let memory_type = parse_memory_type_arg(
+        args.get("memory_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("note"),
+    );
+    let tags: Vec<String> = args
+        .get("tags")
         .and_then(|v| v.as_str())
-        .map(|s| s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
-    let ttl = parse_ttl_arg(args.get("ttl").and_then(|v| v.as_str()).unwrap_or("permanent"));
+    let ttl = parse_ttl_arg(
+        args.get("ttl")
+            .and_then(|v| v.as_str())
+            .unwrap_or("permanent"),
+    );
     let now = Utc::now().to_rfc3339();
 
     let memory = Memory {
         id: String::new(),
         content: content.into(),
         memory_type,
-        project: args.get("project").and_then(|v| v.as_str()).unwrap_or("").into(),
+        project: args
+            .get("project")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .into(),
         tags: tags.clone(),
         created_at: now.clone(),
         accessed_at: now,
@@ -35,7 +53,9 @@ pub fn handle_remember(args: &Value, store: &MemoryStore) -> Value {
     };
 
     match store.remember(&memory) {
-        Ok(id) => json!({"stored": true, "id": id, "memory_type": memory_type.to_string(), "tags": tags}),
+        Ok(id) => {
+            json!({"stored": true, "id": id, "memory_type": memory_type.to_string(), "tags": tags})
+        }
         Err(e) => json!({"error": format!("Failed to store: {}", e)}),
     }
 }
@@ -82,11 +102,14 @@ pub struct KnowledgeStore {
 
 impl KnowledgeStore {
     pub fn new() -> Self {
-        Self { docs: RwLock::new(HashMap::new()) }
+        Self {
+            docs: RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn add(&self, name: &str, content: &str) {
-        let chunks: Vec<String> = content.lines()
+        let chunks: Vec<String> = content
+            .lines()
             .collect::<Vec<_>>()
             .chunks(20)
             .map(|c| c.join("\n"))
@@ -112,7 +135,11 @@ impl KnowledgeStore {
     }
 
     pub fn show(&self) -> Vec<(String, usize)> {
-        self.docs.read().iter().map(|(k, v)| (k.clone(), v.len())).collect()
+        self.docs
+            .read()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.len()))
+            .collect()
     }
 
     pub fn remove(&self, name: &str) -> bool {
@@ -130,9 +157,11 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
     let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
     match command {
         "show" => {
-            let bases: Vec<Value> = knowledge.show().iter().map(|(name, chunks)| {
-                json!({"name": name, "chunks": chunks})
-            }).collect();
+            let bases: Vec<Value> = knowledge
+                .show()
+                .iter()
+                .map(|(name, chunks)| json!({"name": name, "chunks": chunks}))
+                .collect();
             json!({"knowledge_bases": bases, "total": bases.len()})
         }
         "add" => {
@@ -152,7 +181,11 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
                         for entry in entries.flatten() {
                             if entry.path().is_file() {
                                 if let Ok(text) = std::fs::read_to_string(entry.path()) {
-                                    buf.push_str(&format!("--- {} ---\n{}\n", entry.path().display(), text));
+                                    buf.push_str(&format!(
+                                        "--- {} ---\n{}\n",
+                                        entry.path().display(),
+                                        text
+                                    ));
                                 }
                             }
                         }

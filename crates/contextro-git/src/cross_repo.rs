@@ -4,9 +4,13 @@
 pub struct CrossRepoManager;
 
 impl CrossRepoManager {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for CrossRepoManager {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

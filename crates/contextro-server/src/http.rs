@@ -71,9 +71,11 @@ async fn mcp_handler(
             let args = params.get("arguments").cloned().unwrap_or(Value::Null);
             let call_result = state.server.dispatch(name, args);
             // Serialize the content as-is
-            let content: Vec<Value> = call_result.content.iter().map(|c| {
-                serde_json::to_value(c).unwrap_or(Value::Null)
-            }).collect();
+            let content: Vec<Value> = call_result
+                .content
+                .iter()
+                .map(|c| serde_json::to_value(c).unwrap_or(Value::Null))
+                .collect();
             json!({"content": content})
         }
         _ => json!({"error": format!("Unknown method: {}", method)}),

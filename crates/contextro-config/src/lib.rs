@@ -274,9 +274,18 @@ impl Settings {
         env_str!("CTX_CHUNK_CONTEXT_MODE", chunk_context_mode);
         env_usize!("CTX_INDEX_FILE_BATCH_SIZE", index_file_batch_size);
         env_bool!("CTX_SKIP_ASTGREP", skip_astgrep);
-        env_bool!("CTX_SMART_CHUNK_RELATIONSHIPS_ENABLED", smart_chunk_relationships_enabled);
-        env_bool!("CTX_SMART_CHUNK_FILE_CONTEXT_ENABLED", smart_chunk_file_context_enabled);
-        env_bool!("CTX_INCREMENTAL_INDEX_FAST_PATH_ENABLED", incremental_index_fast_path_enabled);
+        env_bool!(
+            "CTX_SMART_CHUNK_RELATIONSHIPS_ENABLED",
+            smart_chunk_relationships_enabled
+        );
+        env_bool!(
+            "CTX_SMART_CHUNK_FILE_CONTEXT_ENABLED",
+            smart_chunk_file_context_enabled
+        );
+        env_bool!(
+            "CTX_INCREMENTAL_INDEX_FAST_PATH_ENABLED",
+            incremental_index_fast_path_enabled
+        );
         env_usize!("CTX_GRAPH_MAX_DEPTH", graph_max_depth);
         env_str!("CTX_SEARCH_MODE", search_mode);
         env_f64!("CTX_FUSION_WEIGHT_VECTOR", fusion_weight_vector);
@@ -284,14 +293,23 @@ impl Settings {
         env_f64!("CTX_FUSION_WEIGHT_GRAPH", fusion_weight_graph);
         env_f64!("CTX_RELEVANCE_THRESHOLD", relevance_threshold);
         env_usize!("CTX_SEARCH_CACHE_MAX_SIZE", search_cache_max_size);
-        env_f64!("CTX_SEARCH_CACHE_SIMILARITY_THRESHOLD", search_cache_similarity_threshold);
+        env_f64!(
+            "CTX_SEARCH_CACHE_SIMILARITY_THRESHOLD",
+            search_cache_similarity_threshold
+        );
         env_f64!("CTX_SEARCH_CACHE_TTL_SECONDS", search_cache_ttl_seconds);
-        env_usize!("CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS", search_sandbox_threshold_tokens);
+        env_usize!(
+            "CTX_SEARCH_SANDBOX_THRESHOLD_TOKENS",
+            search_sandbox_threshold_tokens
+        );
         env_usize!("CTX_SEARCH_SANDBOX_MAX_ENTRIES", search_sandbox_max_entries);
         env_f64!("CTX_SEARCH_SANDBOX_TTL_SECONDS", search_sandbox_ttl_seconds);
         env_usize!("CTX_SEARCH_PREVIEW_RESULTS", search_preview_results);
         env_usize!("CTX_SEARCH_PREVIEW_CODE_CHARS", search_preview_code_chars);
-        env_bool!("CTX_SEARCH_ADAPTIVE_RESULT_COUNT_ENABLED", search_adaptive_result_count_enabled);
+        env_bool!(
+            "CTX_SEARCH_ADAPTIVE_RESULT_COUNT_ENABLED",
+            search_adaptive_result_count_enabled
+        );
         env_usize!("CTX_MAX_MEMORY_MB", max_memory_mb);
         env_str!("CTX_OUTPUT_FORMAT", output_format);
         env_str!("CTX_LOG_LEVEL", log_level);

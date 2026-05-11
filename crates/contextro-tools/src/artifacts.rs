@@ -30,7 +30,9 @@ pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     // Check file concentration
     let mut file_counts: HashMap<String, usize> = HashMap::new();
     for node in &nodes {
-        *file_counts.entry(node.location.file_path.clone()).or_default() += 1;
+        *file_counts
+            .entry(node.location.file_path.clone())
+            .or_default() += 1;
     }
     let large_files: Vec<_> = file_counts.iter().filter(|(_, c)| **c > 30).collect();
     if !large_files.is_empty() {
@@ -41,7 +43,11 @@ pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
         }));
     }
 
-    let quality_score = if recommendations.is_empty() { 95 } else { 85 - recommendations.len() * 5 };
+    let quality_score = if recommendations.is_empty() {
+        95
+    } else {
+        85 - recommendations.len() * 5
+    };
 
     json!({
         "status": "complete",
@@ -53,7 +59,10 @@ pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
 
 /// Generate a docs bundle.
 pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let output_dir = args.get("output_dir").and_then(|v| v.as_str()).unwrap_or(".contextro-docs");
+    let output_dir = args
+        .get("output_dir")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".contextro-docs");
     let base = codebase.unwrap_or(".");
     let target = if Path::new(output_dir).is_absolute() {
         output_dir.to_string()
@@ -66,18 +75,28 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
     // Generate architecture.md
     let nodes = graph.find_nodes_by_name("", false);
     let mut arch = String::from("# Architecture\n\n## Hub Symbols\n\n");
-    let mut scored: Vec<_> = nodes.iter().map(|n| {
-        let (i, o) = graph.get_node_degree(&n.id);
-        (n.name.clone(), n.location.file_path.clone(), i + o)
-    }).collect();
+    let mut scored: Vec<_> = nodes
+        .iter()
+        .map(|n| {
+            let (i, o) = graph.get_node_degree(&n.id);
+            (n.name.clone(), n.location.file_path.clone(), i + o)
+        })
+        .collect();
     scored.sort_by(|a, b| b.2.cmp(&a.2));
     for (name, file, degree) in scored.iter().take(10) {
-        arch.push_str(&format!("- **{}** ({}) — {} connections\n", name, file, degree));
+        arch.push_str(&format!(
+            "- **{}** ({}) — {} connections\n",
+            name, file, degree
+        ));
     }
     std::fs::write(format!("{}/architecture.md", target), &arch).ok();
 
     // Generate overview.md
-    let overview = format!("# Overview\n\n- Total symbols: {}\n- Total relationships: {}\n", graph.node_count(), graph.relationship_count());
+    let overview = format!(
+        "# Overview\n\n- Total symbols: {}\n- Total relationships: {}\n",
+        graph.node_count(),
+        graph.relationship_count()
+    );
     std::fs::write(format!("{}/overview.md", target), &overview).ok();
 
     json!({"status": "generated", "output_dir": target, "files": ["architecture.md", "overview.md"]})
@@ -87,7 +106,11 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
 pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
     let base = codebase.unwrap_or(".");
-    let target = if Path::new(path).is_absolute() { path.to_string() } else { format!("{}/{}", base, path) };
+    let target = if Path::new(path).is_absolute() {
+        path.to_string()
+    } else {
+        format!("{}/{}", base, path)
+    };
 
     let nodes = graph.find_nodes_by_name("", false);
     let mut files_written = 0;
@@ -96,16 +119,28 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
     let mut by_file: HashMap<String, Vec<&_>> = HashMap::new();
     for node in &nodes {
         if node.location.file_path.starts_with(&target) || target == base {
-            by_file.entry(node.location.file_path.clone()).or_default().push(node);
+            by_file
+                .entry(node.location.file_path.clone())
+                .or_default()
+                .push(node);
         }
     }
 
     for (file_path, syms) in &by_file {
         let sidecar_path = format!("{}.graph.md", file_path);
-        let mut content = format!("# {}\n\n## Symbols\n\n", Path::new(file_path).file_name().unwrap_or_default().to_string_lossy());
+        let mut content = format!(
+            "# {}\n\n## Symbols\n\n",
+            Path::new(file_path)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        );
         for sym in syms {
             let (in_d, out_d) = graph.get_node_degree(&sym.id);
-            content.push_str(&format!("- `{}` ({}) L{} — {} callers, {} callees\n", sym.name, sym.node_type, sym.location.start_line, in_d, out_d));
+            content.push_str(&format!(
+                "- `{}` ({}) L{} — {} callers, {} callees\n",
+                sym.name, sym.node_type, sym.location.start_line, in_d, out_d
+            ));
         }
         if std::fs::write(&sidecar_path, &content).is_ok() {
             files_written += 1;
@@ -170,8 +205,11 @@ pub fn handle_introspect(args: &Value) -> Value {
     }
 
     let query_lower = query.to_lowercase();
-    let matching: Vec<Value> = tools.iter()
-        .filter(|(n, d)| n.contains(&query_lower.as_str()) || d.to_lowercase().contains(&query_lower))
+    let matching: Vec<Value> = tools
+        .iter()
+        .filter(|(n, d)| {
+            n.contains(&query_lower.as_str()) || d.to_lowercase().contains(&query_lower)
+        })
         .map(|(n, d)| json!({"tool": n, "description": d}))
         .collect();
 

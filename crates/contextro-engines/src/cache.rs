@@ -54,10 +54,13 @@ impl QueryCache {
                 self.entries.remove(&key);
             }
         }
-        self.entries.insert(query.to_string(), CacheEntry {
-            result,
-            inserted_at: Instant::now(),
-        });
+        self.entries.insert(
+            query.to_string(),
+            CacheEntry {
+                result,
+                inserted_at: Instant::now(),
+            },
+        );
     }
 
     /// Invalidate all cached entries.
@@ -69,7 +72,11 @@ impl QueryCache {
         let h = self.hits.load(Ordering::Relaxed);
         let m = self.misses.load(Ordering::Relaxed);
         let total = h + m;
-        if total == 0 { 0.0 } else { h as f64 / total as f64 }
+        if total == 0 {
+            0.0
+        } else {
+            h as f64 / total as f64
+        }
     }
 
     pub fn size(&self) -> usize {

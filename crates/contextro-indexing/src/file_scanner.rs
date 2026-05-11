@@ -2,14 +2,29 @@
 
 use std::path::{Path, PathBuf};
 
-use ignore::WalkBuilder;
 use contextro_config::Settings;
+use ignore::WalkBuilder;
 
 /// Directories to always skip during file discovery.
 const SKIP_DIRS: &[&str] = &[
-    "node_modules", ".git", "dist", "build", "out", ".cache", "target",
-    "__pycache__", ".venv", "venv", ".tox", ".mypy_cache", ".pytest_cache",
-    ".next", ".nuxt", "vendor", "Pods", ".gradle",
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "out",
+    ".cache",
+    "target",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".next",
+    ".nuxt",
+    "vendor",
+    "Pods",
+    ".gradle",
 ];
 
 /// Discover source files under a root directory, respecting .gitignore.
@@ -36,7 +51,10 @@ pub fn discover_files(root: &Path, settings: &Settings) -> Vec<PathBuf> {
 
         // Skip files in excluded directories
         if path.components().any(|c| {
-            c.as_os_str().to_str().map(|s| SKIP_DIRS.contains(&s)).unwrap_or(false)
+            c.as_os_str()
+                .to_str()
+                .map(|s| SKIP_DIRS.contains(&s))
+                .unwrap_or(false)
         }) {
             continue;
         }
@@ -130,8 +148,12 @@ mod tests {
 
         let settings = Settings::default();
         let files = discover_files(&tmp, &settings);
-        assert!(files.iter().any(|f| f.to_string_lossy().contains("main.py")));
-        assert!(!files.iter().any(|f| f.to_string_lossy().contains("readme.md")));
+        assert!(files
+            .iter()
+            .any(|f| f.to_string_lossy().contains("main.py")));
+        assert!(!files
+            .iter()
+            .any(|f| f.to_string_lossy().contains("readme.md")));
 
         fs::remove_dir_all(tmp).ok();
     }

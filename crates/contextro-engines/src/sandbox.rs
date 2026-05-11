@@ -25,7 +25,9 @@ struct SandboxInner {
 impl OutputSandbox {
     pub fn new(max_entries: usize, ttl_secs: f64) -> Self {
         Self {
-            inner: Mutex::new(SandboxInner { entries: VecDeque::new() }),
+            inner: Mutex::new(SandboxInner {
+                entries: VecDeque::new(),
+            }),
             max_entries,
             ttl_secs,
         }
@@ -38,17 +40,22 @@ impl OutputSandbox {
 
         // Prune expired
         let now = Instant::now();
-        inner.entries.retain(|(_, e)| now.duration_since(e.timestamp).as_secs_f64() < self.ttl_secs);
+        inner
+            .entries
+            .retain(|(_, e)| now.duration_since(e.timestamp).as_secs_f64() < self.ttl_secs);
 
         // Evict if at capacity
         while inner.entries.len() >= self.max_entries {
             inner.entries.pop_front();
         }
 
-        inner.entries.push_back((ref_id.clone(), SandboxEntry {
-            content: content.to_string(),
-            timestamp: Instant::now(),
-        }));
+        inner.entries.push_back((
+            ref_id.clone(),
+            SandboxEntry {
+                content: content.to_string(),
+                timestamp: Instant::now(),
+            },
+        ));
 
         ref_id
     }
@@ -56,7 +63,9 @@ impl OutputSandbox {
     /// Retrieve stored content by reference ID.
     pub fn retrieve(&self, ref_id: &str) -> Option<String> {
         let inner = self.inner.lock();
-        inner.entries.iter()
+        inner
+            .entries
+            .iter()
             .find(|(id, _)| id == ref_id)
             .map(|(_, entry)| entry.content.clone())
     }

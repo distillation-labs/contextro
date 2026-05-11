@@ -44,8 +44,13 @@ impl ReciprocalRankFusion {
             for (rank, result) in results.iter().enumerate() {
                 let rrf = weight / (self.k as f64 + rank as f64 + 1.0);
                 *scores.entry(result.id.clone()).or_default() += rrf;
-                metadata.entry(result.id.clone()).or_insert_with(|| result.clone());
-                sources.entry(result.id.clone()).or_default().push(engine.clone());
+                metadata
+                    .entry(result.id.clone())
+                    .or_insert_with(|| result.clone());
+                sources
+                    .entry(result.id.clone())
+                    .or_default()
+                    .push(engine.clone());
             }
         }
 
@@ -59,7 +64,11 @@ impl ReciprocalRankFusion {
             })
             .collect();
 
-        fused.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        fused.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Normalize scores to [0, 1]
         if let Some(max_score) = fused.first().map(|r| r.score) {
@@ -73,7 +82,10 @@ impl ReciprocalRankFusion {
         fused
     }
 
-    fn adaptive_weights(&self, ranked_lists: &HashMap<String, Vec<SearchResult>>) -> HashMap<String, f64> {
+    fn adaptive_weights(
+        &self,
+        ranked_lists: &HashMap<String, Vec<SearchResult>>,
+    ) -> HashMap<String, f64> {
         // Detect degenerate retrievers (all scores equal)
         let mut degenerate = Vec::new();
         for (engine, results) in ranked_lists {
@@ -88,7 +100,8 @@ impl ReciprocalRankFusion {
         }
 
         if !degenerate.is_empty() {
-            let mut adjusted: HashMap<String, f64> = self.weights
+            let mut adjusted: HashMap<String, f64> = self
+                .weights
                 .iter()
                 .map(|(e, w)| (e.clone(), if degenerate.contains(e) { 0.0 } else { *w }))
                 .collect();
@@ -129,8 +142,14 @@ mod tests {
     fn test_rrf_fusion() {
         let rrf = ReciprocalRankFusion::default();
         let mut lists = HashMap::new();
-        lists.insert("vector".into(), vec![make_result("a", 0.9), make_result("b", 0.7)]);
-        lists.insert("bm25".into(), vec![make_result("b", 0.8), make_result("c", 0.6)]);
+        lists.insert(
+            "vector".into(),
+            vec![make_result("a", 0.9), make_result("b", 0.7)],
+        );
+        lists.insert(
+            "bm25".into(),
+            vec![make_result("b", 0.8), make_result("c", 0.6)],
+        );
 
         let fused = rrf.fuse(&lists);
         assert!(!fused.is_empty());

@@ -24,7 +24,9 @@ pub struct ContextroServer {
 
 impl ContextroServer {
     pub fn new() -> Self {
-        Self { state: Arc::new(AppState::new()) }
+        Self {
+            state: Arc::new(AppState::new()),
+        }
     }
 
     fn dispatch(&self, name: &str, args: Value) -> CallToolResult {
@@ -36,36 +38,60 @@ impl ContextroServer {
             "status" => self.handle_status(),
             "health" => self.handle_health(),
             "index" => self.handle_index(&args),
-            "search" => contextro_tools::search::handle_search(&args, &s.bm25, &s.graph, &s.query_cache),
+            "search" => {
+                contextro_tools::search::handle_search(&args, &s.bm25, &s.graph, &s.query_cache)
+            }
             "find_symbol" => self.handle_find_symbol(&args),
-            "find_callers" => contextro_tools::graph_tools::handle_find_callers(&args, &s.graph, cb),
-            "find_callees" => contextro_tools::graph_tools::handle_find_callees(&args, &s.graph, cb),
+            "find_callers" => {
+                contextro_tools::graph_tools::handle_find_callers(&args, &s.graph, cb)
+            }
+            "find_callees" => {
+                contextro_tools::graph_tools::handle_find_callees(&args, &s.graph, cb)
+            }
             "explain" => contextro_tools::graph_tools::handle_explain(&args, &s.graph, cb),
             "impact" => contextro_tools::graph_tools::handle_impact(&args, &s.graph, cb),
-            "overview" => contextro_tools::analysis::handle_overview(&s.graph, cb, s.chunk_count.load(std::sync::atomic::Ordering::Relaxed)),
+            "overview" => contextro_tools::analysis::handle_overview(
+                &s.graph,
+                cb,
+                s.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
+            ),
             "architecture" => contextro_tools::analysis::handle_architecture(&s.graph, cb),
             "analyze" => contextro_tools::analysis::handle_analyze(&args, &s.graph, cb),
             "focus" => contextro_tools::analysis::handle_focus(&args, &s.graph, cb),
             "dead_code" => contextro_tools::analysis::handle_dead_code(&s.graph, cb),
-            "circular_dependencies" => contextro_tools::analysis::handle_circular_dependencies(&s.graph, cb),
-            "test_coverage_map" => contextro_tools::analysis::handle_test_coverage_map(&s.graph, cb),
+            "circular_dependencies" => {
+                contextro_tools::analysis::handle_circular_dependencies(&s.graph, cb)
+            }
+            "test_coverage_map" => {
+                contextro_tools::analysis::handle_test_coverage_map(&s.graph, cb)
+            }
             "remember" => contextro_tools::memory::handle_remember(&args, &s.memory_store),
             "recall" => contextro_tools::memory::handle_recall(&args, &s.memory_store),
             "forget" => contextro_tools::memory::handle_forget(&args, &s.memory_store),
             "knowledge" => contextro_tools::memory::handle_knowledge(&args, &s.knowledge),
             "compact" => contextro_tools::session::handle_compact(&args, &s.archive),
-            "session_snapshot" => contextro_tools::session::handle_session_snapshot(&s.session_tracker),
-            "restore" => contextro_tools::session::handle_restore(cb, s.graph.node_count(), s.graph.relationship_count()),
+            "session_snapshot" => {
+                contextro_tools::session::handle_session_snapshot(&s.session_tracker)
+            }
+            "restore" => contextro_tools::session::handle_restore(
+                cb,
+                s.graph.node_count(),
+                s.graph.relationship_count(),
+            ),
             "retrieve" => contextro_tools::session::handle_retrieve(&args, &s.sandbox),
             "commit_search" => contextro_tools::git_tools::handle_commit_search(&args, cb),
             "commit_history" => contextro_tools::git_tools::handle_commit_history(&args, cb),
             "repo_add" => contextro_tools::git_tools::handle_repo_add(&args, &s.repo_registry),
-            "repo_remove" => contextro_tools::git_tools::handle_repo_remove(&args, &s.repo_registry),
+            "repo_remove" => {
+                contextro_tools::git_tools::handle_repo_remove(&args, &s.repo_registry)
+            }
             "repo_status" => contextro_tools::git_tools::handle_repo_status(&s.repo_registry),
             "code" => contextro_tools::code::handle_code(&args, &s.graph, cb),
             "audit" => contextro_tools::artifacts::handle_audit(&s.graph, cb),
             "docs_bundle" => contextro_tools::artifacts::handle_docs_bundle(&args, &s.graph, cb),
-            "sidecar_export" => contextro_tools::artifacts::handle_sidecar_export(&args, &s.graph, cb),
+            "sidecar_export" => {
+                contextro_tools::artifacts::handle_sidecar_export(&args, &s.graph, cb)
+            }
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
             _ => json!({"error": format!("Unknown tool: {}", name)}),
@@ -121,7 +147,9 @@ impl ContextroServer {
 
                 let chunks = contextro_indexing::create_chunks(&symbols);
                 self.state.bm25.index_chunks(&chunks);
-                self.state.chunk_count.store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
+                self.state
+                    .chunk_count
+                    .store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
 
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(path.to_string());
@@ -171,55 +199,144 @@ impl ContextroServer {
             Arc::new(serde_json::from_str(schema_json).unwrap_or_default())
         };
 
-        let path_schema = mk(r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#);
-        let name_schema = mk(r#"{"type":"object","properties":{"name":{"type":"string"},"exact":{"type":"boolean"}},"required":["name"]}"#);
-        let sym_schema = mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string"}},"required":["symbol_name"]}"#);
-        let query_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"mode":{"type":"string"}},"required":["query"]}"#);
-        let impact_schema = mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string"},"max_depth":{"type":"integer"}},"required":["symbol_name"]}"#);
-        let code_schema = mk(r#"{"type":"object","properties":{"operation":{"type":"string"},"file_path":{"type":"string"},"symbol_name":{"type":"string"},"symbols":{"type":"string"},"pattern":{"type":"string"},"path":{"type":"string"}},"required":["operation"]}"#);
-        let mem_schema = mk(r#"{"type":"object","properties":{"content":{"type":"string"},"memory_type":{"type":"string"},"tags":{"type":"string"},"ttl":{"type":"string"}},"required":["content"]}"#);
-        let recall_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"memory_type":{"type":"string"},"tags":{"type":"string"}},"required":["query"]}"#);
-        let knowledge_schema = mk(r#"{"type":"object","properties":{"command":{"type":"string"},"name":{"type":"string"},"query":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"}},"required":["command"]}"#);
-        let ref_schema = mk(r#"{"type":"object","properties":{"ref_id":{"type":"string"}},"required":["ref_id"]}"#);
-        let commit_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"author":{"type":"string"}},"required":["query"]}"#);
+        let path_schema =
+            mk(r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#);
+        let name_schema = mk(
+            r#"{"type":"object","properties":{"name":{"type":"string"},"exact":{"type":"boolean"}},"required":["name"]}"#,
+        );
+        let sym_schema = mk(
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string"}},"required":["symbol_name"]}"#,
+        );
+        let query_schema = mk(
+            r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"mode":{"type":"string"}},"required":["query"]}"#,
+        );
+        let impact_schema = mk(
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string"},"max_depth":{"type":"integer"}},"required":["symbol_name"]}"#,
+        );
+        let code_schema = mk(
+            r#"{"type":"object","properties":{"operation":{"type":"string"},"file_path":{"type":"string"},"symbol_name":{"type":"string"},"symbols":{"type":"string"},"pattern":{"type":"string"},"path":{"type":"string"}},"required":["operation"]}"#,
+        );
+        let mem_schema = mk(
+            r#"{"type":"object","properties":{"content":{"type":"string"},"memory_type":{"type":"string"},"tags":{"type":"string"},"ttl":{"type":"string"}},"required":["content"]}"#,
+        );
+        let recall_schema = mk(
+            r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"memory_type":{"type":"string"},"tags":{"type":"string"}},"required":["query"]}"#,
+        );
+        let knowledge_schema = mk(
+            r#"{"type":"object","properties":{"command":{"type":"string"},"name":{"type":"string"},"query":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"}},"required":["command"]}"#,
+        );
+        let ref_schema = mk(
+            r#"{"type":"object","properties":{"ref_id":{"type":"string"}},"required":["ref_id"]}"#,
+        );
+        let commit_schema = mk(
+            r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"author":{"type":"string"}},"required":["query"]}"#,
+        );
         let hist_schema = mk(r#"{"type":"object","properties":{"limit":{"type":"integer"}}}"#);
 
         vec![
             Tool::new("status", "Get server status", empty.clone()),
             Tool::new("health", "Health check", empty.clone()),
             Tool::new("index", "Index a codebase", path_schema.clone()),
-            Tool::new("search", "Semantic + keyword + graph hybrid search", query_schema),
+            Tool::new(
+                "search",
+                "Semantic + keyword + graph hybrid search",
+                query_schema,
+            ),
             Tool::new("find_symbol", "Find a symbol definition", name_schema),
-            Tool::new("find_callers", "Who calls this function?", sym_schema.clone()),
-            Tool::new("find_callees", "What does this function call?", sym_schema.clone()),
+            Tool::new(
+                "find_callers",
+                "Who calls this function?",
+                sym_schema.clone(),
+            ),
+            Tool::new(
+                "find_callees",
+                "What does this function call?",
+                sym_schema.clone(),
+            ),
             Tool::new("explain", "Full symbol explanation", sym_schema.clone()),
             Tool::new("impact", "What breaks if I change this?", impact_schema),
             Tool::new("overview", "Project structure summary", empty.clone()),
-            Tool::new("architecture", "Layers, entry points, hub symbols", empty.clone()),
+            Tool::new(
+                "architecture",
+                "Layers, entry points, hub symbols",
+                empty.clone(),
+            ),
             Tool::new("analyze", "Code smells and complexity", path_schema.clone()),
-            Tool::new("focus", "Low-token context slice for a file", path_schema.clone()),
-            Tool::new("dead_code", "Entry-point reachability analysis", empty.clone()),
-            Tool::new("circular_dependencies", "SCC-based circular deps", empty.clone()),
-            Tool::new("test_coverage_map", "Static test coverage map", empty.clone()),
-            Tool::new("code", "AST operations: symbols, patterns, rewrites", code_schema),
+            Tool::new(
+                "focus",
+                "Low-token context slice for a file",
+                path_schema.clone(),
+            ),
+            Tool::new(
+                "dead_code",
+                "Entry-point reachability analysis",
+                empty.clone(),
+            ),
+            Tool::new(
+                "circular_dependencies",
+                "SCC-based circular deps",
+                empty.clone(),
+            ),
+            Tool::new(
+                "test_coverage_map",
+                "Static test coverage map",
+                empty.clone(),
+            ),
+            Tool::new(
+                "code",
+                "AST operations: symbols, patterns, rewrites",
+                code_schema,
+            ),
             Tool::new("remember", "Store a note or decision", mem_schema),
             Tool::new("recall", "Search memories by meaning", recall_schema),
-            Tool::new("forget", "Delete memories", mk(r#"{"type":"object","properties":{"memory_id":{"type":"string"},"tags":{"type":"string"},"memory_type":{"type":"string"}}}"#)),
+            Tool::new(
+                "forget",
+                "Delete memories",
+                mk(
+                    r#"{"type":"object","properties":{"memory_id":{"type":"string"},"tags":{"type":"string"},"memory_type":{"type":"string"}}}"#,
+                ),
+            ),
             Tool::new("knowledge", "Index and search docs/notes", knowledge_schema),
-            Tool::new("compact", "Archive session content", mk(r#"{"type":"object","properties":{"content":{"type":"string"}},"required":["content"]}"#)),
-            Tool::new("session_snapshot", "Recover state after compaction", empty.clone()),
+            Tool::new(
+                "compact",
+                "Archive session content",
+                mk(
+                    r#"{"type":"object","properties":{"content":{"type":"string"}},"required":["content"]}"#,
+                ),
+            ),
+            Tool::new(
+                "session_snapshot",
+                "Recover state after compaction",
+                empty.clone(),
+            ),
             Tool::new("restore", "Project re-entry summary", empty.clone()),
             Tool::new("retrieve", "Fetch sandboxed large output", ref_schema),
-            Tool::new("commit_search", "Semantic search over git history", commit_schema),
+            Tool::new(
+                "commit_search",
+                "Semantic search over git history",
+                commit_schema,
+            ),
             Tool::new("commit_history", "Browse recent commits", hist_schema),
             Tool::new("repo_add", "Register another repo", path_schema.clone()),
             Tool::new("repo_remove", "Unregister a repo", path_schema),
             Tool::new("repo_status", "View all repos", empty.clone()),
             Tool::new("audit", "Packaged audit report", empty.clone()),
-            Tool::new("docs_bundle", "Generate docs bundle", mk(r#"{"type":"object","properties":{"output_dir":{"type":"string"}}}"#)),
-            Tool::new("sidecar_export", "Generate .graph.* sidecars", mk(r#"{"type":"object","properties":{"path":{"type":"string"}}}"#)),
+            Tool::new(
+                "docs_bundle",
+                "Generate docs bundle",
+                mk(r#"{"type":"object","properties":{"output_dir":{"type":"string"}}}"#),
+            ),
+            Tool::new(
+                "sidecar_export",
+                "Generate .graph.* sidecars",
+                mk(r#"{"type":"object","properties":{"path":{"type":"string"}}}"#),
+            ),
             Tool::new("skill_prompt", "Print agent bootstrap block", empty.clone()),
-            Tool::new("introspect", "Look up Contextro docs", mk(r#"{"type":"object","properties":{"query":{"type":"string"}}}"#)),
+            Tool::new(
+                "introspect",
+                "Look up Contextro docs",
+                mk(r#"{"type":"object","properties":{"query":{"type":"string"}}}"#),
+            ),
         ]
     }
 }
@@ -242,7 +359,10 @@ impl ServerHandler for ContextroServer {
         _request: PaginatedRequestParam,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        std::future::ready(Ok(ListToolsResult { tools: Self::tool_definitions(), next_cursor: None }))
+        std::future::ready(Ok(ListToolsResult {
+            tools: Self::tool_definitions(),
+            next_cursor: None,
+        }))
     }
 
     fn call_tool(
@@ -259,12 +379,18 @@ impl ServerHandler for ContextroServer {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();
 
-    info!("Starting Contextro MCP server v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting Contextro MCP server v{}",
+        env!("CARGO_PKG_VERSION")
+    );
 
     update_check::spawn();
 
@@ -281,7 +407,10 @@ async fn main() -> Result<()> {
             http::serve_http(server, &host, port).await?;
         }
         _ => {
-            let service = server.serve(rmcp::transport::stdio()).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            let service = server
+                .serve(rmcp::transport::stdio())
+                .await
+                .map_err(|e| anyhow::anyhow!("{:?}", e))?;
             service.waiting().await?;
         }
     }

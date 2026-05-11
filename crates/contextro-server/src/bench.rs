@@ -23,9 +23,18 @@ fn main() {
     let idx_time = start.elapsed();
 
     println!("║  INDEXING                                                    ║");
-    println!("║  Files: {:>5}  Symbols: {:>6}  Chunks: {:>6}               ║", result.total_files, result.total_symbols, result.total_chunks);
-    println!("║  Time: {:>8.2}ms                                            ║", idx_time.as_secs_f64() * 1000.0);
-    println!("║  Symbols/sec: {:>10.0}                                      ║", result.total_symbols as f64 / idx_time.as_secs_f64());
+    println!(
+        "║  Files: {:>5}  Symbols: {:>6}  Chunks: {:>6}               ║",
+        result.total_files, result.total_symbols, result.total_chunks
+    );
+    println!(
+        "║  Time: {:>8.2}ms                                            ║",
+        idx_time.as_secs_f64() * 1000.0
+    );
+    println!(
+        "║  Symbols/sec: {:>10.0}                                      ║",
+        result.total_symbols as f64 / idx_time.as_secs_f64()
+    );
 
     // ═══ BM25 INDEX BUILD ═══
     let chunks = contextro_indexing::create_chunks(&symbols);
@@ -33,7 +42,11 @@ fn main() {
     let bm25_start = Instant::now();
     bm25.index_chunks(&chunks);
     let bm25_idx_time = bm25_start.elapsed();
-    println!("║  BM25 index: {:>6.1}ms ({} chunks)                          ║", bm25_idx_time.as_secs_f64() * 1000.0, chunks.len());
+    println!(
+        "║  BM25 index: {:>6.1}ms ({} chunks)                          ║",
+        bm25_idx_time.as_secs_f64() * 1000.0,
+        chunks.len()
+    );
 
     // ═══ GRAPH BUILD ═══
     let graph = contextro_engines::graph::CodeGraph::new();
@@ -43,13 +56,19 @@ fn main() {
         let node_id = format!("n{}", i);
         known.insert(sym.name.clone(), node_id.clone());
         graph.add_node(contextro_core::UniversalNode {
-            id: node_id, name: sym.name.clone(),
+            id: node_id,
+            name: sym.name.clone(),
             node_type: contextro_core::NodeType::Function,
             location: contextro_core::UniversalLocation {
-                file_path: sym.filepath.clone(), start_line: sym.line_start, end_line: sym.line_end,
-                start_column: 0, end_column: 0, language: sym.language.clone(),
+                file_path: sym.filepath.clone(),
+                start_line: sym.line_start,
+                end_line: sym.line_end,
+                start_column: 0,
+                end_column: 0,
+                language: sym.language.clone(),
             },
-            language: sym.language.clone(), line_count: sym.line_count(),
+            language: sym.language.clone(),
+            line_count: sym.line_count(),
             ..Default::default()
         });
     }
@@ -60,8 +79,11 @@ fn main() {
                 if let Some(tid) = known.get(call) {
                     if cid != tid {
                         graph.add_relationship(contextro_core::UniversalRelationship {
-                            id: format!("r{}", rc), source_id: cid.clone(), target_id: tid.clone(),
-                            relationship_type: contextro_core::RelationshipType::Calls, strength: 1.0,
+                            id: format!("r{}", rc),
+                            source_id: cid.clone(),
+                            target_id: tid.clone(),
+                            relationship_type: contextro_core::RelationshipType::Calls,
+                            strength: 1.0,
                         });
                         rc += 1;
                     }
@@ -70,7 +92,12 @@ fn main() {
         }
     }
     let graph_time = graph_start.elapsed();
-    println!("║  Graph: {:>5} nodes, {:>5} edges ({:.1}ms)                  ║", graph.node_count(), graph.relationship_count(), graph_time.as_secs_f64() * 1000.0);
+    println!(
+        "║  Graph: {:>5} nodes, {:>5} edges ({:.1}ms)                  ║",
+        graph.node_count(),
+        graph.relationship_count(),
+        graph_time.as_secs_f64() * 1000.0
+    );
 
     // ═══ SEARCH LATENCY ═══
     println!("╠══════════════════════════════════════════════════════════════╣");
@@ -84,7 +111,9 @@ fn main() {
     ];
 
     // Warm up
-    for (_, q) in queries { bm25.search(q, 10); }
+    for (_, q) in queries {
+        bm25.search(q, 10);
+    }
 
     for (name, query) in queries {
         let mut times = Vec::with_capacity(1000);
@@ -94,10 +123,17 @@ fn main() {
             times.push(start.elapsed());
         }
         times.sort();
-        let avg_us = times.iter().map(|t| t.as_nanos() as f64 / 1000.0).sum::<f64>() / times.len() as f64;
+        let avg_us = times
+            .iter()
+            .map(|t| t.as_nanos() as f64 / 1000.0)
+            .sum::<f64>()
+            / times.len() as f64;
         let p50 = times[500].as_nanos() as f64 / 1000.0;
         let p99 = times[990].as_nanos() as f64 / 1000.0;
-        println!("║  {:15} avg:{:>7.1}µs  p50:{:>6.1}µs  p99:{:>7.1}µs  ║", name, avg_us, p50, p99);
+        println!(
+            "║  {:15} avg:{:>7.1}µs  p50:{:>6.1}µs  p99:{:>7.1}µs  ║",
+            name, avg_us, p50, p99
+        );
     }
 
     // ═══ GRAPH OPERATIONS ═══
@@ -105,16 +141,32 @@ fn main() {
     println!("║  GRAPH OPERATIONS (100k iterations each)                    ║");
 
     let graph_ops: Vec<(&str, Box<dyn Fn() -> usize>)> = vec![
-        ("find_exact", Box::new(|| graph.find_nodes_by_name("create_user", true).len())),
-        ("find_fuzzy", Box::new(|| graph.find_nodes_by_name("auth", false).len())),
-        ("get_callers", Box::new(|| {
-            let m = graph.find_nodes_by_name("create_user", true);
-            m.first().map(|n| graph.get_callers(&n.id).len()).unwrap_or(0)
-        })),
-        ("get_callees", Box::new(|| {
-            let m = graph.find_nodes_by_name("create_user", true);
-            m.first().map(|n| graph.get_callees(&n.id).len()).unwrap_or(0)
-        })),
+        (
+            "find_exact",
+            Box::new(|| graph.find_nodes_by_name("create_user", true).len()),
+        ),
+        (
+            "find_fuzzy",
+            Box::new(|| graph.find_nodes_by_name("auth", false).len()),
+        ),
+        (
+            "get_callers",
+            Box::new(|| {
+                let m = graph.find_nodes_by_name("create_user", true);
+                m.first()
+                    .map(|n| graph.get_callers(&n.id).len())
+                    .unwrap_or(0)
+            }),
+        ),
+        (
+            "get_callees",
+            Box::new(|| {
+                let m = graph.find_nodes_by_name("create_user", true);
+                m.first()
+                    .map(|n| graph.get_callees(&n.id).len())
+                    .unwrap_or(0)
+            }),
+        ),
     ];
 
     for (name, op) in &graph_ops {
@@ -127,7 +179,10 @@ fn main() {
         times.sort();
         let avg_ns = times.iter().map(|t| t.as_nanos() as f64).sum::<f64>() / times.len() as f64;
         let p50 = times[50_000].as_nanos() as f64;
-        println!("║  {:15} avg:{:>7.0}ns  p50:{:>6.0}ns                    ║", name, avg_ns, p50);
+        println!(
+            "║  {:15} avg:{:>7.0}ns  p50:{:>6.0}ns                    ║",
+            name, avg_ns, p50
+        );
     }
 
     // ═══ CACHE OPERATIONS ═══
@@ -148,9 +203,16 @@ fn main() {
         cache_times.push(start.elapsed());
     }
     cache_times.sort();
-    let cache_avg = cache_times.iter().map(|t| t.as_nanos() as f64 / 1000.0).sum::<f64>() / cache_times.len() as f64;
+    let cache_avg = cache_times
+        .iter()
+        .map(|t| t.as_nanos() as f64 / 1000.0)
+        .sum::<f64>()
+        / cache_times.len() as f64;
     let cache_p50 = cache_times[50_000].as_nanos() as f64 / 1000.0;
-    println!("║  cache_hit       avg:{:>7.2}µs  p50:{:>6.2}µs                ║", cache_avg, cache_p50);
+    println!(
+        "║  cache_hit       avg:{:>7.2}µs  p50:{:>6.2}µs                ║",
+        cache_avg, cache_p50
+    );
 
     // ═══ THROUGHPUT ═══
     println!("╠══════════════════════════════════════════════════════════════╣");
@@ -171,7 +233,12 @@ fn main() {
     }
     let throughput_time = throughput_start.elapsed();
     let ops_per_sec = ops_count as f64 / throughput_time.as_secs_f64();
-    println!("║  {:>10.0} ops/sec ({} ops in {:.1}s)                    ║", ops_per_sec, ops_count, throughput_time.as_secs_f64());
+    println!(
+        "║  {:>10.0} ops/sec ({} ops in {:.1}s)                    ║",
+        ops_per_sec,
+        ops_count,
+        throughput_time.as_secs_f64()
+    );
 
     // ═══ SUMMARY ═══
     println!("╠══════════════════════════════════════════════════════════════╣");
@@ -180,16 +247,45 @@ fn main() {
     println!("║  Metric          │ Target    │ Actual    │ Status           ║");
     println!("╟──────────────────┼───────────┼───────────┼──────────────────╢");
     let idx_ms = idx_time.as_secs_f64() * 1000.0;
-    let idx_status = if idx_ms <= 5.5 { "✓ PASS" } else { "✗ NEEDS WORK" };
-    println!("║  Index time      │ ≤5.5ms    │ {:>6.1}ms  │ {:16}║", idx_ms, idx_status);
-    let search_avg = queries.iter().map(|(_, q)| {
-        let mut t = Vec::new();
-        for _ in 0..100 { let s = Instant::now(); bm25.search(q, 10); t.push(s.elapsed()); }
-        t.iter().map(|x| x.as_nanos() as f64 / 1000.0).sum::<f64>() / t.len() as f64
-    }).sum::<f64>() / queries.len() as f64;
-    let search_status = if search_avg <= 137.0 { "✓ PASS" } else { "✗ NEEDS WORK" };
-    println!("║  Search latency  │ ≤137µs    │ {:>6.1}µs  │ {:16}║", search_avg, search_status);
-    let tp_status = if ops_per_sec >= 7281.0 { "✓ PASS" } else { "✗ NEEDS WORK" };
-    println!("║  Throughput      │ ≥7281/s   │ {:>7.0}/s │ {:16}║", ops_per_sec, tp_status);
+    let idx_status = if idx_ms <= 5.5 {
+        "✓ PASS"
+    } else {
+        "✗ NEEDS WORK"
+    };
+    println!(
+        "║  Index time      │ ≤5.5ms    │ {:>6.1}ms  │ {:16}║",
+        idx_ms, idx_status
+    );
+    let search_avg = queries
+        .iter()
+        .map(|(_, q)| {
+            let mut t = Vec::new();
+            for _ in 0..100 {
+                let s = Instant::now();
+                bm25.search(q, 10);
+                t.push(s.elapsed());
+            }
+            t.iter().map(|x| x.as_nanos() as f64 / 1000.0).sum::<f64>() / t.len() as f64
+        })
+        .sum::<f64>()
+        / queries.len() as f64;
+    let search_status = if search_avg <= 137.0 {
+        "✓ PASS"
+    } else {
+        "✗ NEEDS WORK"
+    };
+    println!(
+        "║  Search latency  │ ≤137µs    │ {:>6.1}µs  │ {:16}║",
+        search_avg, search_status
+    );
+    let tp_status = if ops_per_sec >= 7281.0 {
+        "✓ PASS"
+    } else {
+        "✗ NEEDS WORK"
+    };
+    println!(
+        "║  Throughput      │ ≥7281/s   │ {:>7.0}/s │ {:16}║",
+        ops_per_sec, tp_status
+    );
     println!("╚══════════════════════════════════════════════════════════════╝");
 }

@@ -6,8 +6,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
-const API_URL: &str =
-    "https://api.github.com/repos/distillation-labs/contextro/releases/latest";
+const API_URL: &str = "https://api.github.com/repos/distillation-labs/contextro/releases/latest";
 /// Cache file lives next to the index store; checked at most once per day.
 const CACHE_TTL_SECS: u64 = 86_400;
 
@@ -57,14 +56,13 @@ async fn fetch_latest() -> Option<String> {
 }
 
 fn cache_path() -> std::path::PathBuf {
-    let base = std::env::var("CTX_STORAGE_DIR")
-        .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join(".contextro")
-                .to_string_lossy()
-                .into_owned()
-        });
+    let base = std::env::var("CTX_STORAGE_DIR").unwrap_or_else(|_| {
+        dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".contextro")
+            .to_string_lossy()
+            .into_owned()
+    });
     std::path::Path::new(&base).join(".update_check")
 }
 

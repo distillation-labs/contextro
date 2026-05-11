@@ -21,7 +21,11 @@ pub fn classify_query(query: &str) -> QueryType {
         return QueryType::Symbol;
     }
     // Multi-word natural language
-    if words.len() >= 5 && !words.iter().any(|w| w.contains('_') || w.chars().any(|c| c.is_uppercase())) {
+    if words.len() >= 5
+        && !words
+            .iter()
+            .any(|w| w.contains('_') || w.chars().any(|c| c.is_uppercase()))
+    {
         return QueryType::Natural;
     }
     QueryType::Hybrid
@@ -110,7 +114,12 @@ pub fn execute_search(
     let confidence = calculate_confidence(&results);
     let total = results.len();
 
-    let response = SearchResponse { query: options.query.clone(), results, confidence, total };
+    let response = SearchResponse {
+        query: options.query.clone(),
+        results,
+        confidence,
+        total,
+    };
 
     // Cache the response
     if let Ok(val) = serde_json::to_value(&response) {
@@ -122,9 +131,7 @@ pub fn execute_search(
 
 /// Graph-based relevance search using node centrality.
 fn graph_relevance_search(graph: &CodeGraph, query: &str, limit: usize) -> Vec<SearchResult> {
-    let tokens: Vec<&str> = query.split_whitespace()
-        .filter(|t| t.len() >= 2)
-        .collect();
+    let tokens: Vec<&str> = query.split_whitespace().filter(|t| t.len() >= 2).collect();
 
     if tokens.is_empty() {
         return vec![];
@@ -149,7 +156,8 @@ fn graph_relevance_search(graph: &CodeGraph, query: &str, limit: usize) -> Vec<S
 
     let max_score = candidates.first().map(|(_, s)| *s).unwrap_or(1.0).max(1.0);
 
-    candidates.into_iter()
+    candidates
+        .into_iter()
         .take(limit)
         .map(|(node, score)| SearchResult {
             id: node.id.clone(),
@@ -176,7 +184,11 @@ fn apply_diversity_penalty(results: &mut Vec<SearchResult>) {
             r.score *= 0.7; // Penalize 3rd+ result from same file
         }
     }
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 fn calculate_confidence(results: &[SearchResult]) -> String {

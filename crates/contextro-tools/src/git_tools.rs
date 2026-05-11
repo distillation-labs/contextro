@@ -13,11 +13,19 @@ pub struct RepoRegistry {
 
 impl RepoRegistry {
     pub fn new() -> Self {
-        Self { repos: RwLock::new(HashMap::new()) }
+        Self {
+            repos: RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn add(&self, path: &str, name: Option<&str>) -> bool {
-        let n = name.unwrap_or_else(|| Path::new(path).file_name().unwrap_or_default().to_str().unwrap_or("repo"));
+        let n = name.unwrap_or_else(|| {
+            Path::new(path)
+                .file_name()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or("repo")
+        });
         self.repos.write().insert(path.to_string(), n.to_string());
         true
     }
@@ -27,7 +35,11 @@ impl RepoRegistry {
     }
 
     pub fn list(&self) -> Vec<(String, String)> {
-        self.repos.read().iter().map(|(p, n)| (p.clone(), n.clone())).collect()
+        self.repos
+            .read()
+            .iter()
+            .map(|(p, n)| (p.clone(), n.clone()))
+            .collect()
     }
 }
 
@@ -113,12 +125,15 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
             let msg_tokens = tokenize(&msg);
             let score = token_overlap_score(&query_tokens, &msg_tokens);
             if score > 0.0 {
-                Some((score, json!({
-                    "hash": oid.to_string()[..12].to_string(),
-                    "message": msg.lines().next().unwrap_or("").to_string(),
-                    "author": author,
-                    "score": (score * 100.0).round() / 100.0,
-                })))
+                Some((
+                    score,
+                    json!({
+                        "hash": oid.to_string()[..12].to_string(),
+                        "message": msg.lines().next().unwrap_or("").to_string(),
+                        "author": author,
+                        "score": (score * 100.0).round() / 100.0,
+                    }),
+                ))
             } else {
                 None
             }
@@ -155,10 +170,14 @@ pub fn handle_repo_remove(args: &Value, registry: &RepoRegistry) -> Value {
 }
 
 pub fn handle_repo_status(registry: &RepoRegistry) -> Value {
-    let repos: Vec<Value> = registry.list().iter().map(|(path, name)| {
-        let is_git = git2::Repository::discover(path).is_ok();
-        json!({"path": path, "name": name, "is_git": is_git})
-    }).collect();
+    let repos: Vec<Value> = registry
+        .list()
+        .iter()
+        .map(|(path, name)| {
+            let is_git = git2::Repository::discover(path).is_ok();
+            json!({"path": path, "name": name, "is_git": is_git})
+        })
+        .collect();
     json!({"repos": repos, "total": repos.len()})
 }
 
@@ -176,8 +195,13 @@ fn token_overlap_score(query_tokens: &[String], doc_tokens: &[String]) -> f64 {
     if query_tokens.is_empty() || doc_tokens.is_empty() {
         return 0.0;
     }
-    let matches = query_tokens.iter().filter(|qt| {
-        doc_tokens.iter().any(|dt| dt.contains(qt.as_str()) || qt.contains(dt.as_str()))
-    }).count();
+    let matches = query_tokens
+        .iter()
+        .filter(|qt| {
+            doc_tokens
+                .iter()
+                .any(|dt| dt.contains(qt.as_str()) || qt.contains(dt.as_str()))
+        })
+        .count();
     matches as f64 / query_tokens.len() as f64
 }

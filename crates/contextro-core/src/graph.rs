@@ -186,19 +186,37 @@ impl UniversalGraph {
 
     pub fn add_node(&mut self, node: UniversalNode) {
         let id = node.id.clone();
-        self.nodes_by_type.entry(node.node_type).or_default().insert(id.clone());
+        self.nodes_by_type
+            .entry(node.node_type)
+            .or_default()
+            .insert(id.clone());
         if !node.language.is_empty() {
-            self.nodes_by_language.entry(node.language.clone()).or_default().insert(id.clone());
+            self.nodes_by_language
+                .entry(node.language.clone())
+                .or_default()
+                .insert(id.clone());
         }
-        self.nodes_by_file.entry(node.location.file_path.clone()).or_default().insert(id.clone());
-        self.nodes_by_name.entry(node.name.to_lowercase()).or_default().insert(id.clone());
+        self.nodes_by_file
+            .entry(node.location.file_path.clone())
+            .or_default()
+            .insert(id.clone());
+        self.nodes_by_name
+            .entry(node.name.to_lowercase())
+            .or_default()
+            .insert(id.clone());
         self.nodes.insert(id, node);
     }
 
     pub fn add_relationship(&mut self, rel: UniversalRelationship) {
         let id = rel.id.clone();
-        self.rels_from.entry(rel.source_id.clone()).or_default().insert(id.clone());
-        self.rels_to.entry(rel.target_id.clone()).or_default().insert(id.clone());
+        self.rels_from
+            .entry(rel.source_id.clone())
+            .or_default()
+            .insert(id.clone());
+        self.rels_to
+            .entry(rel.target_id.clone())
+            .or_default()
+            .insert(id.clone());
         self.relationships.insert(id, rel);
     }
 
@@ -238,14 +256,22 @@ impl UniversalGraph {
     pub fn get_relationships_from(&self, node_id: &str) -> Vec<&UniversalRelationship> {
         self.rels_from
             .get(node_id)
-            .map(|ids| ids.iter().filter_map(|id| self.relationships.get(id)).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.relationships.get(id))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
     pub fn get_relationships_to(&self, node_id: &str) -> Vec<&UniversalRelationship> {
         self.rels_to
             .get(node_id)
-            .map(|ids| ids.iter().filter_map(|id| self.relationships.get(id)).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.relationships.get(id))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -265,7 +291,11 @@ impl UniversalGraph {
                 if let Some(set) = self.nodes_by_language.get_mut(&node.language) {
                     set.remove(id);
                 }
-                self.nodes_by_name.entry(node.name.to_lowercase()).and_modify(|s| { s.remove(id); });
+                self.nodes_by_name
+                    .entry(node.name.to_lowercase())
+                    .and_modify(|s| {
+                        s.remove(id);
+                    });
             }
 
             // Remove relationships involving this node

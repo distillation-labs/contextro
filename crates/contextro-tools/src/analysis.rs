@@ -3,8 +3,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use contextro_engines::graph::CodeGraph;
 use contextro_core::NodeType;
+use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
 pub fn handle_overview(graph: &CodeGraph, codebase: Option<&str>, total_chunks: usize) -> Value {
@@ -20,16 +20,23 @@ pub fn handle_overview(graph: &CodeGraph, codebase: Option<&str>, total_chunks: 
 
 pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
-    let mut scored: Vec<(String, String, usize)> = nodes.iter().map(|n| {
-        let (in_d, out_d) = graph.get_node_degree(&n.id);
-        (n.name.clone(), n.location.file_path.clone(), in_d + out_d)
-    }).collect();
+    let mut scored: Vec<(String, String, usize)> = nodes
+        .iter()
+        .map(|n| {
+            let (in_d, out_d) = graph.get_node_degree(&n.id);
+            (n.name.clone(), n.location.file_path.clone(), in_d + out_d)
+        })
+        .collect();
     scored.sort_by(|a, b| b.2.cmp(&a.2));
 
-    let hubs: Vec<Value> = scored.iter().take(10).map(|(name, file, degree)| {
-        let fp = strip_base(file, codebase);
-        json!({"name": name, "file": fp, "degree": degree})
-    }).collect();
+    let hubs: Vec<Value> = scored
+        .iter()
+        .take(10)
+        .map(|(name, file, degree)| {
+            let fp = strip_base(file, codebase);
+            json!({"name": name, "file": fp, "degree": degree})
+        })
+        .collect();
 
     json!({"hub_symbols": hubs, "total_nodes": graph.node_count(), "total_edges": graph.relationship_count()})
 }
@@ -41,7 +48,9 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
     let mut file_sizes: HashMap<String, usize> = HashMap::new();
 
     for node in &nodes {
-        *file_sizes.entry(node.location.file_path.clone()).or_default() += 1;
+        *file_sizes
+            .entry(node.location.file_path.clone())
+            .or_default() += 1;
         let (in_d, out_d) = graph.get_node_degree(&node.id);
         if in_d + out_d > 5 {
             complex_fns.push(json!({"name": node.name, "file": strip_base(&node.location.file_path, codebase), "connections": in_d + out_d}));
@@ -50,7 +59,8 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
     complex_fns.sort_by(|a, b| b["connections"].as_u64().cmp(&a["connections"].as_u64()));
     complex_fns.truncate(10);
 
-    let mut large_files: Vec<Value> = file_sizes.iter()
+    let mut large_files: Vec<Value> = file_sizes
+        .iter()
         .filter(|(_, count)| **count > 10)
         .map(|(file, count)| json!({"file": strip_base(file, codebase), "symbols": count}))
         .collect();
@@ -69,7 +79,9 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
     let abs_path = if Path::new(path).is_absolute() {
         path.to_string()
     } else {
-        codebase.map(|b| format!("{}/{}", b, path)).unwrap_or_else(|| path.to_string())
+        codebase
+            .map(|b| format!("{}/{}", b, path))
+            .unwrap_or_else(|| path.to_string())
     };
 
     // Find symbols in this file from the graph
@@ -142,7 +154,8 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
             let callee_nodes = graph.find_nodes_by_name(&callee.name, true);
             for cn in &callee_nodes {
                 if cn.location.file_path != node.location.file_path {
-                    file_deps.entry(node.location.file_path.clone())
+                    file_deps
+                        .entry(node.location.file_path.clone())
                         .or_default()
                         .insert(cn.location.file_path.clone());
                 }
@@ -154,7 +167,8 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
     let files: Vec<String> = file_deps.keys().cloned().collect();
     let sccs = tarjan_scc(&files, &file_deps);
 
-    let cycles: Vec<Value> = sccs.iter()
+    let cycles: Vec<Value> = sccs
+        .iter()
         .filter(|scc| scc.len() > 1)
         .map(|scc| {
             let files: Vec<String> = scc.iter().map(|f| strip_base(f, codebase)).collect();
@@ -173,8 +187,15 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
 
     for node in &nodes {
         let fp = &node.location.file_path;
-        let basename = Path::new(fp).file_name().unwrap_or_default().to_string_lossy();
-        if basename.starts_with("test_") || basename.ends_with("_test.rs") || fp.contains("/tests/") || fp.contains("/test/") {
+        let basename = Path::new(fp)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
+        if basename.starts_with("test_")
+            || basename.ends_with("_test.rs")
+            || fp.contains("/tests/")
+            || fp.contains("/test/")
+        {
             test_files.insert(fp.clone());
         } else {
             source_files.insert(fp.clone());
@@ -186,9 +207,15 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
     let mut uncovered: Vec<String> = Vec::new();
 
     for src in &source_files {
-        let src_stem = Path::new(src).file_stem().unwrap_or_default().to_string_lossy();
+        let src_stem = Path::new(src)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy();
         let has_test = test_files.iter().any(|t| {
-            let t_stem = Path::new(t).file_stem().unwrap_or_default().to_string_lossy();
+            let t_stem = Path::new(t)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy();
             t_stem == format!("test_{}", src_stem) || t_stem == format!("{}_test", src_stem)
         });
         if has_test {
@@ -198,7 +225,11 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
         }
     }
 
-    let coverage_pct = if source_files.is_empty() { 0.0 } else { covered.len() as f64 / source_files.len() as f64 * 100.0 };
+    let coverage_pct = if source_files.is_empty() {
+        0.0
+    } else {
+        covered.len() as f64 / source_files.len() as f64 * 100.0
+    };
 
     json!({
         "coverage_percent": (coverage_pct * 10.0).round() / 10.0,
@@ -228,9 +259,13 @@ fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec
     let mut result: Vec<Vec<String>> = Vec::new();
 
     fn strongconnect(
-        v: &str, nodes_edges: &HashMap<String, HashSet<String>>,
-        index_counter: &mut u32, stack: &mut Vec<String>, on_stack: &mut HashSet<String>,
-        indices: &mut HashMap<String, u32>, lowlinks: &mut HashMap<String, u32>,
+        v: &str,
+        nodes_edges: &HashMap<String, HashSet<String>>,
+        index_counter: &mut u32,
+        stack: &mut Vec<String>,
+        on_stack: &mut HashSet<String>,
+        indices: &mut HashMap<String, u32>,
+        lowlinks: &mut HashMap<String, u32>,
         result: &mut Vec<Vec<String>>,
     ) {
         indices.insert(v.to_string(), *index_counter);
@@ -242,14 +277,27 @@ fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec
         if let Some(neighbors) = nodes_edges.get(v) {
             for w in neighbors {
                 if !indices.contains_key(w.as_str()) {
-                    strongconnect(w, nodes_edges, index_counter, stack, on_stack, indices, lowlinks, result);
+                    strongconnect(
+                        w,
+                        nodes_edges,
+                        index_counter,
+                        stack,
+                        on_stack,
+                        indices,
+                        lowlinks,
+                        result,
+                    );
                     let wl = *lowlinks.get(w.as_str()).unwrap_or(&0);
                     let vl = lowlinks.get_mut(v).unwrap();
-                    if wl < *vl { *vl = wl; }
+                    if wl < *vl {
+                        *vl = wl;
+                    }
                 } else if on_stack.contains(w.as_str()) {
                     let wi = *indices.get(w.as_str()).unwrap_or(&0);
                     let vl = lowlinks.get_mut(v).unwrap();
-                    if wi < *vl { *vl = wi; }
+                    if wi < *vl {
+                        *vl = wi;
+                    }
                 }
             }
         }
@@ -260,7 +308,9 @@ fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec
                 let w = stack.pop().unwrap();
                 on_stack.remove(&w);
                 scc.push(w.clone());
-                if w == v { break; }
+                if w == v {
+                    break;
+                }
             }
             result.push(scc);
         }
@@ -268,7 +318,16 @@ fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec
 
     for node in nodes {
         if !indices.contains_key(node.as_str()) {
-            strongconnect(node, edges, &mut index_counter, &mut stack, &mut on_stack, &mut indices, &mut lowlinks, &mut result);
+            strongconnect(
+                node,
+                edges,
+                &mut index_counter,
+                &mut stack,
+                &mut on_stack,
+                &mut indices,
+                &mut lowlinks,
+                &mut result,
+            );
         }
     }
     result

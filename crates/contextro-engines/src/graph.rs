@@ -15,12 +15,12 @@ struct GraphInner {
     nodes: HashMap<String, UniversalNode>,
     relationships: HashMap<String, UniversalRelationship>,
     // Pre-indexed for O(1) traversal
-    callers: HashMap<String, Vec<String>>,   // target_id → [caller_node_ids]
-    callees: HashMap<String, Vec<String>>,   // source_id → [callee_node_ids]
-    nodes_by_name: HashMap<String, Vec<String>>,  // lowercase name → [node_ids]
+    callers: HashMap<String, Vec<String>>, // target_id → [caller_node_ids]
+    callees: HashMap<String, Vec<String>>, // source_id → [callee_node_ids]
+    nodes_by_name: HashMap<String, Vec<String>>, // lowercase name → [node_ids]
     nodes_by_file: HashMap<String, Vec<String>>,
     // Token-based inverted index for fast fuzzy search
-    token_index: HashMap<String, Vec<String>>,    // token → [node_ids]
+    token_index: HashMap<String, Vec<String>>, // token → [node_ids]
 }
 
 impl CodeGraph {
@@ -43,11 +43,23 @@ impl CodeGraph {
         if inner.nodes.contains_key(&node.id) {
             return;
         }
-        inner.nodes_by_name.entry(node.name.to_lowercase()).or_default().push(node.id.clone());
-        inner.nodes_by_file.entry(node.location.file_path.clone()).or_default().push(node.id.clone());
+        inner
+            .nodes_by_name
+            .entry(node.name.to_lowercase())
+            .or_default()
+            .push(node.id.clone());
+        inner
+            .nodes_by_file
+            .entry(node.location.file_path.clone())
+            .or_default()
+            .push(node.id.clone());
         // Index name tokens for fuzzy search
         for token in tokenize_name(&node.name) {
-            inner.token_index.entry(token).or_default().push(node.id.clone());
+            inner
+                .token_index
+                .entry(token)
+                .or_default()
+                .push(node.id.clone());
         }
         inner.nodes.insert(node.id.clone(), node);
     }
@@ -58,8 +70,16 @@ impl CodeGraph {
             return;
         }
         if rel.relationship_type == RelationshipType::Calls {
-            inner.callers.entry(rel.target_id.clone()).or_default().push(rel.source_id.clone());
-            inner.callees.entry(rel.source_id.clone()).or_default().push(rel.target_id.clone());
+            inner
+                .callers
+                .entry(rel.target_id.clone())
+                .or_default()
+                .push(rel.source_id.clone());
+            inner
+                .callees
+                .entry(rel.source_id.clone())
+                .or_default()
+                .push(rel.target_id.clone());
         }
         inner.relationships.insert(rel.id.clone(), rel);
     }
@@ -68,9 +88,14 @@ impl CodeGraph {
     pub fn find_nodes_by_name(&self, name: &str, exact: bool) -> Vec<UniversalNode> {
         let inner = self.inner.read();
         if exact {
-            inner.nodes_by_name
+            inner
+                .nodes_by_name
                 .get(&name.to_lowercase())
-                .map(|ids| ids.iter().filter_map(|id| inner.nodes.get(id).cloned()).collect())
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(|id| inner.nodes.get(id).cloned())
+                        .collect()
+                })
                 .unwrap_or_default()
         } else {
             if name.is_empty() {
@@ -81,7 +106,9 @@ impl CodeGraph {
             if query_tokens.is_empty() {
                 // Fallback to substring for very short queries
                 let lower = name.to_lowercase();
-                return inner.nodes.values()
+                return inner
+                    .nodes
+                    .values()
                     .filter(|n| n.name.to_lowercase().contains(&lower))
                     .cloned()
                     .collect();
@@ -90,7 +117,8 @@ impl CodeGraph {
             // Intersect token matches — nodes that match ALL query tokens
             let mut candidate_ids: Option<HashSet<&String>> = None;
             for token in &query_tokens {
-                let matching: HashSet<&String> = inner.token_index
+                let matching: HashSet<&String> = inner
+                    .token_index
                     .get(token)
                     .map(|ids| ids.iter().collect())
                     .unwrap_or_default();
@@ -102,7 +130,10 @@ impl CodeGraph {
 
             let ids = candidate_ids.unwrap_or_default();
             if !ids.is_empty() {
-                return ids.iter().filter_map(|id| inner.nodes.get(*id).cloned()).collect();
+                return ids
+                    .iter()
+                    .filter_map(|id| inner.nodes.get(*id).cloned())
+                    .collect();
             }
 
             // If token intersection yields nothing, try union (any token matches)
@@ -126,18 +157,28 @@ impl CodeGraph {
     /// O(1) caller lookup via pre-indexed map.
     pub fn get_callers(&self, node_id: &str) -> Vec<UniversalNode> {
         let inner = self.inner.read();
-        inner.callers
+        inner
+            .callers
             .get(node_id)
-            .map(|ids| ids.iter().filter_map(|id| inner.nodes.get(id).cloned()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| inner.nodes.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
     /// O(1) callee lookup via pre-indexed map.
     pub fn get_callees(&self, node_id: &str) -> Vec<UniversalNode> {
         let inner = self.inner.read();
-        inner.callees
+        inner
+            .callees
             .get(node_id)
-            .map(|ids| ids.iter().filter_map(|id| inner.nodes.get(id).cloned()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| inner.nodes.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -187,10 +228,16 @@ impl CodeGraph {
             }
             inner.callers.remove(id);
             inner.callees.remove(id);
-            for list in inner.callers.values_mut() { list.retain(|n| n != id); }
-            for list in inner.callees.values_mut() { list.retain(|n| n != id); }
+            for list in inner.callers.values_mut() {
+                list.retain(|n| n != id);
+            }
+            for list in inner.callees.values_mut() {
+                list.retain(|n| n != id);
+            }
         }
-        inner.relationships.retain(|_, rel| !node_ids.contains(&rel.source_id) && !node_ids.contains(&rel.target_id));
+        inner.relationships.retain(|_, rel| {
+            !node_ids.contains(&rel.source_id) && !node_ids.contains(&rel.target_id)
+        });
     }
 }
 
@@ -241,9 +288,20 @@ mod tests {
 
     fn make_node(id: &str, name: &str) -> UniversalNode {
         UniversalNode {
-            id: id.into(), name: name.into(), node_type: NodeType::Function,
-            location: UniversalLocation { file_path: "test.rs".into(), start_line: 1, end_line: 10, start_column: 0, end_column: 0, language: "rust".into() },
-            language: "rust".into(), line_count: 10, ..Default::default()
+            id: id.into(),
+            name: name.into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "test.rs".into(),
+                start_line: 1,
+                end_line: 10,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            line_count: 10,
+            ..Default::default()
         }
     }
 
@@ -265,7 +323,13 @@ mod tests {
 
     #[test]
     fn test_tokenize_name() {
-        assert_eq!(tokenize_name("createUser"), vec!["create", "user", "createuser"]);
-        assert_eq!(tokenize_name("find_nodes_by_name"), vec!["find", "nodes", "by", "name", "find_nodes_by_name"]);
+        assert_eq!(
+            tokenize_name("createUser"),
+            vec!["create", "user", "createuser"]
+        );
+        assert_eq!(
+            tokenize_name("find_nodes_by_name"),
+            vec!["find", "nodes", "by", "name", "find_nodes_by_name"]
+        );
     }
 }

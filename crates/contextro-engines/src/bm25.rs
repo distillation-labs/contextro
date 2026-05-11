@@ -61,7 +61,9 @@ impl Bm25Engine {
     }
 
     fn from_index(index: Index, schema: Schema) -> Self {
-        let writer = index.writer(50_000_000).expect("Failed to create index writer");
+        let writer = index
+            .writer(50_000_000)
+            .expect("Failed to create index writer");
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::Manual)
@@ -89,17 +91,19 @@ impl Bm25Engine {
     pub fn index_chunks(&self, chunks: &[CodeChunk]) {
         let mut writer = self.writer.write();
         for chunk in chunks {
-            writer.add_document(doc!(
-                self.f_id => chunk.id.as_str(),
-                self.f_text => chunk.text.as_str(),
-                self.f_filepath => chunk.filepath.as_str(),
-                self.f_symbol_name => chunk.symbol_name.as_str(),
-                self.f_symbol_type => chunk.symbol_type.as_str(),
-                self.f_language => chunk.language.as_str(),
-                self.f_line_start => chunk.line_start as u64,
-                self.f_line_end => chunk.line_end as u64,
-                self.f_signature => chunk.signature.as_str(),
-            )).ok();
+            writer
+                .add_document(doc!(
+                    self.f_id => chunk.id.as_str(),
+                    self.f_text => chunk.text.as_str(),
+                    self.f_filepath => chunk.filepath.as_str(),
+                    self.f_symbol_name => chunk.symbol_name.as_str(),
+                    self.f_symbol_type => chunk.symbol_type.as_str(),
+                    self.f_language => chunk.language.as_str(),
+                    self.f_line_start => chunk.line_start as u64,
+                    self.f_line_end => chunk.line_end as u64,
+                    self.f_signature => chunk.signature.as_str(),
+                ))
+                .ok();
         }
         writer.commit().ok();
         drop(writer);
@@ -110,7 +114,10 @@ impl Bm25Engine {
     /// symbol_name is boosted 3x, signature 2x, text 1x for better precision.
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
         let searcher = self.reader.searcher();
-        let mut query_parser = QueryParser::for_index(&self.index, vec![self.f_text, self.f_symbol_name, self.f_signature]);
+        let mut query_parser = QueryParser::for_index(
+            &self.index,
+            vec![self.f_text, self.f_symbol_name, self.f_signature],
+        );
         query_parser.set_field_boost(self.f_symbol_name, 3.0);
         query_parser.set_field_boost(self.f_signature, 2.0);
 
@@ -142,9 +149,8 @@ impl Bm25Engine {
                         .unwrap_or("")
                         .to_string()
                 };
-                let get_u64 = |f: Field| -> u64 {
-                    doc.get_first(f).and_then(|v| v.as_u64()).unwrap_or(0)
-                };
+                let get_u64 =
+                    |f: Field| -> u64 { doc.get_first(f).and_then(|v| v.as_u64()).unwrap_or(0) };
 
                 Some(SearchResult {
                     id: get_text(self.f_id),
@@ -214,9 +220,17 @@ mod tests {
     fn test_bm25_index_and_search() {
         let engine = Bm25Engine::new_in_memory();
         let chunks = vec![
-            make_chunk("c1", "authenticate user with JWT token verification", "authenticate"),
+            make_chunk(
+                "c1",
+                "authenticate user with JWT token verification",
+                "authenticate",
+            ),
             make_chunk("c2", "connect to database and run migrations", "connect_db"),
-            make_chunk("c3", "parse configuration from environment variables", "parse_config"),
+            make_chunk(
+                "c3",
+                "parse configuration from environment variables",
+                "parse_config",
+            ),
         ];
 
         engine.index_chunks(&chunks);
