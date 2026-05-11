@@ -11,7 +11,7 @@ when_to_use: >
   Especially useful for performance hot paths, FFI boundaries, PyO3 modules, maturin packaging,
   parity testing, error handling across the boundary, and deciding whether Rust is justified.
 metadata:
-  version: "1.0.0"
+  version: "0.1.0"
   category: mcp-development
   tags: [rust, pyo3, maturin, extension, ffi, performance, parity]
 license: Proprietary
