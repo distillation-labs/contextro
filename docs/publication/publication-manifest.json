@@ -84,17 +84,17 @@
     },
     {
       "id": "fig-3",
-      "file": "docs/blog/assets/01_headline_metrics.svg",
+      "file": "docs/publication/figures/01_headline_metrics.svg",
       "caption": "Headline outcomes"
     },
     {
       "id": "fig-4",
-      "file": "docs/blog/assets/02_token_by_category.svg",
+      "file": "docs/publication/figures/02_token_by_category.svg",
       "caption": "Results by category"
     },
     {
       "id": "fig-5",
-      "file": "docs/blog/assets/06_autoresearch_loop.png",
+      "file": "docs/publication/figures/06_autoresearch_loop.png",
       "caption": "Iterative optimization loop"
     }
   ],
