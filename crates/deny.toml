@@ -6,26 +6,15 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "Zlib",
-    "CC0-1.0",
-    "OpenSSL",
     "MPL-2.0",
     "BSL-1.0",
     "CDLA-Permissive-2.0",
+    "LicenseRef-Proprietary",
 ]
 # model2vec has no license field — allow it explicitly
 exceptions = [
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-core" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-config" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-parsing" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-indexing" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-engines" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-memory" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-git" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-tools" },
-    { allow = ["LicenseRef-Proprietary"], name = "contextro-server" },
     { allow = ["MIT"], name = "model2vec" },
 ]
 
