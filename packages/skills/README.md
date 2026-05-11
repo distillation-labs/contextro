@@ -68,7 +68,7 @@ npx @contextro/skills benchmark --dir /path/to/your/project
 ## Prerequisites
 
 - **Node.js 18+** (for npx)
-- **Contextro** installed in your project: `pip install contextro`
+- **Contextro** installed and runnable as the `contextro` binary
 - **MCP configured** in your agent (see the root `README.md` for connection examples)
 
 ## Benchmark
@@ -120,7 +120,7 @@ ls .opencode/skills/  # OpenCode
 
 ### Contextro not responding
 
-1. Check it's installed: `pip show contextro`
+1. Check the binary is available: `command -v contextro`
 2. Check MCP is configured: verify your agent's MCP config includes `contextro`
 3. Index your project first: tell your agent "Index this project"
 
