@@ -15,9 +15,10 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "Proprietary"
+license = "LicenseRef-Proprietary"
 authors = ["Distillation Labs"]
-repository = "https://github.com/jassskalkat/contextro"
+repository = "https://github.com/distillation-labs/contextro"
+homepage = "https://contextro.dev"
 
 [workspace.dependencies]
 # Core
