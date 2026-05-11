@@ -1,7 +1,8 @@
 name: Release
 # Required secrets:
-#   NPM_TOKEN         — https://www.npmjs.com/settings/tokens (Automation token)
 #   CRATES_IO_TOKEN   — https://crates.io/settings/tokens
+# npm publishing uses trusted publishing (OIDC) for this workflow. Configure the
+# npm package as a trusted publisher for .github/workflows/release.yml on npmjs.com.
 
 
 on:
@@ -171,17 +172,19 @@ jobs:
     name: Publish npm package
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
       - name: Publish to npm
         working-directory: npm/contextro
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-docker:
     name: Publish Docker image

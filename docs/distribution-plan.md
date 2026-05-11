@@ -83,7 +83,7 @@ cargo install contextro
 - `npm/contextro/package.json`
 - `npm/contextro/install.js` — postinstall script
 - `npm/contextro/bin/contextro` — thin JS shim that execs the binary
-- Add `npm publish` step to release workflow (requires `NPM_TOKEN` secret)
+- Add `npm publish` step to release workflow using npm trusted publishing (OIDC)
 
 **User experience:**
 ```bash
@@ -145,8 +145,8 @@ Step 5: Homebrew tap                           ← defer, low priority
 4. `publish-npm` — runs `npm publish` from `npm/contextro/`
 
 **Secrets required:**
-- `CRATES_IO_TOKEN` — from https://crates.io/settings/tokens
-- `NPM_TOKEN` — from https://www.npmjs.com/settings/tokens
+- `CRATES_IO_TOKEN` — from https://crates.io/settings/tokens; the owning crates.io account must have a verified email address
+- npm trusted publishing must be configured for `.github/workflows/release.yml` on npmjs.com
 
 ---
 
@@ -180,7 +180,7 @@ npm/contextro/
 **package.json `bin` field:**
 ```json
 {
-  "bin": { "contextro": "./run.js" }
+  "bin": { "contextro": "run.js" }
 }
 ```
 

@@ -5,11 +5,14 @@
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/distillation-labs/contextro"
+    "url": "git+https://github.com/distillation-labs/contextro.git"
   },
   "homepage": "https://contextro.dev",
   "bin": {
-    "contextro": "./run.js"
+    "contextro": "run.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "postinstall": "node install.js"
