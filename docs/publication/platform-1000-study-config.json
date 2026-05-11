@@ -1,0 +1,37 @@
+{
+  "timestamp_unix": 1778531328,
+  "codebase": "/Users/japneetkalkat/platform",
+  "tracked_files": 10889,
+  "tasks_requested": 1000,
+  "tasks_generated": 1000,
+  "tokenizer": {
+    "library": "tiktoken-rs",
+    "encoding": "cl100k_base"
+  },
+  "index": {
+    "total_files": 8498,
+    "total_symbols": 11534,
+    "total_chunks": 11534,
+    "graph_nodes": 11534,
+    "graph_relationships": 0,
+    "time_seconds": 0.446405625,
+    "bm25_index_ms": 34.324915999999995,
+    "graph_build_ms": 13.465417
+  },
+  "categories": {
+    "batch_lookup": 200,
+    "document_symbols": 200,
+    "exact_search": 300,
+    "symbol_discovery": 300
+  },
+  "excluded_capabilities": [
+    "find_callers",
+    "find_callees",
+    "impact",
+    "relationship-rich explain"
+  ],
+  "limitations": [
+    "TypeScript/Javascript graph edges are zero on this repo because the current parser path does not populate calls for those languages.",
+    "The no-MCP arm is a stronger local baseline built from exact grep and bounded file reads, not an autonomous agent."
+  ]
+}

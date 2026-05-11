@@ -1,8 +1,8 @@
 {
   "name": "@contextro/skills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Distribute the canonical dev-contextro-mcp skill bundle and repo-local instruction adapters for Claude Code, GitHub Copilot, Codex-style agents, Kiro, and OpenCode.",
-  "license": "UNLICENSED",
+  "license": "BUSL-1.1",
   "author": "Distillation Labs",
   "keywords": [
     "contextro",

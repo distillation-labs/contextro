@@ -1,0 +1,24 @@
+{
+  "name": "contextro",
+  "version": "0.2.0",
+  "description": "Give your AI coding agent a brain. Semantic search, call graphs, impact analysis, and memory — all running locally.",
+  "author": {
+    "name": "Distillation Labs",
+    "url": "https://github.com/distillation-labs"
+  },
+  "homepage": "https://github.com/distillation-labs/contextro",
+  "license": "BUSL-1.1",
+  "keywords": [
+    "contextro",
+    "mcp",
+    "code-search",
+    "code-graph",
+    "semantic-search",
+    "impact-analysis"
+  ],
+  "mcpServers": {
+    "contextro": {
+      "command": "contextro"
+    }
+  }
+}

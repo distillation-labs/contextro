@@ -12,7 +12,7 @@ when_to_use: >
   instrumentation, rollout safety, architecture legibility, compaction and resume flows,
   workflow governance, and making agent systems reliable under real constraints.
 metadata:
-  version: "1.0.0"
+  version: "0.1.0"
   category: engineering
   tags: [applied-ai, harness, evals, observability, rollout, reliability, benchmarking]
 license: Proprietary

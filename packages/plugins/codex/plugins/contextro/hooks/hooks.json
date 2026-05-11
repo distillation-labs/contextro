@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v contextro >/dev/null 2>&1 || echo '[contextro] Warning: contextro binary not found in PATH. Install with: npm install -g contextro'"
+          }
+        ]
+      }
+    ]
+  }
+}

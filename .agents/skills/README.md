@@ -58,7 +58,7 @@ done
 | `autoresearch` | Autonomous metric-driven experiment loops until a breakthrough target is met |
 | `breakthrough-researcher` | Deep technical research, hypothesis generation, ranked experiment backlog |
 | `dev-contextro-mcp` | Use Contextro MCP for codebase discovery, search, call graphs, git history, memory |
+| `docs-maintainer` | Changelogs, README updates, release notes, publication manifests, doc sync |
 | `fastmcp-server-engineer` | Build or refactor FastMCP servers, tools, resources, middleware, and validation |
 | `mcp-protocol-architect` | Design MCP servers around correct protocol primitives and transport choices |
-| `python-systems-engineer` | Python typing, dataclasses, exceptions, thread safety, module structure |
 | `rust-extension-engineer` | PyO3/maturin Rust extensions for hot paths, FFI boundaries, parity testing |

@@ -1,6 +1,6 @@
 {
   "skill_name": "applied-ai-engineer",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "description": "Eval suite for the applied AI engineering skill. Measures trigger quality, baseline-first reasoning, harness rigor, observability, rollout discipline, and production-safe implementation planning.",
   "categories": {
     "triggering": "Skill loads for productionization, harness, eval, observability, rollout, reliability, or routing work",

@@ -1,0 +1,669 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - 'heading "Contextro: A Pure-Rust MCP Server for Token-Efficient Repository Discovery" [level=1] [ref=e3]':
+      - text: "Contextro: A Pure-Rust MCP Server"
+      - text: for Token-Efficient Repository Discovery
+    - generic [ref=e5]: Japneet Kalkat
+    - generic [ref=e6]: Distillation Labs
+    - generic [ref=e7]: japneet@distillation.ai
+    - heading "Abstract" [level=2] [ref=e8]
+    - paragraph [ref=e9]:
+      - text: Repository discovery still dominates the prompt budget of many MCP-based coding workflows. This paper evaluates the current Rust-era version of Contextro, a pure-Rust local MCP server, with a deterministic 1,000-task paired study on a private production repository named
+      - code [ref=e10]: platform
+      - text: . The benchmark target contains 10,889 tracked files; Contextro indexed 8,498 source files into 11,534 symbols and 11,534 chunks. Against a stronger scripted local baseline built from exact
+      - code [ref=e11]: git grep
+      - text: "plus bounded file reads, Contextro reduced total token volume from 1,068,884 to 94,034 (91.2%), reduced median handler latency from 202.969 ms to 0.037 ms, reduced mean tool calls from 3.098 to 1.000, and eliminated file reads in the study harness. Contextro completed all 1,000 tasks; the baseline completed 999. Because the current TypeScript/JavaScript parser path emits zero call relationships on this repository, graph-dependent tasks were explicitly excluded. The resulting claim is therefore narrow and honest: on this repository, the current pure-Rust Contextro implementation materially reduces retrieval overhead for deterministic discovery and symbol-navigation tasks."
+    - paragraph [ref=e12]:
+      - strong [ref=e13]: "Keywords:"
+      - text: Model Context Protocol, repository discovery, Rust, code intelligence, BM25 retrieval, benchmark design
+  - article [ref=e14]:
+    - generic [ref=e15]:
+      - heading "1. Introduction" [level=2] [ref=e16]
+      - paragraph [ref=e17]: Most coding agents still locate code the expensive way. They grep broadly, open several files, inspect mostly irrelevant windows, and only then recover the symbol or file they needed. That workflow wastes tokens because it sends exploration traces rather than direct answers.
+      - paragraph [ref=e18]: Contextro is built to replace that exploration trace with targeted repository intelligence. It exposes indexed search, symbol lookup, code operations, history lookup, and memory through a local MCP server so a client can ask for a definition, a ranked exact-search result, or a file-local symbol list directly.
+      - paragraph [ref=e19]:
+        - text: The earlier Contextro paper is no longer the right description of the system. The current implementation is Rust end to end, and the benchmark in this paper is produced by a real Rust study harness that invokes the current retrieval handlers directly. No Python runtime and no legacy
+        - code [ref=e20]: ctx_fast
+        - text: path remain in the evaluated system.
+      - list [ref=e21]:
+        - listitem [ref=e22]:
+          - text: We report the first controlled 1,000-task benchmark for the current pure-Rust Contextro implementation on the private
+          - code [ref=e23]: platform
+          - text: repository.
+        - listitem [ref=e24]:
+          - text: We compare Contextro against a stronger scripted local baseline based on exact
+          - code [ref=e25]: git grep
+          - text: and bounded file reads, not against a simulator.
+        - listitem [ref=e26]: "We state capability limits explicitly: graph-dependent tasks are excluded because the fresh TypeScript-heavy index contained zero call relationships."
+    - generic [ref=e27]:
+      - heading "2. Related Work" [level=2] [ref=e28]
+      - paragraph [ref=e29]: "This work sits at the intersection of code search, retrieval-augmented generation, and prompt-budget management. BM25-style lexical retrieval remains a strong baseline for identifier-heavy search, while structured retrieval and code graphs are increasingly used to keep only relevant evidence in the context window. Our contribution is narrower than a general code-generation paper: we measure repository-discovery cost inside MCP-mediated workflows and ask how much of that cost disappears when the client can query a local repository-intelligence layer instead of traversing files manually."
+    - generic [ref=e30]:
+      - heading "3. Current System" [level=2] [ref=e31]
+      - paragraph [ref=e32]: "Contextro is now implemented as a pure-Rust local MCP server. The workspace separates indexing, engines, parsing, memory, git helpers, tool handlers, and the server binary across focused crates, but the operational surface is still a single local binary. For this study, the important detail is architectural continuity: the benchmark harness reuses the same Rust retrieval paths that the server exposes, so the benchmark and the product measure the same code path rather than two different implementations."
+      - figure "Figure 1. System overview. Contextro sits between the MCP client and the repository and returns structured retrieval results instead of exploratory file dumps." [ref=e33]:
+        - img "System overview showing an MCP client connected to Contextro and its local indexing and retrieval components." [ref=e34]
+        - generic [ref=e35]:
+          - strong [ref=e36]: Figure 1.
+          - text: System overview. Contextro sits between the MCP client and the repository and returns structured retrieval results instead of exploratory file dumps.
+      - heading "3.1. Implementation Snapshot" [level=3] [ref=e37]
+      - generic [ref=e38]:
+        - strong [ref=e39]: Table 1.
+        - text: Current Rust implementation snapshot.
+      - table [ref=e40]:
+        - rowgroup [ref=e41]:
+          - row "Layer Current implementation Role in this study" [ref=e42]:
+            - columnheader "Layer" [ref=e43]
+            - columnheader "Current implementation" [ref=e44]
+            - columnheader "Role in this study" [ref=e45]
+        - rowgroup [ref=e46]:
+          - row "Runtime and transport Rust binaries in crates/contextro-server with rmcp, tokio, and axum Expose the local MCP server and the contextro-study benchmark harness" [ref=e47]:
+            - cell "Runtime and transport" [ref=e48]
+            - cell "Rust binaries in crates/contextro-server with rmcp, tokio, and axum" [ref=e49]:
+              - text: Rust binaries in
+              - code [ref=e50]: crates/contextro-server
+              - text: with
+              - code [ref=e51]: rmcp
+              - text: ","
+              - code [ref=e52]: tokio
+              - text: ", and"
+              - code [ref=e53]: axum
+            - cell "Expose the local MCP server and the contextro-study benchmark harness" [ref=e54]:
+              - text: Expose the local MCP server and the
+              - code [ref=e55]: contextro-study
+              - text: benchmark harness
+          - row "Indexing contextro-indexing pipeline over supported source files Built a fresh 8,498-file index with 11,534 symbols and 11,534 chunks" [ref=e56]:
+            - cell "Indexing" [ref=e57]
+            - cell "contextro-indexing pipeline over supported source files" [ref=e58]:
+              - code [ref=e59]: contextro-indexing
+              - text: pipeline over supported source files
+            - cell "Built a fresh 8,498-file index with 11,534 symbols and 11,534 chunks" [ref=e60]
+          - row "Lexical retrieval In-memory Tantivy BM25 index Powers the 300 exact-search tasks in the treatment arm" [ref=e61]:
+            - cell "Lexical retrieval" [ref=e62]
+            - cell "In-memory Tantivy BM25 index" [ref=e63]
+            - cell "Powers the 300 exact-search tasks in the treatment arm" [ref=e64]
+          - row "Symbol lookup In-memory Rust graph and name indexes Powers exact find_symbol and grouped lookup tasks" [ref=e65]:
+            - cell "Symbol lookup" [ref=e66]
+            - cell "In-memory Rust graph and name indexes" [ref=e67]
+            - cell "Powers exact find_symbol and grouped lookup tasks" [ref=e68]:
+              - text: Powers exact
+              - code [ref=e69]: find_symbol
+              - text: and grouped lookup tasks
+          - row "Code operations Rust code handlers plus TreeSitterParser interface Powers lookup_symbols and get_document_symbols" [ref=e70]:
+            - cell "Code operations" [ref=e71]
+            - cell "Rust code handlers plus TreeSitterParser interface" [ref=e72]:
+              - text: Rust
+              - code [ref=e73]: code
+              - text: handlers plus
+              - code [ref=e74]: TreeSitterParser
+              - text: interface
+            - cell "Powers lookup_symbols and get_document_symbols" [ref=e75]:
+              - text: Powers
+              - code [ref=e76]: lookup_symbols
+              - text: and
+              - code [ref=e77]: get_document_symbols
+          - row "Current JS/TS limitation The current parser path does not populate calls for TypeScript or JavaScript symbols on this repo Produced 0 graph relationships, so graph-dependent tasks were excluded" [ref=e78]:
+            - cell "Current JS/TS limitation" [ref=e79]
+            - cell "The current parser path does not populate calls for TypeScript or JavaScript symbols on this repo" [ref=e80]:
+              - text: The current parser path does not populate
+              - code [ref=e81]: calls
+              - text: for TypeScript or JavaScript symbols on this repo
+            - cell "Produced 0 graph relationships, so graph-dependent tasks were excluded" [ref=e82]
+      - heading "3.2. Evaluated Tool Surface" [level=3] [ref=e83]
+      - generic [ref=e84]:
+        - strong [ref=e85]: Table 2.
+        - text: Tool surface exercised by the 1,000-task study.
+      - table [ref=e86]:
+        - rowgroup [ref=e87]:
+          - row "Study category Treatment tool path Tasks Deterministic success condition" [ref=e88]:
+            - columnheader "Study category" [ref=e89]
+            - columnheader "Treatment tool path" [ref=e90]
+            - columnheader "Tasks" [ref=e91]
+            - columnheader "Deterministic success condition" [ref=e92]
+        - rowgroup [ref=e93]:
+          - row "Symbol discovery find_symbol(name, exact=true) 300 The expected file path appears in the returned symbol set" [ref=e94]:
+            - cell "Symbol discovery" [ref=e95]
+            - cell "find_symbol(name, exact=true)" [ref=e96]:
+              - code [ref=e97]: find_symbol(name, exact=true)
+            - cell "300" [ref=e98]
+            - cell "The expected file path appears in the returned symbol set" [ref=e99]
+          - row "Exact search search(query, mode=\"bm25\", limit=5) 300 The expected file path appears in the ranked results" [ref=e100]:
+            - cell "Exact search" [ref=e101]
+            - cell "search(query, mode=\"bm25\", limit=5)" [ref=e102]:
+              - code [ref=e103]: search(query, mode="bm25", limit=5)
+            - cell "300" [ref=e104]
+            - cell "The expected file path appears in the ranked results" [ref=e105]
+          - row "Batch lookup code(operation=\"lookup_symbols\") 200 All expected file paths for the three-symbol batch appear" [ref=e106]:
+            - cell "Batch lookup" [ref=e107]
+            - cell "code(operation=\"lookup_symbols\")" [ref=e108]:
+              - code [ref=e109]: code(operation="lookup_symbols")
+            - cell "200" [ref=e110]
+            - cell "All expected file paths for the three-symbol batch appear" [ref=e111]
+          - row "Document symbols code(operation=\"get_document_symbols\") 200 All expected symbol names appear in the file-level symbol list" [ref=e112]:
+            - cell "Document symbols" [ref=e113]
+            - cell "code(operation=\"get_document_symbols\")" [ref=e114]:
+              - code [ref=e115]: code(operation="get_document_symbols")
+            - cell "200" [ref=e116]
+            - cell "All expected symbol names appear in the file-level symbol list" [ref=e117]
+          - row "Excluded graph tasks find_callers, find_callees, impact, relationship-rich explain 0 Explicitly excluded because the fresh index contained zero graph relationships" [ref=e118]:
+            - cell "Excluded graph tasks" [ref=e119]
+            - cell "find_callers, find_callees, impact, relationship-rich explain" [ref=e120]:
+              - code [ref=e121]: find_callers
+              - text: ","
+              - code [ref=e122]: find_callees
+              - text: ","
+              - code [ref=e123]: impact
+              - text: ", relationship-rich"
+              - code [ref=e124]: explain
+            - cell "0" [ref=e125]
+            - cell "Explicitly excluded because the fresh index contained zero graph relationships" [ref=e126]
+      - paragraph [ref=e127]: The study harness uses the current Rust handlers directly. An older JavaScript experiment script in the repository is only a simulator and is not used for any headline claim in this paper.
+    - generic [ref=e128]:
+      - heading "4. Benchmark Methodology" [level=2] [ref=e129]
+      - paragraph [ref=e130]: The study follows a paired, deterministic, two-arm design. Every task is executed once with a stronger scripted local baseline and once with Contextro against the same repository snapshot. The task generator draws the inventory from indexed ground truth rather than from free-form human prompts, so correctness can be scored mechanically.
+      - figure "Figure 2. Study design. The same deterministic 1,000-task inventory is executed in both arms against the same repository snapshot." [ref=e131]:
+        - img "Study design showing the same 1,000 tasks executed in a stronger local baseline and a Contextro treatment arm." [ref=e132]
+        - generic [ref=e133]:
+          - strong [ref=e134]: Figure 2.
+          - text: Study design. The same deterministic 1,000-task inventory is executed in both arms against the same repository snapshot.
+      - heading "4.1. Study Design" [level=3] [ref=e135]
+      - paragraph [ref=e136]:
+        - text: The stronger local baseline uses exact
+        - code [ref=e137]: git grep
+        - text: plus bounded file windows. Symbol-discovery tasks read up to two candidate files after a grep hit; exact-search tasks read up to three; batch-lookup tasks run three exact greps and read one primary file window for each symbol; document-symbol tasks open a single file excerpt directly. The treatment arm performs exactly one Contextro tool call per task against a pre-indexed repository state.
+      - paragraph [ref=e138]: The task inventory contains 300 symbol-discovery tasks, 300 exact-search tasks, 200 batch-lookup tasks, and 200 document-symbol tasks. Batch and document-symbol tasks are intentionally stricter than single-file lookups because all expected files or symbols must appear for the task to count as correct.
+      - heading "4.2. Repository Under Test" [level=3] [ref=e139]
+      - generic [ref=e140]:
+        - strong [ref=e141]: Table 3.
+        - text: Repository under test and benchmark inventory.
+      - table [ref=e142]:
+        - rowgroup [ref=e143]:
+          - row "Property Value" [ref=e144]:
+            - columnheader "Property" [ref=e145]
+            - columnheader "Value" [ref=e146]
+        - rowgroup [ref=e147]:
+          - row "Benchmark target Private production repository platform" [ref=e148]:
+            - cell "Benchmark target" [ref=e149]
+            - cell "Private production repository platform" [ref=e150]:
+              - text: Private production repository
+              - code [ref=e151]: platform
+          - row "Tracked files 10,889" [ref=e152]:
+            - cell "Tracked files" [ref=e153]
+            - cell "10,889" [ref=e154]
+          - row "Dominant tracked extensions 5,545 .ts files and 2,905 .tsx files" [ref=e155]:
+            - cell "Dominant tracked extensions" [ref=e156]
+            - cell "5,545 .ts files and 2,905 .tsx files" [ref=e157]:
+              - text: 5,545
+              - code [ref=e158]: .ts
+              - text: files and 2,905
+              - code [ref=e159]: .tsx
+              - text: files
+          - row "Indexed source files 8,498" [ref=e160]:
+            - cell "Indexed source files" [ref=e161]
+            - cell "8,498" [ref=e162]
+          - row "Extracted symbols / chunks 11,534 / 11,534" [ref=e163]:
+            - cell "Extracted symbols / chunks" [ref=e164]
+            - cell "11,534 / 11,534" [ref=e165]
+          - row "Graph nodes / relationships 11,534 / 0" [ref=e166]:
+            - cell "Graph nodes / relationships" [ref=e167]
+            - cell "11,534 / 0" [ref=e168]
+          - row "Task distribution 300 symbol discovery, 300 exact search, 200 batch lookup, 200 document symbols" [ref=e169]:
+            - cell "Task distribution" [ref=e170]
+            - cell "300 symbol discovery, 300 exact search, 200 batch lookup, 200 document symbols" [ref=e171]
+          - row "Fresh index build 0.45 s" [ref=e172]:
+            - cell "Fresh index build" [ref=e173]
+            - cell "0.45 s" [ref=e174]
+          - row "BM25 build 34.3 ms" [ref=e175]:
+            - cell "BM25 build" [ref=e176]
+            - cell "34.3 ms" [ref=e177]
+          - row "Graph build 13.5 ms" [ref=e178]:
+            - cell "Graph build" [ref=e179]
+            - cell "13.5 ms" [ref=e180]
+          - row "Benchmark host Apple M4, 16 GB RAM, macOS 26.4.1" [ref=e181]:
+            - cell "Benchmark host" [ref=e182]
+            - cell "Apple M4, 16 GB RAM, macOS 26.4.1" [ref=e183]
+      - heading "4.3. Metrics and Deterministic Scoring" [level=3] [ref=e184]
+      - generic [ref=e185]:
+        - strong [ref=e186]: Table 4.
+        - text: Metrics and scoring rules.
+      - table [ref=e187]:
+        - rowgroup [ref=e188]:
+          - row "Measurement Definition Purpose" [ref=e189]:
+            - columnheader "Measurement" [ref=e190]
+            - columnheader "Definition" [ref=e191]
+            - columnheader "Purpose" [ref=e192]
+        - rowgroup [ref=e193]:
+          - row "Success Expected file or symbol strings must appear in the rendered output; batch and document tasks require all expected items Removes subjective judging and keeps the benchmark reproducible" [ref=e194]:
+            - cell "Success" [ref=e195]
+            - cell "Expected file or symbol strings must appear in the rendered output; batch and document tasks require all expected items" [ref=e196]
+            - cell "Removes subjective judging and keeps the benchmark reproducible" [ref=e197]
+          - row "Token estimate tiktoken-rs with cl100k_base applied to each arm's rendered output Provides an apples-to-apples context-cost comparison" [ref=e198]:
+            - cell "Token estimate" [ref=e199]
+            - cell "tiktoken-rs with cl100k_base applied to each arm's rendered output" [ref=e200]:
+              - code [ref=e201]: tiktoken-rs
+              - text: with
+              - code [ref=e202]: cl100k_base
+              - text: applied to each arm's rendered output
+            - cell "Provides an apples-to-apples context-cost comparison" [ref=e203]
+          - row "Handler latency Wall-clock milliseconds around each scripted arm call Measures retrieval overhead inside the harness on a pre-indexed repository" [ref=e204]:
+            - cell "Handler latency" [ref=e205]
+            - cell "Wall-clock milliseconds around each scripted arm call" [ref=e206]
+            - cell "Measures retrieval overhead inside the harness on a pre-indexed repository" [ref=e207]
+          - row "Tool calls Count of grep and read operations in the baseline versus one MCP call in the treatment arm Captures workflow complexity" [ref=e208]:
+            - cell "Tool calls" [ref=e209]
+            - cell "Count of grep and read operations in the baseline versus one MCP call in the treatment arm" [ref=e210]
+            - cell "Captures workflow complexity" [ref=e211]
+          - row "Files read Count of explicit file windows opened by the scripted baseline Measures raw code traversal cost" [ref=e212]:
+            - cell "Files read" [ref=e213]
+            - cell "Count of explicit file windows opened by the scripted baseline" [ref=e214]
+            - cell "Measures raw code traversal cost" [ref=e215]
+          - row "Excluded capabilities Graph-dependent tasks are removed when the fresh index has zero relationships Prevents us from claiming performance for surfaces the current parser did not support on this repo" [ref=e216]:
+            - cell "Excluded capabilities" [ref=e217]
+            - cell "Graph-dependent tasks are removed when the fresh index has zero relationships" [ref=e218]
+            - cell "Prevents us from claiming performance for surfaces the current parser did not support on this repo" [ref=e219]
+      - paragraph [ref=e220]: This benchmark is intentionally not an autonomous coding benchmark. It studies retrieval, symbol navigation, and file-local structure under deterministic scoring. That choice narrows the claim, but it also makes the result reproducible and automatically checkable.
+    - generic [ref=e221]:
+      - heading "5. Results" [level=2] [ref=e222]
+      - heading "5.1. Headline Outcomes" [level=3] [ref=e223]
+      - paragraph [ref=e224]: "The full 1,000-task study produced a consistent result: Contextro reduced the amount of text emitted by the discovery workflow and did so without sacrificing correctness. Total token volume fell from 1,068,884 in the stronger local baseline to 94,034 in Contextro, a 91.2% reduction. The baseline succeeded on 999 tasks; Contextro succeeded on all 1,000."
+      - paragraph [ref=e225]: Interaction cost also collapsed. The scripted baseline averaged 3.098 tool invocations and 1.898 file reads per task, while the Contextro arm issued exactly one tool call and read no files inside the study harness. Median handler latency fell from 202.969 ms to 0.037 ms, though that latency should be interpreted carefully as direct handler timing on a pre-indexed local repository rather than end-to-end agent wall clock.
+      - generic [ref=e226]:
+        - strong [ref=e227]: Table 5.
+        - text: Headline outcomes from the 1,000-task study.
+      - table [ref=e228]:
+        - rowgroup [ref=e229]:
+          - row "Metric Stronger local baseline Contextro Observed change" [ref=e230]:
+            - columnheader "Metric" [ref=e231]
+            - columnheader "Stronger local baseline" [ref=e232]
+            - columnheader "Contextro" [ref=e233]
+            - columnheader "Observed change" [ref=e234]
+        - rowgroup [ref=e235]:
+          - row "Success rate 99.9% (999 / 1000) 100.0% (1000 / 1000) Contextro completed every task in the inventory" [ref=e236]:
+            - cell "Success rate" [ref=e237]
+            - cell "99.9% (999 / 1000)" [ref=e238]
+            - cell "100.0% (1000 / 1000)" [ref=e239]
+            - cell "Contextro completed every task in the inventory" [ref=e240]
+          - row "Total tokens 1,068,884 94,034 91.2% reduction" [ref=e241]:
+            - cell "Total tokens" [ref=e242]
+            - cell "1,068,884" [ref=e243]
+            - cell "94,034" [ref=e244]
+            - cell "91.2% reduction" [ref=e245]
+          - row "Mean tokens per task 1,068.9 94.0 91.2% reduction" [ref=e246]:
+            - cell "Mean tokens per task" [ref=e247]
+            - cell "1,068.9" [ref=e248]
+            - cell "94.0" [ref=e249]
+            - cell "91.2% reduction" [ref=e250]
+          - row "Median handler latency per task 202.969 ms 0.037 ms Direct local handler timing dropped by 202.932 ms" [ref=e251]:
+            - cell "Median handler latency per task" [ref=e252]
+            - cell "202.969 ms" [ref=e253]
+            - cell "0.037 ms" [ref=e254]
+            - cell "Direct local handler timing dropped by 202.932 ms" [ref=e255]
+          - row "P95 handler latency per task 624.947 ms 0.094 ms The long tail remained entirely on the baseline side" [ref=e256]:
+            - cell "P95 handler latency per task" [ref=e257]
+            - cell "624.947 ms" [ref=e258]
+            - cell "0.094 ms" [ref=e259]
+            - cell "The long tail remained entirely on the baseline side" [ref=e260]
+          - row "Mean tool calls per task 3.098 1.000 67.7% fewer interaction steps" [ref=e261]:
+            - cell "Mean tool calls per task" [ref=e262]
+            - cell "3.098" [ref=e263]
+            - cell "1.000" [ref=e264]
+            - cell "67.7% fewer interaction steps" [ref=e265]
+          - row "Mean files read per task 1.898 0.000 Explicit file reads were eliminated in the treatment arm" [ref=e266]:
+            - cell "Mean files read per task" [ref=e267]
+            - cell "1.898" [ref=e268]
+            - cell "0.000" [ref=e269]
+            - cell "Explicit file reads were eliminated in the treatment arm" [ref=e270]
+      - heading "5.2. Results by Task Category" [level=3] [ref=e271]
+      - paragraph [ref=e272]: All four categories favored Contextro on token volume. The largest reduction appeared in symbol discovery (94.5%), where the treatment arm can usually answer the query with a single short symbol record. The smallest reduction appeared in document-symbol tasks (86.8%), which is expected because those tasks require the system to emit a list of file-local symbol names rather than a single location.
+      - paragraph [ref=e273]: "Latency splits by category are also informative. The biggest latency gain appears in batch lookup because the baseline must perform three exact greps and three file reads. Document-symbol tasks are the exception: the baseline is already just one file read, so latency is roughly equal there even though Contextro still reduces output size materially."
+      - generic [ref=e274]:
+        - strong [ref=e275]: Table 6.
+        - text: Category-level outcomes.
+      - table [ref=e276]:
+        - rowgroup [ref=e277]:
+          - row "Category Tasks Success (baseline / Contextro) Tokens (baseline / Contextro) Reduction Median handler latency (baseline / Contextro)" [ref=e278]:
+            - columnheader "Category" [ref=e279]
+            - columnheader "Tasks" [ref=e280]
+            - columnheader "Success (baseline / Contextro)" [ref=e281]
+            - columnheader "Tokens (baseline / Contextro)" [ref=e282]
+            - columnheader "Reduction" [ref=e283]
+            - columnheader "Median handler latency (baseline / Contextro)" [ref=e284]
+        - rowgroup [ref=e285]:
+          - row "Symbol discovery 300 100.0% / 100.0% 239,344 / 13,174 94.5% 204.238 ms / 0.016 ms" [ref=e286]:
+            - cell "Symbol discovery" [ref=e287]
+            - cell "300" [ref=e288]
+            - cell "100.0% / 100.0%" [ref=e289]
+            - cell "239,344 / 13,174" [ref=e290]
+            - cell "94.5%" [ref=e291]
+            - cell "204.238 ms / 0.016 ms" [ref=e292]
+          - row "Exact search 300 99.7% / 100.0% 256,453 / 20,986 91.8% 202.114 ms / 0.066 ms" [ref=e293]:
+            - cell "Exact search" [ref=e294]
+            - cell "300" [ref=e295]
+            - cell "99.7% / 100.0%" [ref=e296]
+            - cell "256,453 / 20,986" [ref=e297]
+            - cell "91.8%" [ref=e298]
+            - cell "202.114 ms / 0.066 ms" [ref=e299]
+          - row "Batch lookup 200 100.0% / 100.0% 278,959 / 20,947 92.5% 612.560 ms / 0.029 ms" [ref=e300]:
+            - cell "Batch lookup" [ref=e301]
+            - cell "200" [ref=e302]
+            - cell "100.0% / 100.0%" [ref=e303]
+            - cell "278,959 / 20,947" [ref=e304]
+            - cell "92.5%" [ref=e305]
+            - cell "612.560 ms / 0.029 ms" [ref=e306]
+          - row "Document symbols 200 100.0% / 100.0% 294,128 / 38,927 86.8% 0.046 ms / 0.045 ms" [ref=e307]:
+            - cell "Document symbols" [ref=e308]
+            - cell "200" [ref=e309]
+            - cell "100.0% / 100.0%" [ref=e310]
+            - cell "294,128 / 38,927" [ref=e311]
+            - cell "86.8%" [ref=e312]
+            - cell "0.046 ms / 0.045 ms" [ref=e313]
+      - heading "5.3. Failure Analysis" [level=3] [ref=e314]
+      - paragraph [ref=e315]:
+        - text: "The stronger local baseline missed exactly one task:"
+        - code [ref=e316]: search_0553
+        - text: ", an exact-search query for"
+        - code [ref=e317]: DataGrid
+        - text: . The baseline recovered the symbol name, but its grep-plus-window path did not surface the expected target file
+        - code [ref=e318]: apps/app/src/features/data-grid-live/components/data-grid/data-grid.tsx
+        - text: . Contextro returned the expected file in the ranked result set. This is a small miss, but it is useful because it shows where repeated identifier names still make a multi-step grep workflow brittle even under deterministic scripting.
+      - paragraph [ref=e319]: The more important qualitative result is the absence of silent degradation in the treatment arm. Contextro was correct on every task category that the harness exercised. That does not prove broad coding superiority, but it does support the narrower claim that the current Rust implementation can answer deterministic discovery tasks compactly and reliably on this repository.
+    - generic [ref=e320]:
+      - heading "6. Discussion" [level=2] [ref=e321]
+      - paragraph [ref=e322]: "The central result is a workflow result, not a marketing one. When the retrieval layer can answer a discovery question directly, the agent no longer needs to spend most of its context budget on exploratory file traversal. The 91.2% token reduction in this study is therefore best understood as a reduction in exploration waste: fewer grep traces, fewer file windows, and fewer intermediate steps."
+      - paragraph [ref=e323]: The pure-Rust transition matters for the credibility of that claim. The current server, the current handlers, and the current benchmark harness all live in the same Rust codebase. The numbers in this paper do not come from the earlier Python-era architecture and do not depend on the older JavaScript simulator. They describe the current MCP as it exists now.
+      - paragraph [ref=e324]: The category breakdown also keeps the result honest. Document-symbol tasks do not show dramatic latency gains because the baseline is already close to direct file access. Contextro still helps there because the response is more compact, but not every category should be expected to improve in the same way.
+    - generic [ref=e325]:
+      - heading "7. Limitations" [level=2] [ref=e326]
+      - paragraph [ref=e327]:
+        - text: This paper has four important limitations. First, it studies a single private repository, so the result should be read as strong evidence on
+        - code [ref=e328]: platform
+        - text: ", not as a universal repository claim. Second, the benchmark uses a pre-indexed local repository and measures direct handler latency, not full end-to-end agent runtime with model reasoning and transport overhead. Third, the task inventory is deterministic and retrieval-oriented rather than a full autonomous coding benchmark."
+      - paragraph [ref=e329]:
+        - text: Fourth, and most importantly, the current TypeScript and JavaScript parser path produced zero call relationships on this repository. That forced us to exclude
+        - code [ref=e330]: find_callers
+        - text: ","
+        - code [ref=e331]: find_callees
+        - text: ","
+        - code [ref=e332]: impact
+        - text: ", and relationship-rich"
+        - code [ref=e333]: explain
+        - text: tasks from the study. The paper therefore should not be read as evidence that the current system already delivers graph-quality answers on TypeScript-heavy repositories. Fixing that parser limitation is the most important technical follow-up after this benchmark.
+      - paragraph [ref=e334]:
+        - text: The benchmark also favors exact identifier retrieval. The 300 exact-search tasks use
+        - code [ref=e335]: search(mode="bm25")
+        - text: because that path admits deterministic scoring from indexed ground truth. That makes the result clean and reproducible, but it leaves open a separate question about free-form natural-language search quality, which deserves its own study.
+    - generic [ref=e336]:
+      - heading "8. Availability and Reproducibility" [level=2] [ref=e337]
+      - paragraph [ref=e338]:
+        - text: The primary artifact bundle for this paper lives in
+        - code [ref=e339]: docs/publication/
+        - text: . The four new platform-study JSON files are the machine-readable evidence for every headline number in the manuscript. Older paired-study and public-proxy artifacts remain in the directory for historical reference, but they are not the evidence base for the claims in this paper.
+      - heading "8.1. Artifact Package" [level=3] [ref=e340]
+      - generic [ref=e341]:
+        - strong [ref=e342]: Table 7.
+        - text: Primary publication artifacts for the Rust-era paper.
+      - table [ref=e343]:
+        - rowgroup [ref=e344]:
+          - row "Artifact Description" [ref=e345]:
+            - columnheader "Artifact" [ref=e346]
+            - columnheader "Description" [ref=e347]
+        - rowgroup [ref=e348]:
+          - row "contextro-paper.html Printable manuscript source for the current Rust-era paper" [ref=e349]:
+            - cell "contextro-paper.html" [ref=e350]:
+              - code [ref=e351]: contextro-paper.html
+            - cell "Printable manuscript source for the current Rust-era paper" [ref=e352]
+          - row "platform-1000-study-config.json Benchmark configuration, tokenizer metadata, and index snapshot" [ref=e353]:
+            - cell "platform-1000-study-config.json" [ref=e354]:
+              - code [ref=e355]: platform-1000-study-config.json
+            - cell "Benchmark configuration, tokenizer metadata, and index snapshot" [ref=e356]
+          - row "platform-1000-study-tasks.json Full deterministic 1,000-task inventory" [ref=e357]:
+            - cell "platform-1000-study-tasks.json" [ref=e358]:
+              - code [ref=e359]: platform-1000-study-tasks.json
+            - cell "Full deterministic 1,000-task inventory" [ref=e360]
+          - row "platform-1000-study-results.json Per-task, per-arm outcomes for all 2,000 executions" [ref=e361]:
+            - cell "platform-1000-study-results.json" [ref=e362]:
+              - code [ref=e363]: platform-1000-study-results.json
+            - cell "Per-task, per-arm outcomes for all 2,000 executions" [ref=e364]
+          - row "platform-1000-study-summary.json Aggregate results cited throughout this paper" [ref=e365]:
+            - cell "platform-1000-study-summary.json" [ref=e366]:
+              - code [ref=e367]: platform-1000-study-summary.json
+            - cell "Aggregate results cited throughout this paper" [ref=e368]
+      - heading "8.2. Rerun Command" [level=3] [ref=e369]
+      - code [ref=e371]: cd crates cargo run --release -p contextro --bin contextro-study -- \ --codebase /Users/japneetkalkat/platform \ --output-dir /Users/japneetkalkat/conductor/workspaces/contextro/zurich/docs/publication \ --tasks 1000
+      - heading "8.3. Verification Environment" [level=3] [ref=e372]
+      - generic [ref=e373]:
+        - strong [ref=e374]: Table 8.
+        - text: Verification environment.
+      - table [ref=e375]:
+        - rowgroup [ref=e376]:
+          - row "Field Value" [ref=e377]:
+            - columnheader "Field" [ref=e378]
+            - columnheader "Value" [ref=e379]
+        - rowgroup [ref=e380]:
+          - row "CPU Apple M4" [ref=e381]:
+            - cell "CPU" [ref=e382]
+            - cell "Apple M4" [ref=e383]
+          - row "Memory 16 GB RAM" [ref=e384]:
+            - cell "Memory" [ref=e385]
+            - cell "16 GB RAM" [ref=e386]
+          - row "Operating system macOS 26.4.1" [ref=e387]:
+            - cell "Operating system" [ref=e388]
+            - cell "macOS 26.4.1" [ref=e389]
+          - row "Tokenizer tiktoken-rs with cl100k_base" [ref=e390]:
+            - cell "Tokenizer" [ref=e391]
+            - cell "tiktoken-rs with cl100k_base" [ref=e392]:
+              - code [ref=e393]: tiktoken-rs
+              - text: with
+              - code [ref=e394]: cl100k_base
+    - generic [ref=e395]:
+      - heading "9. Conclusion" [level=2] [ref=e396]
+      - paragraph [ref=e397]:
+        - text: On the private
+        - code [ref=e398]: platform
+        - text: repository, the current pure-Rust Contextro implementation makes repository discovery substantially cheaper. In a deterministic 1,000-task study, it cut token volume by 91.2%, collapsed the number of interaction steps to one call per task, and completed every task in the inventory. Those are meaningful retrieval wins, even though the benchmark does not attempt to measure full autonomous coding quality.
+      - paragraph [ref=e399]: "The next step is clear. The benchmark surfaced a real parser limitation on TypeScript-heavy repositories: graph relationships are currently absent, so graph-native tasks cannot yet be evaluated honestly. Solving that limitation should be the priority before claiming broad impact-analysis or caller-tracing performance on JavaScript and TypeScript codebases."
+    - generic [ref=e400]:
+      - heading "References" [level=2] [ref=e401]
+      - list [ref=e402]:
+        - listitem [ref=e403]:
+          - text: Anthropic.
+          - emphasis [ref=e404]: Model Context Protocol
+          - text: . 2024. Available at
+          - code [ref=e405]: https://modelcontextprotocol.io/
+          - text: .
+        - listitem [ref=e406]:
+          - text: "Robertson, Stephen, and Hugo Zaragoza. \"The Probabilistic Relevance Framework: BM25 and Beyond.\""
+          - emphasis [ref=e407]: Foundations and Trends in Information Retrieval
+          - text: 3(4):333-389, 2009.
+        - listitem [ref=e408]:
+          - text: Lewis, Patrick, et al. "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks."
+          - emphasis [ref=e409]: NeurIPS
+          - text: ", 2020."
+        - listitem [ref=e410]:
+          - text: Brunsfeld, Max.
+          - emphasis [ref=e411]: tree-sitter
+          - text: . Available at
+          - code [ref=e412]: https://tree-sitter.github.io/tree-sitter/
+          - text: .
+        - listitem [ref=e413]:
+          - text: Tantivy.
+          - emphasis [ref=e414]: Tantivy Search Engine Library
+          - text: . Available at
+          - code [ref=e415]: https://tantivy-search.github.io/
+          - text: .
+    - generic [ref=e416]:
+      - heading "Appendix A. Experiment Configuration" [level=2] [ref=e417]
+      - paragraph [ref=e418]:
+        - text: Table 9 collects the configuration values that define the benchmark. These fields are duplicated in
+        - code [ref=e419]: platform-1000-study-config.json
+        - text: .
+      - generic [ref=e420]:
+        - strong [ref=e421]: Table 9.
+        - text: Experiment configuration.
+      - table [ref=e422]:
+        - rowgroup [ref=e423]:
+          - row "Field Value" [ref=e424]:
+            - columnheader "Field" [ref=e425]
+            - columnheader "Value" [ref=e426]
+        - rowgroup [ref=e427]:
+          - row "Requested tasks 1,000" [ref=e428]:
+            - cell "Requested tasks" [ref=e429]
+            - cell "1,000" [ref=e430]
+          - row "Generated tasks 1,000" [ref=e431]:
+            - cell "Generated tasks" [ref=e432]
+            - cell "1,000" [ref=e433]
+          - row "Task families 300 symbol discovery, 300 exact search, 200 batch lookup, 200 document symbols" [ref=e434]:
+            - cell "Task families" [ref=e435]
+            - cell "300 symbol discovery, 300 exact search, 200 batch lookup, 200 document symbols" [ref=e436]
+          - row "Tracked files 10,889" [ref=e437]:
+            - cell "Tracked files" [ref=e438]
+            - cell "10,889" [ref=e439]
+          - row "Indexed files 8,498" [ref=e440]:
+            - cell "Indexed files" [ref=e441]
+            - cell "8,498" [ref=e442]
+          - row "Total symbols / chunks 11,534 / 11,534" [ref=e443]:
+            - cell "Total symbols / chunks" [ref=e444]
+            - cell "11,534 / 11,534" [ref=e445]
+          - row "Graph relationships 0" [ref=e446]:
+            - cell "Graph relationships" [ref=e447]
+            - cell "0" [ref=e448]
+          - row "Index build times 0.45 s indexing, 34.3 ms BM25 build, 13.5 ms graph build" [ref=e449]:
+            - cell "Index build times" [ref=e450]
+            - cell "0.45 s indexing, 34.3 ms BM25 build, 13.5 ms graph build" [ref=e451]
+          - row "Baseline strategy Exact git grep plus bounded file windows" [ref=e452]:
+            - cell "Baseline strategy" [ref=e453]
+            - cell "Exact git grep plus bounded file windows" [ref=e454]:
+              - text: Exact
+              - code [ref=e455]: git grep
+              - text: plus bounded file windows
+          - row "Treatment tools find_symbol, search(mode=\"bm25\"), code.lookup_symbols, code.get_document_symbols" [ref=e456]:
+            - cell "Treatment tools" [ref=e457]
+            - cell "find_symbol, search(mode=\"bm25\"), code.lookup_symbols, code.get_document_symbols" [ref=e458]:
+              - code [ref=e459]: find_symbol
+              - text: ","
+              - code [ref=e460]: search(mode="bm25")
+              - text: ","
+              - code [ref=e461]: code.lookup_symbols
+              - text: ","
+              - code [ref=e462]: code.get_document_symbols
+    - generic [ref=e463]:
+      - heading "Appendix B. Tool Contracts Used in the Study" [level=2] [ref=e464]
+      - paragraph [ref=e465]: This appendix summarizes only the four tool paths exercised in the 1,000-task benchmark. The benchmark interacts with the handlers directly, but the structures below match the externally visible MCP surface.
+      - generic [ref=e466]:
+        - strong [ref=e467]: Table 10.
+        - text: Tool contracts used in the study.
+      - table [ref=e468]:
+        - rowgroup [ref=e469]:
+          - row "Tool Inputs used here Primary output fields checked Role" [ref=e470]:
+            - columnheader "Tool" [ref=e471]
+            - columnheader "Inputs used here" [ref=e472]
+            - columnheader "Primary output fields checked" [ref=e473]
+            - columnheader "Role" [ref=e474]
+        - rowgroup [ref=e475]:
+          - row "find_symbol name, exact=true symbols[].file, symbols[].name, symbols[].line Exact definition discovery" [ref=e476]:
+            - cell "find_symbol" [ref=e477]:
+              - code [ref=e478]: find_symbol
+            - cell "name, exact=true" [ref=e479]:
+              - code [ref=e480]: name
+              - text: ","
+              - code [ref=e481]: exact=true
+            - cell "symbols[].file, symbols[].name, symbols[].line" [ref=e482]:
+              - code [ref=e483]: symbols[].file
+              - text: ","
+              - code [ref=e484]: symbols[].name
+              - text: ","
+              - code [ref=e485]: symbols[].line
+            - cell "Exact definition discovery" [ref=e486]
+          - row "search query, limit=5, mode=\"bm25\" results[].file, results[].name, results[].score Ranked exact-identifier retrieval" [ref=e487]:
+            - cell "search" [ref=e488]:
+              - code [ref=e489]: search
+            - cell "query, limit=5, mode=\"bm25\"" [ref=e490]:
+              - code [ref=e491]: query
+              - text: ","
+              - code [ref=e492]: limit=5
+              - text: ","
+              - code [ref=e493]: mode="bm25"
+            - cell "results[].file, results[].name, results[].score" [ref=e494]:
+              - code [ref=e495]: results[].file
+              - text: ","
+              - code [ref=e496]: results[].name
+              - text: ","
+              - code [ref=e497]: results[].score
+            - cell "Ranked exact-identifier retrieval" [ref=e498]
+          - row "code(operation=\"lookup_symbols\") symbols list symbols[].file, symbols[].name, symbols[].line Grouped three-symbol lookup" [ref=e499]:
+            - cell "code(operation=\"lookup_symbols\")" [ref=e500]:
+              - code [ref=e501]: code(operation="lookup_symbols")
+            - cell "symbols list" [ref=e502]:
+              - code [ref=e503]: symbols
+              - text: list
+            - cell "symbols[].file, symbols[].name, symbols[].line" [ref=e504]:
+              - code [ref=e505]: symbols[].file
+              - text: ","
+              - code [ref=e506]: symbols[].name
+              - text: ","
+              - code [ref=e507]: symbols[].line
+            - cell "Grouped three-symbol lookup" [ref=e508]
+          - row "code(operation=\"get_document_symbols\") file_path symbols[].name, symbols[].line, symbols[].signature File-local symbol inventory" [ref=e509]:
+            - cell "code(operation=\"get_document_symbols\")" [ref=e510]:
+              - code [ref=e511]: code(operation="get_document_symbols")
+            - cell "file_path" [ref=e512]:
+              - code [ref=e513]: file_path
+            - cell "symbols[].name, symbols[].line, symbols[].signature" [ref=e514]:
+              - code [ref=e515]: symbols[].name
+              - text: ","
+              - code [ref=e516]: symbols[].line
+              - text: ","
+              - code [ref=e517]: symbols[].signature
+            - cell "File-local symbol inventory" [ref=e518]
+    - generic [ref=e519]:
+      - heading "Appendix C. Category-Level Interaction Costs" [level=2] [ref=e520]
+      - paragraph [ref=e521]:
+        - text: Table 11 reports interaction-heavy details aggregated from
+        - code [ref=e522]: platform-1000-study-results.json
+        - text: .
+      - generic [ref=e523]:
+        - strong [ref=e524]: Table 11.
+        - text: Per-category interaction costs.
+      - table [ref=e525]:
+        - rowgroup [ref=e526]:
+          - row "Category Baseline mean tool calls Contextro mean tool calls Baseline mean files read Contextro mean files read Baseline p95 latency Contextro p95 latency" [ref=e527]:
+            - columnheader "Category" [ref=e528]
+            - columnheader "Baseline mean tool calls" [ref=e529]
+            - columnheader "Contextro mean tool calls" [ref=e530]
+            - columnheader "Baseline mean files read" [ref=e531]
+            - columnheader "Contextro mean files read" [ref=e532]
+            - columnheader "Baseline p95 latency" [ref=e533]
+            - columnheader "Contextro p95 latency" [ref=e534]
+        - rowgroup [ref=e535]:
+          - row "Symbol discovery 2.763 1.000 1.763 0.000 228.248 ms 0.031 ms" [ref=e536]:
+            - cell "Symbol discovery" [ref=e537]
+            - cell "2.763" [ref=e538]
+            - cell "1.000" [ref=e539]
+            - cell "1.763" [ref=e540]
+            - cell "0.000" [ref=e541]
+            - cell "228.248 ms" [ref=e542]
+            - cell "0.031 ms" [ref=e543]
+          - row "Exact search 2.897 1.000 1.897 0.000 218.685 ms 0.112 ms" [ref=e544]:
+            - cell "Exact search" [ref=e545]
+            - cell "2.897" [ref=e546]
+            - cell "1.000" [ref=e547]
+            - cell "1.897" [ref=e548]
+            - cell "0.000" [ref=e549]
+            - cell "218.685 ms" [ref=e550]
+            - cell "0.112 ms" [ref=e551]
+          - row "Batch lookup 6.000 1.000 3.000 0.000 663.968 ms 0.058 ms" [ref=e552]:
+            - cell "Batch lookup" [ref=e553]
+            - cell "6.000" [ref=e554]
+            - cell "1.000" [ref=e555]
+            - cell "3.000" [ref=e556]
+            - cell "0.000" [ref=e557]
+            - cell "663.968 ms" [ref=e558]
+            - cell "0.058 ms" [ref=e559]
+          - row "Document symbols 1.000 1.000 1.000 0.000 0.107 ms 0.131 ms" [ref=e560]:
+            - cell "Document symbols" [ref=e561]
+            - cell "1.000" [ref=e562]
+            - cell "1.000" [ref=e563]
+            - cell "1.000" [ref=e564]
+            - cell "0.000" [ref=e565]
+            - cell "0.107 ms" [ref=e566]
+            - cell "0.131 ms" [ref=e567]

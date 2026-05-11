@@ -10,7 +10,7 @@ when_to_use: >
   that will be read by developers, researchers, or the public. Especially useful when the
   content involves benchmarks, experiments, architecture explanations, or product narratives.
 metadata:
-  version: "1.0.0"
+  version: "0.1.0"
   category: content
   tags: [blog, writing, research, communication, technical-writing]
 license: Proprietary

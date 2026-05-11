@@ -9,7 +9,7 @@ when_to_use: >
   FFI, and extension-boundary decisions. Profile first, keep boundaries small, and prefer
   benchmarked, testable designs over novelty.
 metadata:
-  version: "2.0.0"
+  version: "0.1.0"
   category: mcp-development
   tags: [rust, pyo3, maturin, ffi, ownership, errors, async, memory, api, testing, performance, linting]
   sources:

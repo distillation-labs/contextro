@@ -12,7 +12,7 @@ when_to_use: >
   experiment designs, bar charts, scatter plots, flow diagrams, and data tables rendered
   as graphics.
 metadata:
-  version: "1.0.0"
+  version: "0.1.0"
   category: content
   tags: [svg, diagrams, visualization, design, charts]
 license: Proprietary

@@ -13,7 +13,7 @@ when_to_use: >
   agents, benchmark strategy, evaluation design, architecture tradeoffs, and research-backed
   roadmap decisions.
 metadata:
-  version: "2.0.0"
+  version: "0.1.0"
   category: research
   tags: [research, hypotheses, literature, evaluation, architecture, benchmarking, comparison, ablation, experiment-design]
 license: Proprietary

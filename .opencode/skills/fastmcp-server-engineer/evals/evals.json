@@ -1,6 +1,6 @@
 {
   "skill_name": "fastmcp-server-engineer",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "categories": {
     "triggering": "Skill loads for FastMCP implementation questions",
     "fastmcp": "Skill uses FastMCP-specific implementation guidance",

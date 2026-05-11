@@ -11,7 +11,7 @@ when_to_use: >
   Especially useful for primitive selection, protocol correctness, lifecycle design, transport
   decisions, notifications, and long-term MCP API shape.
 metadata:
-  version: "2.0.0"
+  version: "0.1.0"
   category: mcp-development
   tags: [mcp, protocol, tools, resources, prompts, transport, lifecycle, capabilities]
 license: Proprietary

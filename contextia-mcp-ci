@@ -1,7 +1,0 @@
-#!/bin/bash
-# Shim for Glama's mcp-proxy to find the executable
-if [ -f "/app/.venv/bin/contextro-mcp-ci" ]; then
-    exec /app/.venv/bin/contextro-mcp-ci "$@"
-else
-    exec python -m contextro_mcp.server "$@"
-fi

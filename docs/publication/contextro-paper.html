@@ -3,22 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Contextro: Token-Efficient Repository Discovery for MCP-Based Coding Workflows</title>
+  <title>Contextro: A Pure-Rust MCP Server for Token-Efficient Repository Discovery</title>
   <style>
     :root {
-      --page-bg: #ffffff;
-      --paper-bg: #ffffff;
-      --ink: #111111;
-      --muted: #555555;
-      --rule: #444444;
-      --light-rule: #cfcfcf;
-      --accent: #1f3a5f;
-      --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      --ink: #1a1a2e;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --rule: #4b5563;
+      --accent: #0f3460;
+      --accent-soft: #e8eef8;
+      --success: #059669;
+      --danger: #dc2626;
+      --paper: #ffffff;
+      --page: #f7f7f7;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
     }
 
     @page {
       size: 8.5in 11in;
-      margin: 1in;
+      margin: 0.9in;
     }
 
     * {
@@ -28,28 +31,23 @@
     html, body {
       margin: 0;
       padding: 0;
-      background: var(--page-bg);
+      background: var(--page);
       color: var(--ink);
     }
 
     body {
-      font-family: Georgia, "Times New Roman", Times, serif;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       font-size: 11pt;
-      line-height: 1.68;
+      line-height: 1.58;
       text-rendering: optimizeLegibility;
       -webkit-font-smoothing: antialiased;
-    }
-
-    a {
-      color: inherit;
-      text-decoration: none;
     }
 
     .sheet,
     .manuscript {
       width: 8.5in;
-      margin: 16px auto;
-      background: var(--paper-bg);
+      margin: 18px auto;
+      background: var(--paper);
       box-shadow: var(--shadow);
       padding: 0.95in 1in;
     }
@@ -60,206 +58,183 @@
       page-break-after: always;
     }
 
-    .manuscript {
-      break-after: page;
-      page-break-after: always;
-    }
-
     .title-page {
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
       text-align: center;
-      padding-top: 1.45in;
+      padding-top: 1.2in;
     }
 
     .report-type {
-      font-size: 11pt;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      margin-bottom: 32px;
+      margin-bottom: 22px;
       color: var(--muted);
+      font-size: 10.2pt;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
     }
 
-    .title-page h1 {
+    .paper-title {
       margin: 0 auto;
       max-width: 6.1in;
-      font-size: 26pt;
-      line-height: 1.2;
+      font-size: 25pt;
+      line-height: 1.17;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .paper-subtitle {
+      margin: 14px auto 0;
+      max-width: 5.9in;
+      font-size: 12.6pt;
+      line-height: 1.5;
+      color: #374151;
+    }
+
+    .title-rule {
+      width: 100%;
+      max-width: 6.2in;
+      margin: 24px auto;
+      border-top: 1.5px solid var(--rule);
+    }
+
+    .paper-authors {
+      margin-bottom: 6px;
+      font-size: 15pt;
       font-weight: 700;
     }
 
-    .title-subtitle {
-      margin: 18px auto 0;
-      max-width: 5.8in;
-      font-size: 13.2pt;
-      line-height: 1.55;
-      color: #333333;
-    }
-
-    .title-meta {
-      margin-top: 40px;
-      font-size: 11pt;
-      line-height: 1.75;
+    .paper-affiliation,
+    .paper-email,
+    .paper-date {
       color: var(--muted);
+      font-size: 11pt;
     }
 
     .title-note {
       max-width: 6in;
       margin: 34px auto 0;
       padding-top: 14px;
-      border-top: 1px solid var(--light-rule);
+      border-top: 1px solid var(--border);
+      color: var(--muted);
       font-size: 10pt;
-      line-height: 1.55;
-      color: var(--muted);
+      line-height: 1.5;
     }
 
-    .cover-page {
-      max-width: 6.5in;
-      padding-top: 0.45in;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-    }
-
-    .paper-title {
-      margin: 0 auto;
-      max-width: 6.2in;
-      text-align: center;
-      font-size: 22pt;
-      line-height: 1.2;
-      font-weight: 700;
-    }
-
-    .paper-subtitle {
-      margin: 10px auto 0;
-      max-width: 5.9in;
-      text-align: center;
-      font-size: 12.4pt;
-      line-height: 1.45;
-      color: var(--muted);
-    }
-
-    .paper-authors {
-      margin: 18px 0 8px;
-      text-align: center;
-      font-size: 17pt;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .paper-affiliation {
-      margin: 0 0 8px;
-      text-align: center;
-      font-size: 12.5pt;
-      color: var(--muted);
-    }
-
-    .paper-email {
-      margin: 0 0 24px;
-      text-align: center;
-      font-size: 12.5pt;
-      color: var(--text);
-    }
-
-    .title-rule {
-      width: 100%;
-      max-width: 6.4in;
-      margin: 18px auto 22px;
-      border-top: 1.5px solid #999999;
-    }
-
-    .front-page {
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-      max-width: 6.4in;
-    }
-
-    .abstract-page {
-      max-width: 6.4in;
+    .abstract-page,
+    .front-matter {
+      max-width: 6.35in;
     }
 
     .front-title {
-      margin: 0 0 18px;
+      margin: 0 0 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 10.8pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .abstract-page .paper-mini-title {
+      margin: 0 0 6px;
+      text-align: center;
+      font-size: 18pt;
+      line-height: 1.24;
+      font-weight: 700;
+    }
+
+    .abstract-page .paper-mini-meta {
+      margin: 0 0 2px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 10.6pt;
+    }
+
+    .abstract-label {
+      display: block;
+      margin: 26px 0 10px;
       text-align: center;
       font-size: 11pt;
       font-weight: 700;
-      text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: var(--muted);
+      text-transform: uppercase;
+      color: var(--accent);
     }
 
-    .front-page p {
-      margin: 0 0 12px;
+    .abstract-body {
+      font-size: 10.8pt;
+      line-height: 1.52;
       text-align: justify;
       hyphens: auto;
     }
 
-    .front-page p + p {
-      text-indent: 1.25em;
-    }
-
-    .abstract-label,
-    .keywords-label {
-      font-weight: 700;
-    }
-
     .keywords {
-      margin-top: 16px;
-      font-size: 10.5pt;
+      margin-top: 18px;
       color: var(--muted);
+      font-size: 10pt;
+      line-height: 1.45;
+    }
+
+    .front-matter h2 {
+      margin-top: 0;
     }
 
     .toc,
     .front-list {
       list-style: none;
-      margin: 0;
+      margin: 0 0 18px;
       padding: 0;
     }
 
     .toc li,
     .front-list li {
-      margin: 0 0 10px;
-      line-height: 1.55;
+      margin: 0 0 8px;
+      padding-left: 0;
+      line-height: 1.45;
+      color: #374151;
     }
 
-    .toc .sub,
-    .front-list .sub {
-      margin-left: 20px;
-      font-size: 11pt;
+    .manuscript section {
+      break-inside: avoid-page;
+      page-break-inside: avoid;
     }
 
-    .manuscript h2,
-    .manuscript h3 {
+    h2,
+    h3 {
       margin: 0;
-      font-weight: 700;
       line-height: 1.3;
       page-break-after: avoid;
     }
 
-    .manuscript h2 {
+    h2 {
       margin-top: 34px;
       margin-bottom: 12px;
-      font-size: 14.5pt;
-      border-bottom: 1px solid var(--light-rule);
       padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14.4pt;
+      font-weight: 700;
     }
 
-    .manuscript h3 {
+    h3 {
       margin-top: 22px;
       margin-bottom: 8px;
       font-size: 11.2pt;
+      font-weight: 700;
+      color: var(--accent);
     }
 
-    .manuscript p {
+    p {
       margin: 0 0 11px;
       text-align: justify;
       hyphens: auto;
+      orphans: 3;
+      widows: 3;
     }
 
     .manuscript p + p {
-      text-indent: 1.25em;
+      text-indent: 1.15em;
     }
 
     .manuscript ul,
@@ -273,218 +248,163 @@
     }
 
     .figure {
-      margin: 22px 0 20px;
+      margin: 22px 0 18px;
       break-inside: avoid;
       page-break-inside: avoid;
     }
 
     .figure img {
-      width: 100%;
       display: block;
+      width: 100%;
       height: auto;
-      border: 1px solid var(--light-rule);
+      border: 1px solid var(--border);
       background: #ffffff;
     }
 
     figcaption,
-    .table-caption {
-      margin-top: 8px;
-      font-size: 9.8pt;
-      line-height: 1.45;
+    .table-caption,
+    .appendix-note {
       color: var(--muted);
+      font-size: 9.5pt;
+      line-height: 1.42;
     }
 
     .table-caption {
-      margin-bottom: 5px;
+      margin: 8px 0 4px;
     }
 
     table {
       width: 100%;
-      border-collapse: collapse;
       margin: 10px 0 18px;
-      font-size: 10.15pt;
-      line-height: 1.42;
+      border-collapse: collapse;
       border-top: 1.5px solid var(--rule);
       border-bottom: 1.5px solid var(--rule);
-    }
-
-    .table-fixed,
-    .table-two-col {
+      font-size: 9.45pt;
+      line-height: 1.34;
       table-layout: fixed;
-    }
-
-    .table-two-col th:first-child,
-    .table-two-col td:first-child {
-      width: 31%;
-    }
-
-    .table-outcomes,
-    .table-category-results {
-      table-layout: fixed;
-    }
-
-    .table-outcomes th,
-    .table-outcomes td,
-    .table-category-results th,
-    .table-category-results td {
-      padding-left: 6px;
-      padding-right: 6px;
-    }
-
-    .table-outcomes th:first-child,
-    .table-outcomes td:first-child {
-      width: 18%;
-    }
-
-    .table-outcomes th:nth-child(2),
-    .table-outcomes td:nth-child(2) {
-      width: 7%;
-    }
-
-    .table-outcomes th:nth-child(3),
-    .table-outcomes td:nth-child(3) {
-      width: 12%;
-    }
-
-    .table-outcomes th:nth-child(4),
-    .table-outcomes td:nth-child(4),
-    .table-outcomes th:nth-child(5),
-    .table-outcomes td:nth-child(5) {
-      width: 13%;
-    }
-
-    .table-outcomes th:nth-child(6),
-    .table-outcomes td:nth-child(6) {
-      width: 16%;
-    }
-
-    .table-outcomes th:last-child,
-    .table-outcomes td:last-child {
-      width: 21%;
-    }
-
-    .table-category-results th:first-child,
-    .table-category-results td:first-child {
-      width: 21%;
-    }
-
-    .table-category-results th:nth-child(2),
-    .table-category-results td:nth-child(2) {
-      width: 13%;
-    }
-
-    .table-category-results th:nth-child(3),
-    .table-category-results td:nth-child(3),
-    .table-category-results th:nth-child(4),
-    .table-category-results td:nth-child(4) {
-      width: 14%;
-    }
-
-    .table-category-results th:nth-child(5),
-    .table-category-results td:nth-child(5) {
-      width: 11%;
-    }
-
-    .table-category-results th:last-child,
-    .table-category-results td:last-child {
-      width: 27%;
-    }
-
-    tbody tr {
       break-inside: avoid;
       page-break-inside: avoid;
     }
 
-    .table-compact td,
-    .table-compact th {
-      padding: 5px 8px;
-      font-size: 9.65pt;
-    }
-
     thead th {
-      text-align: left;
       padding: 7px 8px;
       border-bottom: 1px solid var(--rule);
-      font-weight: 700;
+      text-align: left;
       vertical-align: bottom;
-      background: #ffffff;
+      overflow-wrap: normal;
+      word-break: normal;
+      hyphens: none;
+      font-size: 9.2pt;
+      font-weight: 700;
+      line-height: 1.24;
     }
 
     tbody td {
       padding: 7px 8px;
       vertical-align: top;
-    }
-
-    thead th,
-    tbody td {
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
       word-break: normal;
-      hyphens: auto;
     }
 
     tbody tr + tr td {
-      border-top: 1px solid #e6e6e6;
+      border-top: 1px solid #e5e7eb;
     }
 
-    .num {
+    tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .table-two-col th:first-child,
+    .table-two-col td:first-child,
+    .artifact-summary td:first-child {
+      width: 29%;
+      font-weight: 700;
+    }
+
+    th.num {
+      text-align: center;
+      white-space: normal;
+      font-variant-numeric: tabular-nums;
+    }
+
+    td.num {
       text-align: right;
       white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .headline-table col.metric { width: 20%; }
+    .headline-table col.a { width: 22%; }
+    .headline-table col.b { width: 18%; }
+    .headline-table col.c { width: 40%; }
+
+    .headline-table td.num {
+      white-space: normal;
+    }
+
+    .category-table col.c1 { width: 17%; }
+    .category-table col.c2 { width: 7%; }
+    .category-table col.c3 { width: 19%; }
+    .category-table col.c4 { width: 22%; }
+    .category-table col.c5 { width: 11%; }
+    .category-table col.c6 { width: 24%; }
+
+    .contracts-table col.c1 { width: 20%; }
+    .contracts-table col.c2 { width: 18%; }
+    .contracts-table col.c3 { width: 30%; }
+    .contracts-table col.c4 { width: 32%; }
+
+    .stats-table {
+      font-size: 8.8pt;
+      line-height: 1.24;
+    }
+
+    .stats-table thead th,
+    .contracts-table thead th {
+      font-size: 8.7pt;
+      line-height: 1.18;
+      padding: 6px 6px;
+    }
+
+    .stats-table tbody td,
+    .contracts-table tbody td {
+      padding: 6px 6px;
+    }
+
+    .stats-table col.c1 { width: 18%; }
+    .stats-table col.c2 { width: 13%; }
+    .stats-table col.c3 { width: 13%; }
+    .stats-table col.c4 { width: 13%; }
+    .stats-table col.c5 { width: 13%; }
+    .stats-table col.c6 { width: 15%; }
+    .stats-table col.c7 { width: 15%; }
+
+    .appendix-note {
+      margin: 0 0 10px;
     }
 
     code,
     pre {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 10pt;
-    }
-
-    table code {
-      white-space: normal;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 9.1pt;
     }
 
     pre {
       margin: 12px 0 16px;
       padding: 11px 13px;
-      border: 1px solid var(--light-rule);
-      background: #ffffff;
-      line-height: 1.45;
+      border: 1px solid var(--border);
+      background: #fbfbfb;
+      line-height: 1.42;
       overflow-x: auto;
       white-space: pre-wrap;
       word-break: break-word;
-      font-size: 9.35pt;
     }
 
-    .index-grid {
-      column-count: 2;
-      column-gap: 28px;
-      font-size: 10.75pt;
-      line-height: 1.55;
-    }
-
-    .index-grid p {
-      margin: 0 0 10px;
-      text-indent: 0;
-      text-align: left;
-      break-inside: avoid;
-    }
-
-    .small-note {
+    #references ol {
+      margin-left: 18px;
       font-size: 10pt;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .appendix-note {
-      margin: 0 0 12px;
-      font-size: 10.2pt;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .artifact-summary td:first-child {
-      width: 27%;
-      font-weight: 700;
+      line-height: 1.45;
     }
 
     #appendix-c {
@@ -492,556 +412,423 @@
       page-break-before: always;
     }
 
-    #appendix-c .appendix-note {
-      margin-bottom: 6px;
-      font-size: 9.15pt;
-      line-height: 1.24;
-    }
-
-    #appendix-c h2 {
-      margin-top: 0;
-      margin-bottom: 8px;
-    }
-
-    #appendix-c .table-caption {
-      margin-bottom: 3px;
-    }
-
-    .appendix-tool-family-table {
-      margin-top: 8px;
-      font-size: 8.1pt;
-      line-height: 1.18;
-      table-layout: fixed;
-    }
-
-    .appendix-tool-family-table th,
-    .appendix-tool-family-table td {
-      padding: 4px 6px;
-    }
-
-    .appendix-tool-family-table th:first-child,
-    .appendix-tool-family-table td:first-child {
-      width: 20%;
-      white-space: nowrap;
-    }
-
-    .appendix-tool-family-table th:nth-child(2),
-    .appendix-tool-family-table td:nth-child(2) {
-      width: 18%;
-      white-space: nowrap;
-    }
-
-    .appendix-tool-family-table th:nth-child(3),
-    .appendix-tool-family-table td:nth-child(3) {
-      width: 16%;
-      white-space: normal;
-    }
-
-    .appendix-tool-family-table th:last-child,
-    .appendix-tool-family-table td:last-child {
-      width: 46%;
-      white-space: normal;
-    }
-
-    .appendix-results-table {
-      margin-top: 4px;
-      font-size: 7.85pt;
-      line-height: 1.02;
-      table-layout: fixed;
-    }
-
-    .appendix-results-table th,
-    .appendix-results-table td {
-      padding: 2px 4px;
-      font-size: 7.85pt;
-      line-height: 1.02;
-    }
-
-    .appendix-results-table th:first-child,
-    .appendix-results-table td:first-child {
-      width: 20%;
-    }
-
-    .appendix-results-table th:nth-child(2),
-    .appendix-results-table td:nth-child(2) {
-      width: 15%;
-    }
-
-    .appendix-results-table th:nth-child(3),
-    .appendix-results-table td:nth-child(3) {
-      width: 10%;
-    }
-
-    .appendix-results-table th:nth-child(4),
-    .appendix-results-table td:nth-child(4),
-    .appendix-results-table th:nth-child(5),
-    .appendix-results-table td:nth-child(5) {
-      width: 10%;
-    }
-
-    .appendix-results-table th:nth-child(6),
-    .appendix-results-table td:nth-child(6) {
-      width: 18%;
-    }
-
-    .appendix-results-table th:last-child,
-    .appendix-results-table td:last-child {
-      width: 17%;
-    }
-
     @media print {
-      body {
+      html, body {
         background: #ffffff;
       }
 
       .sheet,
       .manuscript {
-        margin: 0;
-        box-shadow: none;
         width: auto;
-        padding: 0.3in 0.45in;
+        margin: 0;
+        padding: 0.28in 0.42in;
+        box-shadow: none;
       }
 
-      .cover-page,
-      .front-page,
-      .abstract-page {
-        max-width: none;
-      }
-
-      .paper-title,
-      .paper-subtitle,
-      .title-note {
-        max-width: none;
-      }
-
-      .cover-page {
-        padding-top: 0.35in;
+      /* Prevent min-height from creating a spurious blank page after each
+         section sheet. break-after: page alone is sufficient for pagination. */
+      .sheet {
+        min-height: 0;
       }
     }
   </style>
 </head>
 <body>
-  <section class="sheet cover-page" id="front-page">
-    <h1 class="paper-title">Contextro: Token-Efficient Repository Discovery<br>for MCP-Based Coding Workflows</h1>
+  <section class="sheet title-page" id="title-page">
+    <div class="report-type">Technical Report</div>
+    <h1 class="paper-title">Contextro: A Pure-Rust MCP Server<br>for Token-Efficient Repository Discovery</h1>
+    <p class="paper-subtitle">A controlled 1,000-task evaluation of deterministic repository-discovery workflows on a production TypeScript repository</p>
     <div class="title-rule"></div>
     <div class="paper-authors">Japneet Kalkat</div>
     <div class="paper-affiliation">Distillation Labs</div>
-    <div class="paper-email">japneet@distillation.ai</div>
-    <h2 class="front-title">Abstract</h2>
-    <p>Repository discovery is a major source of token overhead in MCP-based coding workflows. This report evaluates Contextro, a proprietary local code-intelligence server for repository search, symbol navigation, structural analysis, and persistent memory, using a 60-task paired study on an 8,496-file production TypeScript monorepo. Relative to a bounded grep-based pipeline with repository-wide grep plus up to five file reads, the Contextro pipeline reduced total token consumption from 328,272 to 14,407, reduced median latency from 448.35 ms to 5.21 ms, and eliminated file reads. On the directly comparable 39-task subset, token consumption fell to 6,638, a 98.0% reduction; across 100 deterministic bootstrap subsets, reduction remained between 97.24% and 98.48%. Supplemental public verification now includes reruns on the open <code>src/</code> tree, a 39-task stronger-baseline rerun on a 1,179-file public proxy repository, and an 8-task deterministic edit-correctness benchmark. These results bound discovery efficiency and scripted edit correctness rather than full autonomous coding quality.</p>
-    <p class="keywords"><span class="keywords-label">Keywords:</span> Model Context Protocol, repository discovery, code intelligence, semantic retrieval, structural search, technical evaluation</p>
+    <div class="paper-email">japneetkalkat@outlook.com</div>
+    <div class="paper-date">May 2026</div>
+    <p class="title-note">This manuscript supersedes the earlier pre-Rust Contextro paper. All headline results here are backed by the current Rust benchmark harness and the machine-readable artifacts bundled in <code>docs/publication/</code>.</p>
+  </section>
+
+  <section class="sheet abstract-page" id="abstract-page">
+    <div class="paper-mini-title">Contextro: A Pure-Rust MCP Server for Token-Efficient Repository Discovery</div>
+    <p class="paper-mini-meta">Japneet Kalkat · Distillation Labs</p>
+    <p class="paper-mini-meta">May 2026</p>
+    <span class="abstract-label">Abstract</span>
+    <p class="abstract-body">Repository discovery still dominates the prompt budget of many MCP-based coding workflows. This paper evaluates the current Rust-era version of Contextro, a pure-Rust local MCP server, with a deterministic 1,000-task paired study on a private production repository named <code>platform</code>. The benchmark target contains 10,889 tracked files; Contextro indexed 8,498 source files into 11,534 symbols and 11,534 chunks. Against a stronger scripted local baseline built from exact <code>git grep</code> plus bounded file reads, Contextro reduced total token volume from 1,068,884 to 94,034 (91.2%), reduced median handler latency from 202.969 ms to 0.037 ms, reduced mean tool calls from 3.098 to 1.000, and eliminated file reads in the study harness. Contextro completed all 1,000 tasks; the baseline completed 999. Because the current TypeScript and JavaScript parser path emits zero call relationships on this repository, graph-dependent tasks were explicitly excluded. The resulting claim is therefore narrow and honest: on this repository, the current pure-Rust Contextro implementation materially reduces retrieval overhead for deterministic discovery and symbol-navigation tasks.</p>
+    <p class="keywords"><strong>Keywords:</strong> Model Context Protocol, repository discovery, Rust, code intelligence, BM25 retrieval, benchmark design</p>
+  </section>
+
+  <section class="sheet front-matter" id="front-matter">
+    <h2 class="front-title">Contents</h2>
+    <ol class="toc">
+      <li>1. Introduction</li>
+      <li>2. Related Work</li>
+      <li>3. Current System</li>
+      <li>4. Benchmark Methodology</li>
+      <li>5. Results</li>
+      <li>6. Discussion</li>
+      <li>7. Limitations</li>
+      <li>8. Availability and Reproducibility</li>
+      <li>9. Conclusion</li>
+      <li>References</li>
+      <li>Appendix A. Experiment Configuration</li>
+      <li>Appendix B. Tool Contracts Used in the Study</li>
+      <li>Appendix C. Category-Level Interaction Costs</li>
+    </ol>
+
+    <h2 class="front-title">List of Figures</h2>
+    <ol class="front-list">
+      <li>Figure 1. Current Contextro system overview.</li>
+      <li>Figure 2. Deterministic paired-study design.</li>
+      <li>Figure 3. Headline benchmark outcomes.</li>
+    </ol>
+
+    <h2 class="front-title">List of Tables</h2>
+    <ol class="front-list">
+      <li>Table 1. Current Rust implementation snapshot.</li>
+      <li>Table 2. Tool surface exercised by the 1,000-task study.</li>
+      <li>Table 3. Repository under test and benchmark inventory.</li>
+      <li>Table 4. Metrics and scoring rules.</li>
+      <li>Table 5. Headline outcomes from the 1,000-task study.</li>
+      <li>Table 6. Category-level outcomes.</li>
+      <li>Table 7. Primary publication artifacts for the Rust-era paper.</li>
+      <li>Table 8. Verification environment.</li>
+      <li>Table 9. Experiment configuration.</li>
+      <li>Table 10. Tool contracts used in the study.</li>
+      <li>Table 11. Per-category interaction costs.</li>
+    </ol>
   </section>
 
   <article class="manuscript">
     <section id="introduction">
       <h2>1. Introduction</h2>
-      <p>Repository discovery remains a costly phase in MCP-based coding workflows. Before a client can act on the correct symbol, file, or interface, it typically executes multiple broad searches, opens several files, and accumulates context that is only partially relevant to the task. In the paired study reported here, a representative grep-based workflow consumed 5,524 tokens and took 1.11 s, whereas the corresponding indexed <code>find_symbol</code> call returned in 5.66 ms with 65 tokens.</p>
-      <p>Contextro addresses this inefficiency by replacing file-by-file exploration with structured repository access. It exposes repository search, symbol navigation, relationship tracing, impact analysis, structural search, history lookup, and persistent memory through a local MCP server. The operating premise is straightforward: when discovery tasks can be answered directly, the client does not need to spend context budget reconstructing repository structure from raw files.</p>
-      <p>This report makes four bounded claims. First, a local code-intelligence layer can materially reduce the token cost of repository discovery. Second, the resulting interface can deliver low latency on a production-scale repository for common lookup tasks. Third, the effect remains visible under stricter analysis that separates directly comparable discovery tasks from MCP-native capabilities with no lexical analogue. Fourth, public supplementary artifacts can expose stronger local-tool baselines, exact MCP tool schemas, and deterministic edit-correctness checks without redistributing the private study corpus.</p>
+      <p>Most coding agents still locate code the expensive way. They grep broadly, open several files, inspect mostly irrelevant windows, and only then recover the symbol or file they needed. That workflow wastes tokens because it sends exploration traces rather than direct answers.</p>
+      <p>Contextro is built to replace that exploration trace with targeted repository intelligence. It exposes indexed search, symbol lookup, code operations, history lookup, and memory through a local MCP server so a client can ask for a definition, a ranked exact-search result, or a file-local symbol list directly.</p>
+      <p>The earlier Contextro paper is no longer the right description of the system. The current implementation is Rust end to end, and the benchmark in this paper is produced by a real Rust study harness that invokes the current retrieval handlers directly. No Python runtime and no legacy <code>ctx_fast</code> path remain in the evaluated system.</p>
+      <ol>
+        <li>We report the first controlled 1,000-task benchmark for the current pure-Rust Contextro implementation on the private <code>platform</code> repository.</li>
+        <li>We compare Contextro against a stronger scripted local baseline based on exact <code>git grep</code> and bounded file reads, not against a simulator.</li>
+        <li>We state capability limits explicitly: graph-dependent tasks are excluded because the fresh TypeScript-heavy index contained zero call relationships.</li>
+      </ol>
     </section>
 
     <section id="related-work">
       <h2>2. Related Work</h2>
-      <p>This work sits within a broader literature on contextual retrieval, hybrid search, and prompt-budget management. Prior work from Anthropic, NVIDIA, Liu et al., and OpenAI argues that retrieval systems perform best when they combine multiple signals, rank relevant evidence near the top of the context window, and avoid transmitting unnecessary text. The present report applies that general logic to repository discovery, where the cost of locating the right code often dominates the cost of reasoning over it.</p>
+      <p>This work sits at the intersection of code search, retrieval-augmented generation, and prompt-budget management. BM25-style lexical retrieval remains a strong baseline for identifier-heavy search, while structured retrieval and code graphs are increasingly used to keep only relevant evidence in the context window. Our contribution is narrower than a general code-generation paper: we measure repository-discovery cost inside MCP-mediated workflows and ask how much of that cost disappears when the client can query a local repository-intelligence layer instead of traversing files manually.</p>
     </section>
 
-    <section id="system-design">
-      <h2>3. System Design</h2>
-      <p>Contextro operates as a local MCP service positioned between the coding client and the repository. Rather than requiring exploratory file reads, it returns structured answers to discovery questions, including identifiers, locations, relationships, and compact supporting excerpts. The objective is to shift discovery from file traversal toward targeted retrieval.</p>
+    <section id="current-system">
+      <h2>3. Current System</h2>
+      <p>Contextro is now implemented as a pure-Rust local MCP server. The workspace separates indexing, engines, parsing, memory, git helpers, tool handlers, and the server binary across focused crates, but the operational surface is still a single local binary. For this study, the important detail is architectural continuity: the benchmark harness reuses the same Rust retrieval paths that the server exposes, so the benchmark and the product measure the same code path rather than two different implementations.</p>
 
       <figure class="figure" id="fig-1">
-        <img src="figures/contextro-system-overview.svg" alt="System overview showing an MCP client connected through the Model Context Protocol to Contextro and its local engines." />
-        <figcaption><strong>Figure 1.</strong> System overview. Contextro exposes a unified local interface for repository search, structural analysis, history lookup, and memory.</figcaption>
+        <img src="figures/contextro-system-overview.svg" alt="System overview showing the MCP client, transport, Contextro Rust server, repository snapshot, and core engines." />
+        <figcaption><strong>Figure 1.</strong> Current Contextro system overview. The benchmark exercises the same Rust indexing and retrieval stack that powers the server runtime.</figcaption>
       </figure>
 
-      <h3 id="system-components">3.1. System Components</h3>
-      <div class="table-caption" id="table-1"><strong>Table 1.</strong> Capability map.</div>
+      <h3>3.1. Implementation Snapshot</h3>
+      <div class="table-caption"><strong>Table 1.</strong> Current Rust implementation snapshot.</div>
       <table class="table-fixed">
         <thead>
-          <tr>
-            <th>Capability</th>
-            <th>Representative tools</th>
-            <th>Returned information</th>
-          </tr>
+          <tr><th>Layer</th><th>Current implementation</th><th>Role in this study</th></tr>
         </thead>
         <tbody>
-          <tr><td>Search by meaning</td><td><code>search</code></td><td>Exact snippet, file, and line</td></tr>
-          <tr><td>Find a symbol</td><td><code>find_symbol</code></td><td>Definition location and caller count</td></tr>
-          <tr><td>Trace relationships</td><td><code>find_callers</code>, <code>find_callees</code>, <code>explain</code></td><td>Callers, callees, and local context</td></tr>
-          <tr><td>Assess blast radius</td><td><code>impact</code></td><td>Transitive impact set</td></tr>
-          <tr><td>Search structure</td><td><code>code(pattern_search, ...)</code></td><td>AST-level matches</td></tr>
-          <tr><td>Analyze reachability</td><td><code>dead_code</code>, <code>circular_dependencies</code></td><td>Structural analysis results</td></tr>
-          <tr><td>Search history</td><td><code>commit_search</code></td><td>Semantically relevant commits</td></tr>
-          <tr><td>Persist context</td><td><code>remember</code>, <code>recall</code></td><td>Durable memory across sessions</td></tr>
+          <tr><td>Runtime and transport</td><td>Rust binaries in <code>crates/contextro-server</code> with <code>rmcp</code>, <code>tokio</code>, and <code>axum</code></td><td>Expose the local MCP server and the <code>contextro-study</code> benchmark harness</td></tr>
+          <tr><td>Indexing</td><td><code>contextro-indexing</code> pipeline over supported source files</td><td>Built a fresh 8,498-file index with 11,534 symbols and 11,534 chunks</td></tr>
+          <tr><td>Lexical retrieval</td><td>In-memory Tantivy BM25 index</td><td>Powers the 300 exact-search tasks in the treatment arm</td></tr>
+          <tr><td>Symbol lookup</td><td>In-memory Rust graph and name indexes</td><td>Powers exact <code>find_symbol</code> and grouped lookup tasks</td></tr>
+          <tr><td>Code operations</td><td>Rust <code>code</code> handlers plus <code>TreeSitterParser</code> interface</td><td>Powers <code>lookup_symbols</code> and <code>get_document_symbols</code></td></tr>
+          <tr><td>Current JS/TS limitation</td><td>The current parser path does not populate <code>calls</code> for TypeScript or JavaScript symbols on this repo</td><td>Produced 0 graph relationships, so graph-dependent tasks were excluded</td></tr>
         </tbody>
       </table>
 
-      <h3 id="retrieval-design">3.2. Retrieval and Response Design</h3>
-      <p>The retrieval layer combines semantic, lexical, and structural signals. Semantic retrieval supports concept-level matching, lexical retrieval supports exact identifiers and strings, and graph-based traversal supports questions about callers, callees, and impact. Returned material is filtered and abbreviated so that the interface favors direct answers over large context transfers.</p>
-      <p>The implementation is local and single-process. It integrates vector indexing, lexical retrieval, structural analysis, syntax-aware search, history lookup, and memory in one service boundary. That integration matters operationally because it eliminates the need to orchestrate several external systems during interactive discovery.</p>
+      <h3>3.2. Evaluated Tool Surface</h3>
+      <div class="table-caption"><strong>Table 2.</strong> Tool surface exercised by the 1,000-task study.</div>
+      <table class="table-fixed">
+        <thead>
+          <tr><th>Study category</th><th>Treatment tool path</th><th class="num">Tasks</th><th>Deterministic success condition</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Symbol discovery</td><td><code>find_symbol(name, exact=true)</code></td><td class="num">300</td><td>The expected file path appears in the returned symbol set</td></tr>
+          <tr><td>Exact search</td><td><code>search(query, mode="bm25", limit=5)</code></td><td class="num">300</td><td>The expected file path appears in the ranked results</td></tr>
+          <tr><td>Batch lookup</td><td><code>code(operation="lookup_symbols")</code></td><td class="num">200</td><td>All expected file paths for the three-symbol batch appear</td></tr>
+          <tr><td>Document symbols</td><td><code>code(operation="get_document_symbols")</code></td><td class="num">200</td><td>All expected symbol names appear in the file-level symbol list</td></tr>
+          <tr><td>Excluded graph tasks</td><td><code>find_callers</code>, <code>find_callees</code>, <code>impact</code>, relationship-rich <code>explain</code></td><td class="num">0</td><td>Explicitly excluded because the fresh index contained zero graph relationships</td></tr>
+        </tbody>
+      </table>
+      <p>The study harness uses the current Rust handlers directly. An older JavaScript experiment script in the repository is only a simulator and is not used for any headline claim in this paper.</p>
     </section>
 
     <section id="methodology">
-      <h2>4. Methodology</h2>
-      <p>The evaluation uses a paired two-condition design on a single production repository. Each task is executed once with a bounded grep-based discovery workflow and once with the Contextro pipeline. The full task inventory contains 60 tasks across 16 categories. Among these, 39 tasks have direct file-centric analogues and therefore support strict paired comparison; the remaining 21 tasks represent MCP-native capabilities with no meaningful file-centric baseline.</p>
+      <h2>4. Benchmark Methodology</h2>
+      <p>The study follows a paired, deterministic, two-arm design. Every task is executed once with a stronger scripted local baseline and once with Contextro against the same repository snapshot. The task generator draws the inventory from indexed ground truth rather than from free-form human prompts, so correctness can be scored mechanically.</p>
 
       <figure class="figure" id="fig-2">
-        <img src="figures/contextro-study-design.svg" alt="Study design showing one shared task set run through both a bounded grep-based pipeline and the Contextro pipeline on the same repository." />
-        <figcaption><strong>Figure 2.</strong> Study design. The same task set is evaluated under both conditions on the same repository, preserving a paired comparison.</figcaption>
+        <img src="figures/contextro-study-design.svg" alt="Study design showing a shared repository snapshot, a stronger local baseline arm, a Contextro arm, and the headline benchmark results." />
+        <figcaption><strong>Figure 2.</strong> Deterministic paired-study design. The same 1,000-task inventory is executed in both arms against the same repository snapshot.</figcaption>
       </figure>
 
-      <h3 id="study-design">4.1. Study Design</h3>
-      <p>The primary comparison pairs a bounded grep-based pipeline with the Contextro pipeline. For each directly comparable task, the grep-based pipeline records repository-wide grep output and the contents of up to five matching files in the token estimate. The Contextro pipeline executes one MCP tool call against a pre-indexed repository state. Tasks without a meaningful file-centric analogue are retained in the full inventory as MCP-native capabilities, but they are excluded from the directly comparable subset and from the bootstrap robustness analysis. Both study arms are scripted pipelines rather than autonomous LLM agents.</p>
-      <p>This design isolates discovery cost rather than downstream coding quality. It compares a file-centric grep-based pipeline with a structured retrieval interface under a fixed task inventory, shared repository, and common token accounting rule.</p>
+      <h3>4.1. Study Design</h3>
+      <p>The stronger local baseline uses exact <code>git grep</code> plus bounded file windows. Symbol-discovery tasks read up to two candidate files after a grep hit; exact-search tasks read up to three; batch-lookup tasks run three exact greps and read one primary file window for each symbol; document-symbol tasks open a single file excerpt directly. The treatment arm performs exactly one Contextro tool call per task against a pre-indexed repository state.</p>
+      <p>The task inventory contains 300 symbol-discovery tasks, 300 exact-search tasks, 200 batch-lookup tasks, and 200 document-symbol tasks. Batch and document-symbol tasks are intentionally stricter than single-file lookups because all expected files or symbols must appear for the task to count as correct.</p>
 
-      <h3 id="repository-under-test">4.2. Repository Under Test</h3>
-      <div class="table-caption" id="table-2"><strong>Table 2.</strong> Repository under test.</div>
+      <h3>4.2. Repository Under Test</h3>
+      <div class="table-caption"><strong>Table 3.</strong> Repository under test and benchmark inventory.</div>
       <table class="table-two-col">
         <thead>
           <tr><th>Property</th><th>Value</th></tr>
         </thead>
         <tbody>
-          <tr><td>Repository</td><td>Private production TypeScript monorepo</td></tr>
-          <tr><td>Indexed files</td><td>8,496 files in the private production monorepo</td></tr>
-          <tr><td>Languages</td><td>TypeScript and JavaScript</td></tr>
-          <tr><td>Task inventory</td><td>60 tasks across 16 categories</td></tr>
-          <tr><td>Directly comparable subset</td><td>39 tasks across 8 categories</td></tr>
-          <tr><td>MCP-native tasks</td><td>21 tasks without meaningful file-centric analogues</td></tr>
-          <tr><td>Indexing observation</td><td>21.1 s full indexing time in the fresh rerun</td></tr>
-          <tr><td>Verification host</td><td>Apple M4, 16 GB RAM, macOS 26.4.1, Python 3.12.13</td></tr>
+          <tr><td>Benchmark target</td><td>Private production repository <code>platform</code></td></tr>
+          <tr><td>Tracked files</td><td>10,889</td></tr>
+          <tr><td>Dominant tracked extensions</td><td>5,545 <code>.ts</code> files and 2,905 <code>.tsx</code> files</td></tr>
+          <tr><td>Indexed source files</td><td>8,498</td></tr>
+          <tr><td>Extracted symbols / chunks</td><td>11,534 / 11,534</td></tr>
+          <tr><td>Graph nodes / relationships</td><td>11,534 / 0</td></tr>
+          <tr><td>Task distribution</td><td>300 symbol discovery, 300 exact search, 200 batch lookup, 200 document symbols</td></tr>
+          <tr><td>Fresh index build</td><td>0.45 s</td></tr>
+          <tr><td>BM25 build</td><td>34.3 ms</td></tr>
+          <tr><td>Graph build</td><td>13.5 ms</td></tr>
+          <tr><td>Benchmark host</td><td>Apple M4, 16 GB RAM, macOS 26.4.1</td></tr>
         </tbody>
       </table>
 
-      <h3 id="metrics-reporting">4.3. Metrics and Reporting</h3>
-      <div class="table-caption" id="table-3"><strong>Table 3.</strong> Metrics and reporting.</div>
+      <h3>4.3. Metrics and Deterministic Scoring</h3>
+      <div class="table-caption"><strong>Table 4.</strong> Metrics and scoring rules.</div>
       <table class="table-fixed">
         <thead>
-          <tr><th>Measurement</th><th>Definition</th><th>Artifact</th></tr>
+          <tr><th>Measurement</th><th>Definition</th><th>Purpose</th></tr>
         </thead>
         <tbody>
-          <tr><td>Token estimate</td><td>Common tokenizer applied to baseline outputs and Contextro responses</td><td>Aggregate study summary and rerun summary</td></tr>
-          <tr><td>Latency</td><td>Wall-clock milliseconds measured around each task invocation</td><td>Aggregate study summary and rerun summary</td></tr>
-          <tr><td>Tool calls and files read</td><td>Count of baseline grep/read steps versus one MCP tool call</td><td>Aggregate study summary and rerun summary</td></tr>
-          <tr><td>Comparable subset</td><td>All tasks with a direct file-centric analogue</td><td>Comparable-task catalog and subset robustness analysis</td></tr>
-          <tr><td>Robustness analysis</td><td>100 bootstrap task subsets of size 39 with replacement</td><td>Subset robustness analysis</td></tr>
-          <tr><td>Open benchmark verification</td><td>Public reruns on the open <code>src/</code> tree for token and retrieval checks</td><td>Public benchmark artifacts</td></tr>
-          <tr><td>Public stronger-baseline rerun</td><td>39-task public proxy benchmark comparing a stronger local-tools pipeline (<code>git grep</code>, regex search, file reads, <code>git log</code>) with Contextro</td><td>Public proxy benchmark artifacts</td></tr>
-          <tr><td>Deterministic edit correctness</td><td>8 discovery-plus-edit tasks scored by exact replacement checks and post-edit syntax validation</td><td>Edit correctness benchmark artifact</td></tr>
-          <tr><td>Tool API schema export</td><td>Machine-readable input/output schemas with example requests and responses for 30 tools</td><td>Schema export artifact</td></tr>
+          <tr><td>Success</td><td>Expected file or symbol strings must appear in the rendered output; batch and document tasks require all expected items</td><td>Removes subjective judging and keeps the benchmark reproducible</td></tr>
+          <tr><td>Token estimate</td><td><code>tiktoken-rs</code> with <code>cl100k_base</code> applied to each arm's rendered output</td><td>Provides an apples-to-apples context-cost comparison</td></tr>
+          <tr><td>Handler latency</td><td>Wall-clock milliseconds around each scripted arm call</td><td>Measures retrieval overhead inside the harness on a pre-indexed repository</td></tr>
+          <tr><td>Tool calls</td><td>Count of grep and read operations in the baseline versus one MCP call in the treatment arm</td><td>Captures workflow complexity</td></tr>
+          <tr><td>Files read</td><td>Count of explicit file windows opened by the scripted baseline</td><td>Measures raw code traversal cost</td></tr>
+          <tr><td>Excluded capabilities</td><td>Graph-dependent tasks are removed when the fresh index has zero relationships</td><td>Prevents us from claiming performance for surfaces the current parser did not support on this repo</td></tr>
         </tbody>
       </table>
-      <p>The study is deterministic rather than stochastic in the usual machine-learning sense, so reporting emphasizes medians, ranges, and subset robustness rather than significance testing. The bootstrap analysis is used as a sensitivity check on task composition, not as a population-level inference over repositories.</p>
-      <p>Supplemental public methodology addresses three credibility gaps left by the private paired study. A tracked 1,179-file public proxy repository with 39 comparable discovery tasks provides a redistributable rerun target. That proxy corpus is Python-based, so the edit benchmark uses <code>py_compile</code> as its syntax-validity check. A stronger local-tools pipeline built from <code>git grep</code>, regex search, direct file reads, and <code>git log</code> offers a stricter public control than grep alone. An additional 8-task deterministic edit benchmark requires correct target-file selection, exact rewrite application, and post-edit <code>py_compile</code> syntax-validity checks. Exact JSON request/response schemas and example payloads for 30 tools are exported as a machine-readable artifact.</p>
+      <p>This benchmark is intentionally not an autonomous coding benchmark. It studies retrieval, symbol navigation, and file-local structure under deterministic scoring. That choice narrows the claim, but it also makes the result reproducible and automatically checkable.</p>
     </section>
 
     <section id="results">
       <h2>5. Results</h2>
 
-      <h3 id="headline-outcomes">5.1. Headline Outcomes</h3>
-      <p>Across the full 60-task inventory, total token consumption fell from 328,272 in the bounded grep-based pipeline to 14,407 in the Contextro pipeline. Mean tokens per task fell from 5,471.2 to 240.1, median latency fell from 448.35 ms to 5.21 ms, and mean files read fell from 2.5 per task to 0. <strong>The primary control is a bounded grep-based pipeline, not an LSP-backed or autonomous coding baseline. The reported gains therefore characterize discovery efficiency rather than universal coding quality.</strong></p>
-      <p>The stricter comparison is the 39-task subset with direct file-centric analogues. On that subset, token use fell to 6,638, a 98.0% reduction, while median latency fell from 498.89 ms to 4.89 ms and mean tool calls fell from 4.9 to 1.0. The gap between the 60-task and 39-task summaries reflects the presence of 21 MCP-native tasks that expose analysis surfaces absent from the grep-based pipeline.</p>
+      <h3>5.1. Headline Outcomes</h3>
+      <p>The full 1,000-task study produced a consistent result: Contextro reduced the amount of text emitted by the discovery workflow and did so without sacrificing correctness. Total token volume fell from 1,068,884 in the stronger local baseline to 94,034 in Contextro, a 91.2% reduction. The baseline succeeded on 999 tasks; Contextro succeeded on all 1,000.</p>
+      <p>Interaction cost also collapsed. The scripted baseline averaged 3.098 tool invocations and 1.898 file reads per task, while the Contextro arm issued exactly one tool call and read no files inside the study harness. Median handler latency fell from 202.969 ms to 0.037 ms, though that latency should be interpreted carefully as direct handler timing on a pre-indexed local repository rather than end-to-end agent wall clock.</p>
 
       <figure class="figure" id="fig-3">
-        <img src="../blog/assets/01_headline_metrics.svg" alt="Bar chart comparing total tokens, latency, tool calls, and files read in the grep-based pipeline and the Contextro pipeline." />
-        <figcaption><strong>Figure 3.</strong> Headline outcomes from the paired study. The figure summarizes the full task inventory; the stricter directly comparable subset is reported separately in Table 4.</figcaption>
+        <img src="figures/contextro-headline-results.svg" alt="Four-panel results figure comparing baseline and Contextro across total tokens, median handler latency, mean tool calls, and mean files read." />
+        <figcaption><strong>Figure 3.</strong> Headline benchmark outcomes. Contextro cuts token volume and interaction cost sharply while matching or exceeding baseline correctness.</figcaption>
       </figure>
 
-      <div class="table-caption" id="table-4"><strong>Table 4.</strong> Headline outcomes.</div>
-      <table class="table-outcomes">
+      <div class="table-caption"><strong>Table 5.</strong> Headline outcomes from the 1,000-task study.</div>
+      <table class="table-fixed headline-table">
+        <colgroup>
+          <col class="metric">
+          <col class="a">
+          <col class="b">
+          <col class="c">
+        </colgroup>
         <thead>
-          <tr><th>Analysis<br>set</th><th class="num">Tasks</th><th class="num">MCP-native<br>tasks</th><th class="num">Lexical<br>tokens</th><th class="num">Contextro<br>tokens</th><th>Token<br>result</th><th>Median<br>latency</th></tr>
+          <tr><th>Metric</th><th class="num">Stronger local baseline</th><th class="num">Contextro</th><th>Observed change</th></tr>
         </thead>
         <tbody>
-          <tr><td>Full task inventory</td><td class="num">60</td><td class="num">21</td><td class="num">328,272</td><td class="num">14,407</td><td>95.6% reduction</td><td>448.35 ms → 5.21 ms</td></tr>
-          <tr><td>Directly comparable subset</td><td class="num">39</td><td class="num">0</td><td class="num">328,272</td><td class="num">6,638</td><td>98.0% reduction</td><td>498.89 ms → 4.89 ms</td></tr>
-          <tr><td>100 bootstrap subsets</td><td class="num">100 × 39</td><td class="num">0</td><td class="num">—</td><td class="num">—</td><td>median 97.87%<br>97.24%-98.48%</td><td>lexical 458.28-525.76 ms<br>Contextro 2.15-7.00 ms</td></tr>
-        </tbody>
-      </table>
-      <p>No bootstrap subset fell below 97.24% token reduction. The effect therefore remains stable across many task mixtures drawn from the directly comparable subset.</p>
-
-      <h3 id="results-by-category">5.2. Results by Category</h3>
-      <p>Table 5 reports the eight categories with direct file-centric analogues. Semantic search and symbol discovery show the largest reductions at 98.8%. Caller tracing, impact analysis, code understanding, git history search, and the comparable portion of the <code>code</code> tool remain above 96%.</p>
-      <p>Tail latency is concentrated in a small number of heavier operations. The <code>focus</code> category is bimodal because one request returns in 4.81 ms while another deep file-context request takes 7.01 s. The comparable <code>code</code> category also contains a repository-wide <code>pattern_search</code> outlier at 11.22 s.</p>
-
-      <figure class="figure" id="fig-4">
-        <img src="../blog/assets/02_token_by_category.svg" alt="Token consumption by category for the grep-based pipeline and the Contextro pipeline." />
-        <figcaption><strong>Figure 4.</strong> Results by task category. The visualization focuses on discovery categories with direct file-centric analogues.</figcaption>
-      </figure>
-
-      <div class="table-caption" id="table-5"><strong>Table 5.</strong> Results by category.</div>
-      <table class="table-category-results">
-        <thead>
-          <tr><th>Category</th><th class="num">Comparable<br>tasks</th><th class="num">Lexical<br>tokens</th><th class="num">Contextro<br>tokens</th><th>Reduction</th><th>Contextro<br>latency</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Semantic search</td><td class="num">8</td><td class="num">96,366</td><td class="num">1,199</td><td>98.8%</td><td>131.53 ms median<br>95.19-138.31 ms</td></tr>
-          <tr><td>Symbol discovery</td><td class="num">8</td><td class="num">34,481</td><td class="num">413</td><td>98.8%</td><td>1.81 ms median<br>1.37-9.13 ms</td></tr>
-          <tr><td>Caller/callee tracing</td><td class="num">6</td><td class="num">25,915</td><td class="num">730</td><td>97.2%</td><td>1.46 ms median<br>0.92-4.89 ms</td></tr>
-          <tr><td>Impact analysis</td><td class="num">4</td><td class="num">16,225</td><td class="num">377</td><td>97.7%</td><td>0.93 ms median<br>0.90-3.68 ms</td></tr>
-          <tr><td>Code understanding</td><td class="num">6</td><td class="num">23,526</td><td class="num">944</td><td>96.0%</td><td>6.68 ms median<br>6.22-8.26 ms</td></tr>
-          <tr><td>Git history search</td><td class="num">2</td><td class="num">46,106</td><td class="num">1,117</td><td>97.6%</td><td>6.51 ms median<br>5.21-7.80 ms</td></tr>
-          <tr><td>Code tool (comparable slice)</td><td class="num">3</td><td class="num">51,459</td><td class="num">1,318</td><td>97.4%</td><td>1.92 ms median<br>0.97 ms-11.22 s</td></tr>
-          <tr><td>Focus / file context</td><td class="num">2</td><td class="num">34,194</td><td class="num">540</td><td>98.4%</td><td>3.51 s median<br>4.81 ms-7.01 s</td></tr>
+          <tr><td>Success rate</td><td class="num">99.9%<br>(999/1000)</td><td class="num">100.0%<br>(1000/1000)</td><td>Contextro completed every task in the inventory</td></tr>
+          <tr><td>Total tokens</td><td class="num">1,068,884</td><td class="num">94,034</td><td>91.2% reduction</td></tr>
+          <tr><td>Mean tokens per task</td><td class="num">1,068.9</td><td class="num">94.0</td><td>91.2% reduction</td></tr>
+          <tr><td>Median handler latency per task</td><td class="num">202.969 ms</td><td class="num">0.037 ms</td><td>Direct local handler timing dropped by 202.932 ms</td></tr>
+          <tr><td>P95 handler latency per task</td><td class="num">624.947 ms</td><td class="num">0.094 ms</td><td>The long tail remained entirely on the baseline side</td></tr>
+          <tr><td>Mean tool calls per task</td><td class="num">3.098</td><td class="num">1.000</td><td>67.7% fewer interaction steps</td></tr>
+          <tr><td>Mean files read per task</td><td class="num">1.898</td><td class="num">0.000</td><td>Explicit file reads were eliminated in the treatment arm</td></tr>
         </tbody>
       </table>
 
-      <h3 id="tool-latency">5.3. Tool Latency</h3>
-      <p>Most lookup and graph operations remain in the low-millisecond range. The long tail is composed of a small number of deliberately heavier analyses rather than broad slowness. In the fresh rerun, <code>focus_01</code> took 7.01 s and repository-wide <code>code(pattern_search, ...)</code> took 11.22 s; both are preserved explicitly in Appendix C rather than absorbed into category means.</p>
+      <h3>5.2. Results by Task Category</h3>
+      <p>All four categories favored Contextro on token volume. The largest reduction appeared in symbol discovery (94.5%), where the treatment arm can usually answer the query with a single short symbol record. The smallest reduction appeared in document-symbol tasks (86.8%), which is expected because those tasks require the system to emit a list of file-local symbol names rather than a single location.</p>
+      <p>Latency splits by category are also informative. The biggest latency gain appears in batch lookup because the baseline must perform three exact greps and three file reads. Document-symbol tasks are the exception: the baseline is already close to direct file access, so latency is roughly equal there even though Contextro still reduces output size materially.</p>
 
-      <div class="table-caption" id="table-6"><strong>Table 6.</strong> Representative tool latencies.</div>
-      <table class="table-fixed">
+      <div class="table-caption"><strong>Table 6.</strong> Category-level outcomes.</div>
+      <table class="table-fixed category-table">
+        <colgroup>
+          <col class="c1">
+          <col class="c2">
+          <col class="c3">
+          <col class="c4">
+          <col class="c5">
+          <col class="c6">
+        </colgroup>
         <thead>
-          <tr><th>Tool</th><th class="num">Fresh rerun latency</th><th>Role</th></tr>
+          <tr><th>Category</th><th class="num">Tasks</th><th>Success (baseline / Contextro)</th><th>Tokens (baseline / Contextro)</th><th>Reduction</th><th>Median handler latency (baseline / Contextro)</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>health</code></td><td class="num">0.88 ms</td><td>Server status</td></tr>
-          <tr><td><code>status</code></td><td class="num">1.47 ms</td><td>Server status</td></tr>
-          <tr><td><code>find_callers</code></td><td class="num">1.97 ms median</td><td>Graph lookup</td></tr>
-          <tr><td><code>find_symbol</code></td><td class="num">1.81 ms median</td><td>Symbol lookup</td></tr>
-          <tr><td><code>impact</code></td><td class="num">0.93 ms median</td><td>Blast radius analysis</td></tr>
-          <tr><td><code>explain</code></td><td class="num">6.68 ms median</td><td>Local understanding</td></tr>
-          <tr><td><code>commit_search</code></td><td class="num">6.51 ms median</td><td>History search</td></tr>
-          <tr><td><code>overview</code></td><td class="num">93.24 ms</td><td>Project summary</td></tr>
-          <tr><td><code>search</code></td><td class="num">131.53 ms median</td><td>Hybrid retrieval</td></tr>
-          <tr><td><code>architecture</code></td><td class="num">436.75 ms</td><td>Deep structural summary</td></tr>
-          <tr><td><code>dead_code</code></td><td class="num">1,307.18 ms</td><td>Reachability analysis</td></tr>
-          <tr><td><code>code(pattern_search, ...)</code></td><td class="num">11.22 s</td><td>Repository-wide AST search outlier</td></tr>
+          <tr><td>Symbol discovery</td><td class="num">300</td><td>100.0% / 100.0%</td><td>239,344 / 13,174</td><td>94.5%</td><td>204.238 ms / 0.016 ms</td></tr>
+          <tr><td>Exact search</td><td class="num">300</td><td>99.7% / 100.0%</td><td>256,453 / 20,986</td><td>91.8%</td><td>202.114 ms / 0.066 ms</td></tr>
+          <tr><td>Batch lookup</td><td class="num">200</td><td>100.0% / 100.0%</td><td>278,959 / 20,947</td><td>92.5%</td><td>612.560 ms / 0.029 ms</td></tr>
+          <tr><td>Document symbols</td><td class="num">200</td><td>100.0% / 100.0%</td><td>294,128 / 38,927</td><td>86.8%</td><td>0.046 ms / 0.045 ms</td></tr>
         </tbody>
       </table>
 
-      <h3 id="iterative-optimization">5.4. Public Verification and Supplemental Benchmarks</h3>
-      <p>Public artifact reruns now span three layers: the original open-<code>src/</code> verification checks, a larger 1,179-file public proxy repository benchmark with a stronger local-tools pipeline, and a deterministic discovery-plus-edit correctness benchmark. Together these materials do not replace the private monorepo evaluation, but they provide external evidence for stronger controls, redistributable tasks, and exact tool contracts.</p>
-
-      <div class="table-caption" id="table-7"><strong>Table 7.</strong> Public verification and supplemental methodology artifacts.</div>
-      <table class="table-fixed">
-        <thead>
-          <tr><th>Artifact</th><th>Measurement</th><th>Result</th><th>Source</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Public token rerun</td><td>16-call public workflow benchmark</td><td>1,286 total output tokens; 16 calls; 7.5% token reduction</td><td>Public benchmark artifact</td></tr>
-          <tr><td>Public retrieval rerun</td><td>20 query retrieval benchmark on <code>src/</code></td><td>Hybrid MRR 1.0, Recall@1 1.0, Recall@5 1.0, 169.2 avg tokens</td><td>Public benchmark artifact</td></tr>
-          <tr><td>Public proxy stronger baseline</td><td>39 discovery tasks on a 1,179-file redistributable proxy repository</td><td>39/39 success in both pipelines; 343.59 to 106.18 mean tokens/task (-69.1%); 36.82 ms to 8.89 ms mean latency</td><td><code>public-proxy-strong-baseline.json</code></td></tr>
-          <tr><td>Deterministic edit correctness</td><td>8 discovery-plus-edit tasks with exact rewrite and syntax checks</td><td>8/8 success in both pipelines; 12.69 ms to 6.37 ms mean latency; 194.38 vs 326.0 mean tokens/task</td><td><code>edit-correctness-benchmark.json</code></td></tr>
-          <tr><td>Tool API schema export</td><td>Machine-readable contracts for public MCP interfaces</td><td>30 tool schemas with annotations plus example request/response payloads</td><td><code>contextro-tool-api-schemas.json</code></td></tr>
-        </tbody>
-      </table>
-      <p>The proxy rerun is intentionally harder than the original open-<code>src/</code> checks. It uses a larger redistributable repository and a stronger local-tools pipeline composed of <code>git grep</code>, regex search, direct file reads, and <code>git log</code>. Contextro still preserved 39/39 task success while reducing mean tokens by 69.1%, reducing mean latency from 36.82 ms to 8.89 ms, and reducing mean tool calls from 2.95 to 1.0.</p>
-      <p>The deterministic edit benchmark closes part of the end-to-end gap by requiring correct target discovery, exact rewrite application, and post-edit syntax validity. Both pipelines achieved 8/8 successful edits. On these narrowly scripted constant-update tasks, Contextro was faster but returned larger structured payloads, so the result should be read as correctness and orchestration evidence rather than as a new token-efficiency headline.</p>
+      <h3>5.3. Failure Analysis</h3>
+      <p>The stronger local baseline missed exactly one task: <code>search_0553</code>, an exact-search query for <code>DataGrid</code>. The baseline recovered the symbol name, but its grep-plus-window path did not surface the expected target file <code>apps/app/src/features/data-grid-live/components/data-grid/data-grid.tsx</code>. Contextro returned the expected file in the ranked result set. This is a small miss, but it is useful because it shows where repeated identifier names still make a multi-step grep workflow brittle even under deterministic scripting.</p>
+      <p>The more important qualitative result is the absence of silent degradation in the treatment arm. Contextro was correct on every task category that the harness exercised. That does not prove broad coding superiority, but it does support the narrower claim that the current Rust implementation can answer deterministic discovery tasks compactly and reliably on this repository.</p>
     </section>
 
     <section id="discussion">
       <h2>6. Discussion</h2>
-      <p>The most important interpretive point is that the result becomes stronger, not weaker, under the stricter directly comparable subset. The full 60-task inventory shows a 95.6% token reduction, while the 39-task subset shows a 98.0% reduction because it excludes MCP-native capabilities that have no direct file-centric baseline. This separation clarifies the distinction between replacing file-centric discovery and adding entirely new analysis surfaces.</p>
-      <p>The bootstrap robustness analysis strengthens that interpretation. Across 100 deterministic task subsets, reduction never fell below 97.24% and the median remained 97.87%. These values do not establish universal generalization across repositories, but they do indicate that the result is not driven by a small number of unusually favorable tasks.</p>
-      <p>Latency should be interpreted similarly. Common lookup operations are effectively instantaneous, while a few repository-wide analyses remain expensive. The practical result is not uniform sub-10 ms performance; it is that routine discovery operations remain fast while deeper structural queries continue to return structured answers at substantially lower token cost than exploratory file reads.</p>
-      <p>The supplemental public artifacts narrow two obvious credibility gaps. First, the 1,179-file proxy repository replaces the tiny open-tree rerun with a redistributable codebase large enough to exercise symbol search, graph traversal, regex search, and seeded git-history tasks under a stronger local-tools pipeline. Second, the deterministic edit benchmark shows that the retrieved target can be carried through exact code changes and syntax validation. Neither supplement transforms the paper into a universal agent benchmark, but both make the publication claims easier to audit externally.</p>
+      <p>The central result is a workflow result, not a marketing one. When the retrieval layer can answer a discovery question directly, the agent no longer needs to spend most of its context budget on exploratory file traversal. The 91.2% token reduction in this study is therefore best understood as a reduction in exploration waste: fewer grep traces, fewer file windows, and fewer intermediate steps.</p>
+      <p>The pure-Rust transition matters for the credibility of that claim. The current server, the current handlers, and the current benchmark harness all live in the same Rust codebase. The numbers in this paper do not come from the earlier Python-era architecture and do not depend on the older JavaScript simulator. They describe the current MCP as it exists now.</p>
+      <p>The category breakdown also keeps the result honest. Document-symbol tasks do not show dramatic latency gains because the baseline is already close to direct file access. Contextro still helps there because the response is more compact, but not every category should be expected to improve in the same way.</p>
     </section>
 
     <section id="limitations">
       <h2>7. Limitations</h2>
-      <p>The findings in this report are bounded. They describe repository discovery efficiency under a paired task protocol, not general-purpose coding quality under all workflows or repositories.</p>
-
-      <div class="table-caption" id="table-8"><strong>Table 8.</strong> Study limitations.</div>
-      <table class="table-fixed">
-        <thead>
-          <tr><th>Area</th><th>Issue</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Paired-study codebase availability</td><td>The original 8,496-file monorepo is private and cannot be redistributed with the paper</td><td>Mitigated by shipping the harness, sanitized task inventory, public proxy repository, rerun summaries, and public benchmark artifacts</td></tr>
-          <tr><td>Control baseline approximation</td><td>The main paired study uses a bounded grep-based pipeline rather than an LSP-backed or autonomous coding baseline</td><td>Partly mitigated by a supplemental public rerun against a stronger local-tools pipeline; claims remain limited to discovery efficiency rather than universal coding quality</td></tr>
-          <tr><td>Tail latency</td><td><code>focus_01</code> and repository-wide <code>pattern_search</code> dominate the latency tail at 7.01 s and 11.22 s</td><td>Reported explicitly in Appendix C and excluded from any misleading latency simplification</td></tr>
-          <tr><td>Public proxy repository</td><td>The private paired-study corpus remains undistributable</td><td>Partly mitigated by shipping a 1,179-file public proxy repository with 39 comparable discovery tasks and seeded git history</td></tr>
-          <tr><td>End-to-end correctness</td><td>The primary paired study optimizes discovery cost (tokens, latency, file reads) rather than autonomous coding success</td><td>Partly mitigated by a deterministic 8-task edit benchmark with exact-rewrite and syntax-validation checks; still not a substitute for a full autonomous-agent evaluation</td></tr>
-          <tr><td>Tool API visibility</td><td>Printed tables cannot carry the full JSON contracts for every MCP tool</td><td>Mitigated by publishing machine-readable request/response schemas and example payloads for 30 tools</td></tr>
-          <tr><td>Next.js App Router reachability</td><td><code>dead_code</code> flags live routes as unreachable</td><td>Known limitation</td></tr>
-          <tr><td>Duplicate symbol disambiguation</td><td>Multiple definitions with the same name can conflate callees</td><td>Under investigation</td></tr>
-          <tr><td>Complexity metrics</td><td><code>maintainability_index</code> reports 0 for TypeScript</td><td>Not yet implemented for TS</td></tr>
-        </tbody>
-      </table>
-
-      <p>The study still evaluates one production TypeScript monorepo and does not include an LSP-backed or autonomous-agent baseline on the private corpus. The supplemental artifacts narrow these gaps by adding a stronger local-tools proxy rerun, a public proxy repository, a deterministic edit benchmark, and a machine-readable tool-schema export, but the claims in this report should still be read as bounded claims about discovery performance and scripted edit correctness rather than universal agent quality.</p>
+      <p>This paper has four important limitations. First, it studies a single private repository, so the result should be read as strong evidence on <code>platform</code>, not as a universal repository claim. Second, the benchmark uses a pre-indexed local repository and measures direct handler latency, not full end-to-end agent runtime with model reasoning and transport overhead. Third, the task inventory is deterministic and retrieval-oriented rather than a full autonomous coding benchmark.</p>
+      <p>Fourth, and most importantly, the current TypeScript and JavaScript parser path produced zero call relationships on this repository. That forced us to exclude <code>find_callers</code>, <code>find_callees</code>, <code>impact</code>, and relationship-rich <code>explain</code> tasks from the study. The paper therefore should not be read as evidence that the current system already delivers graph-quality answers on TypeScript-heavy repositories. Fixing that parser limitation is the most important technical follow-up after this benchmark.</p>
+      <p>The benchmark also favors exact identifier retrieval. The 300 exact-search tasks use <code>search(mode="bm25")</code> because that path admits deterministic scoring from indexed ground truth. That makes the result clean and reproducible, but it leaves open a separate question about free-form natural-language search quality, which deserves its own study.</p>
     </section>
 
     <section id="availability">
       <h2>8. Availability and Reproducibility</h2>
-      <p>The public artifact package distinguishes between materials that can be rerun on public code and materials that remain conditional because the primary study corpus is private. It now includes sanitized task catalogs, aggregate study summaries, open-tree reruns, a redistributable 1,179-file public proxy repository, a stronger-baseline proxy benchmark, a deterministic edit benchmark, and a machine-readable tool-schema export. <strong>Contextro is a proprietary product of Distillation Labs and is not distributed as open-source software.</strong></p>
+      <p>The primary artifact bundle for this paper lives in <code>docs/publication/</code>. The four new platform-study JSON files are the machine-readable evidence for every headline number in the manuscript. Older paired-study and public-proxy artifacts remain in the directory for historical reference, but they are not the evidence base for the claims in this paper.</p>
 
       <h3>8.1. Artifact Package</h3>
-      <table class="artifact-summary">
+      <div class="table-caption"><strong>Table 7.</strong> Primary publication artifacts for the Rust-era paper.</div>
+      <table class="table-two-col artifact-summary">
         <thead>
-          <tr><th>Artifact class</th><th>Public contents</th></tr>
+          <tr><th>Artifact</th><th>Description</th></tr>
         </thead>
         <tbody>
-          <tr><td>Task definitions</td><td>Sanitized machine-readable catalogs for the 60-task full inventory, the 39-task directly comparable subset, and the public proxy discovery/edit suites</td></tr>
-          <tr><td>Aggregate study outputs</td><td>Archived and fresh paired-study summaries, plus the 100-subset robustness analysis</td></tr>
-          <tr><td>Public proxy suite</td><td>Tracked 1,179-file redistributable proxy repository with seeded git-history benchmark setup</td></tr>
-          <tr><td>Public reruns</td><td>Token-efficiency and retrieval-quality reruns on the public <code>src/</code> tree, the 39-task stronger-baseline proxy benchmark, and the deterministic edit benchmark</td></tr>
-          <tr><td>Tool API contracts</td><td>Machine-readable request/response schemas and example payloads for 30 tools</td></tr>
-          <tr><td>Evaluation harness</td><td>Scripts required to reproduce public benchmarks and to rerun the paired study where an equivalent private repository is available</td></tr>
+          <tr><td><code>contextro-paper.html</code></td><td>Printable manuscript source for the current Rust-era paper</td></tr>
+          <tr><td><code>platform-1000-study-config.json</code></td><td>Benchmark configuration, tokenizer metadata, and index snapshot</td></tr>
+          <tr><td><code>platform-1000-study-tasks.json</code></td><td>Full deterministic 1,000-task inventory</td></tr>
+          <tr><td><code>platform-1000-study-results.json</code></td><td>Per-task, per-arm outcomes for all 2,000 executions</td></tr>
+          <tr><td><code>platform-1000-study-summary.json</code></td><td>Aggregate results cited throughout this paper</td></tr>
         </tbody>
       </table>
 
-      <h3>8.2. Rerunnable Commands (Public Benchmarks)</h3>
-      <pre>pip install -e .[dev]
+      <h3>8.2. Rerun Command</h3>
+      <pre><code>cd crates
+cargo run --release -p contextro --bin contextro-study -- \
+  --codebase &lt;path/to/your/codebase&gt; \
+  --output-dir &lt;path/to/output/directory&gt; \
+  --tasks 1000</code></pre>
 
-python3.11 scripts/public_proxy_repo.py
-python3.11 scripts/benchmark_public_proxy.py --proxy-repo docs/publication/public_proxy_repo --output docs/publication/public-proxy-strong-baseline.json
-python3.11 scripts/benchmark_end_to_end_correctness.py --output docs/publication/edit-correctness-benchmark.json
-python3.11 scripts/export_tool_api_schemas.py --output docs/publication/contextro-tool-api-schemas.json
-python3.11 scripts/benchmark_token_efficiency.py
-python3.11 scripts/benchmark_retrieval_quality.py --path src --query-limit 20 --output docs/publication/open-retrieval-quality.json
-
-ruff check .
-pytest -v -m "not slow"</pre>
-
-      <h3>8.3. Conditional Paired-Study Rerun</h3>
-      <p>The full paired study requires access to the original private monorepo or to an adapted equivalent repository. The published catalogs preserve task counts, categories, and tool coverage without disclosing private repository identifiers. Where an equivalent repository is available locally, the rerun protocol is:</p>
-      <pre>python scripts/experiment_platform.py --output-dir docs/publication --export-task-catalogs-only
-python scripts/experiment_platform.py --codebase /path/to/private-monorepo --output-dir /secure/local-output
-python scripts/task_subset_robustness.py --results /secure/local-output/results.json --subsets 100 --output docs/publication/paired-study-subset-robustness.json</pre>
-
-      <h3>8.4. Verification Environment</h3>
-      <p>The private paired-study reruns cited in this report were executed on Apple silicon hardware using macOS 26.4.1, an Apple M4 CPU, 16 GB RAM, and Python 3.12.13. The supplemental public proxy, edit-correctness, and schema-export artifacts were regenerated on the same hardware class under Python 3.11.15. The public benchmark harness supports Python 3.10-3.12.</p>
+      <h3>8.3. Verification Environment</h3>
+      <div class="table-caption"><strong>Table 8.</strong> Verification environment.</div>
+      <table class="table-two-col">
+        <thead>
+          <tr><th>Field</th><th>Value</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>CPU</td><td>Apple M4</td></tr>
+          <tr><td>Memory</td><td>16 GB RAM</td></tr>
+          <tr><td>Operating system</td><td>macOS 26.4.1</td></tr>
+          <tr><td>Tokenizer</td><td><code>tiktoken-rs</code> with <code>cl100k_base</code></td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section id="conclusion">
       <h2>9. Conclusion</h2>
-      <p>Contextro demonstrates that a local code-intelligence layer can reduce the token and latency cost of repository discovery in MCP-based coding workflows. In the paired evaluation reported here, the full 60-task inventory reduced total tokens by 95.6%, while the stricter 39-task directly comparable subset reduced them by 98.0% and remained above 97.24% across 100 bootstrap task subsets. Supplemental public artifacts show that the direction of the effect survives a stronger local-tools proxy rerun and that the resulting discovery outputs can drive correct scripted code changes, although the paper still does not claim superiority on full autonomous coding benchmarks. The primary conclusion remains narrow but durable: structured repository access can materially outperform bounded file-centric discovery for repository search and navigation.</p>
+      <p>On the private <code>platform</code> repository, the current pure-Rust Contextro implementation makes repository discovery substantially cheaper. In a deterministic 1,000-task study, it cut token volume by 91.2%, collapsed the number of interaction steps to one call per task, and completed every task in the inventory. Those are meaningful retrieval wins, even though the benchmark does not attempt to measure full autonomous coding quality.</p>
+      <p>The next step is clear. The benchmark surfaced a real parser limitation on TypeScript-heavy repositories: graph relationships are currently absent, so graph-native tasks cannot yet be evaluated honestly. Solving that limitation should be the priority before claiming broad impact-analysis or caller-tracing performance on JavaScript and TypeScript codebases.</p>
     </section>
 
     <section id="references">
       <h2>References</h2>
       <ol>
-        <li>Anthropic. "Contextual Retrieval." 2024. https://www.anthropic.com/engineering/contextual-retrieval</li>
-        <li>Liu et al. "Lost in the Middle." 2023. https://arxiv.org/abs/2307.03172</li>
-        <li>NVIDIA. "RAG 101: Retrieval-Augmented Generation Questions Answered." 2023. https://developer.nvidia.com/blog/rag-101-retrieval-augmented-generation-questions-answered/</li>
-        <li>NVIDIA. "Finding the Best Chunking Strategy for Accurate AI Responses." 2025. https://developer.nvidia.com/blog/finding-the-best-chunking-strategy-for-accurate-ai-responses/</li>
-        <li>OpenAI. "Prompt Caching in the API." 2024. https://openai.com/index/api-prompt-caching/</li>
+        <li>Anthropic. <em>Model Context Protocol</em>. 2024. Available at <code>https://modelcontextprotocol.io/</code>.</li>
+        <li>MIT Libraries. <em>Specifications for Thesis Preparation</em>. 2024. Available at <code>https://libraries.mit.edu/distinctive-collections/thesis-specs/</code>.</li>
+        <li>Robertson, Stephen, and Hugo Zaragoza. "The Probabilistic Relevance Framework: BM25 and Beyond." <em>Foundations and Trends in Information Retrieval</em> 3(4):333-389, 2009.</li>
+        <li>Lewis, Patrick, et al. "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." <em>NeurIPS</em>, 2020.</li>
+        <li>Brunsfeld, Max. <em>tree-sitter</em>. Available at <code>https://tree-sitter.github.io/tree-sitter/</code>.</li>
+        <li>Nature. <em>Formatting Guide for Articles</em>. Available at <code>https://www.nature.com/nature/for-authors/formatting-guide</code>.</li>
       </ol>
     </section>
 
     <section id="appendix-a">
       <h2>Appendix A. Experiment Configuration</h2>
-      <p class="appendix-note">Appendix A summarizes the paired-study configuration at a high level. It is included to document study scope and reporting parameters without exposing implementation details beyond what is necessary for interpretation.</p>
-      <table class="artifact-summary">
+      <p class="appendix-note">Table 9 collects the configuration values that define the benchmark. These fields are duplicated in <code>platform-1000-study-config.json</code>.</p>
+      <div class="table-caption"><strong>Table 9.</strong> Experiment configuration.</div>
+      <table class="table-two-col">
         <thead>
-          <tr><th>Parameter</th><th>Value</th></tr>
+          <tr><th>Field</th><th>Value</th></tr>
         </thead>
         <tbody>
-          <tr><td>Total task inventory</td><td>60 tasks across 16 categories</td></tr>
-          <tr><td>Directly comparable subset</td><td>39 tasks with direct file-centric analogues</td></tr>
-          <tr><td>MCP-native tasks</td><td>21 tasks with no meaningful file-centric baseline</td></tr>
-          <tr><td>Token accounting</td><td>Common tokenizer applied to baseline outputs and Contextro responses</td></tr>
-          <tr><td>Primary control pipeline</td><td>Repository-wide grep plus bounded follow-up file inspection</td></tr>
-          <tr><td>Robustness procedure</td><td>100 bootstrap task subsets of size 39 with replacement</td></tr>
-          <tr><td>Verification host</td><td>macOS 26.4.1, Apple M4, 16 GB RAM, Python 3.12.13</td></tr>
-          <tr><td>Public supporting artifacts</td><td>Sanitized task catalogs, aggregate summaries, robustness outputs, and public benchmark reruns</td></tr>
+          <tr><td>Requested tasks</td><td>1,000</td></tr>
+          <tr><td>Generated tasks</td><td>1,000</td></tr>
+          <tr><td>Task families</td><td>300 symbol discovery, 300 exact search, 200 batch lookup, 200 document symbols</td></tr>
+          <tr><td>Tracked files</td><td>10,889</td></tr>
+          <tr><td>Indexed files</td><td>8,498</td></tr>
+          <tr><td>Total symbols / chunks</td><td>11,534 / 11,534</td></tr>
+          <tr><td>Graph relationships</td><td>0</td></tr>
+          <tr><td>Index build times</td><td>0.45 s indexing, 34.3 ms BM25 build, 13.5 ms graph build</td></tr>
+          <tr><td>Baseline strategy</td><td>Exact <code>git grep</code> plus bounded file windows</td></tr>
+          <tr><td>Treatment tools</td><td><code>find_symbol</code>, <code>search(mode="bm25")</code>, <code>code.lookup_symbols</code>, <code>code.get_document_symbols</code></td></tr>
         </tbody>
       </table>
     </section>
 
     <section id="appendix-b">
-      <h2>Appendix B. MCP Tool API Contracts</h2>
-      <p class="appendix-note">This appendix summarizes the externally visible MCP tool contracts used by the evaluation. Parameter lists and response fields are described at the interface level. All tools return an MCP <code>ToolResult</code> whose <code>structured_content</code> field carries the JSON payload summarized below; errors are returned as <code>{"error": "…message…"}</code>. The exact machine-readable companion file <code>contextro-tool-api-schemas.json</code> publishes JSON Schema-compatible input and output definitions, annotations, and example request/response payloads for 30 tools.</p>
-
-      <h3>B.1. Discovery and Navigation</h3>
-      <p><code>search(...)</code> returns ranked retrieval results with file locations, symbol labels, and compact code excerpts.</p>
-      <p><code>find_symbol(...)</code> returns exact or fuzzy symbol matches, including definition metadata and local relationship counts.</p>
-      <p><code>find_callers(...)</code> and <code>find_callees(...)</code> return direct relationship sets for the requested symbol.</p>
-      <p><code>explain(...)</code> returns symbol metadata together with explanatory prose and supporting snippets.</p>
-      <p><code>impact(...)</code> returns a transitive impact set summarizing affected symbols, files, and directories.</p>
-
-      <h3>B.2. Project Intelligence</h3>
-      <p><code>overview()</code>, <code>architecture()</code>, <code>focus(...)</code>, and <code>restore()</code> return project- or file-level summaries intended to orient the client within the repository.</p>
-      <p><code>analyze(...)</code>, <code>dead_code()</code>, <code>circular_dependencies()</code>, <code>test_coverage_map()</code>, and <code>audit()</code> return higher-level analysis summaries rather than direct retrieval results.</p>
-
-      <h3>B.3. Git and History</h3>
-      <p><code>commit_search(...)</code> returns ranked commit matches for a query, while <code>commit_history(...)</code> returns chronological commit lists. <code>repo_status()</code> summarizes the multi-repository registry state.</p>
-
-      <h3>B.4. Code Intelligence</h3>
-      <p><code>code(operation, ...)</code> dispatches syntax-aware operations such as symbol lookup, pattern search, and codebase overview generation. Output structure varies by operation but consistently returns result or match collections.</p>
-
-      <h3>B.5. Memory and Session</h3>
-      <p><code>remember(...)</code>, <code>recall(...)</code>, and <code>forget(...)</code> manage persistent memory entries. <code>knowledge(...)</code>, <code>session_snapshot()</code>, and <code>compact(...)</code> manage broader session and knowledge state.</p>
-
-      <h3>B.6. Server Utilities</h3>
-      <p><code>status()</code>, <code>health()</code>, and <code>index(...)</code> expose operational server state. <code>retrieve(...)</code> fetches sandboxed large responses by reference, and <code>introspect(...)</code> returns runtime tool schemas and settings.</p>
-
-      <div class="table-caption" id="table-9"><strong>Table 9.</strong> MCP tool API contracts summary.</div>
-      <table class="table-compact appendix-tool-family-table">
+      <h2>Appendix B. Tool Contracts Used in the Study</h2>
+      <p class="appendix-note">This appendix summarizes only the four tool paths exercised in the 1,000-task benchmark. The benchmark interacts with the handlers directly, but the structures below match the externally visible MCP surface.</p>
+      <div class="table-caption"><strong>Table 10.</strong> Tool contracts used in the study.</div>
+      <table class="table-fixed contracts-table">
+        <colgroup>
+          <col class="c1">
+          <col class="c2">
+          <col class="c3">
+          <col class="c4">
+        </colgroup>
         <thead>
-          <tr><th>Tool</th><th>Category</th><th>Primary inputs</th><th>Primary outputs</th></tr>
+          <tr>
+            <th>Tool</th>
+            <th>Inputs used here</th>
+            <th>Primary output fields checked</th>
+            <th>Role</th>
+          </tr>
         </thead>
         <tbody>
-          <tr><td><code>search</code></td><td>Discovery</td><td>query, limit, mode, language, symbol_type</td><td>total, results[symbol_name, score, filepath, line_start, code]</td></tr>
-          <tr><td><code>find_symbol</code></td><td>Discovery</td><td>name, exact</td><td>n, f, l, t, callers, callees (single) / total, symbols (multi)</td></tr>
-          <tr><td><code>find_callers</code></td><td>Discovery</td><td>symbol_name</td><td>callers[] (single) / definitions[{definition, callers}] (multi)</td></tr>
-          <tr><td><code>find_callees</code></td><td>Discovery</td><td>symbol_name</td><td>callees[]</td></tr>
-          <tr><td><code>explain</code></td><td>Discovery</td><td>symbol_name, verbosity</td><td>merged symbol fields, analysis, related_code</td></tr>
-          <tr><td><code>impact</code></td><td>Discovery</td><td>symbol_name, max_depth</td><td>total_impacted, impacted_symbols, impacted_files, impacted_dirs</td></tr>
-          <tr><td><code>overview</code></td><td>Intelligence</td><td>(none)</td><td>total_files, total_symbols, total_relationships, languages, directories</td></tr>
-          <tr><td><code>architecture</code></td><td>Intelligence</td><td>(none)</td><td>layers, entry_points, hub_symbols, top_classes</td></tr>
-          <tr><td><code>focus</code></td><td>Intelligence</td><td>path, include_code</td><td>role, symbols, imports, nearby_tests, blast_radius</td></tr>
-          <tr><td><code>restore</code></td><td>Intelligence</td><td>(none)</td><td>project, entry_points, layers, risk_summary</td></tr>
-          <tr><td><code>analyze</code></td><td>Intelligence</td><td>path</td><td>complexity, code_smells, quality</td></tr>
-          <tr><td><code>dead_code</code></td><td>Intelligence</td><td>(none)</td><td>summary, unused_files, unused_symbols</td></tr>
-          <tr><td><code>circular_dependencies</code></td><td>Intelligence</td><td>(none)</td><td>summary, cycles</td></tr>
-          <tr><td><code>test_coverage_map</code></td><td>Intelligence</td><td>(none)</td><td>summary, uncovered_files, uncovered_symbols</td></tr>
-          <tr><td><code>audit</code></td><td>Intelligence</td><td>(none)</td><td>summary, recommendations</td></tr>
-          <tr><td><code>commit_search</code></td><td>Git</td><td>query, limit, branch, author</td><td>total, results[hash, author, date, message, top_files]</td></tr>
-          <tr><td><code>commit_history</code></td><td>Git</td><td>path, limit, since</td><td>total, branch, commits[hash, author, date, message]</td></tr>
-          <tr><td><code>repo_status</code></td><td>Git</td><td>(none)</td><td>total_repos, total_files, repos, watcher</td></tr>
-          <tr><td><code>code</code></td><td>AST</td><td>operation, query/pattern/…</td><td>results or matches (shape varies by operation)</td></tr>
-          <tr><td><code>remember</code></td><td>Memory</td><td>content, memory_type, tags, ttl</td><td>id, status</td></tr>
-          <tr><td><code>recall</code></td><td>Memory</td><td>query, limit, memory_type, tags</td><td>total, memories[]</td></tr>
-          <tr><td><code>forget</code></td><td>Memory</td><td>memory_id, tags, memory_type</td><td>deleted_count</td></tr>
-          <tr><td><code>session_snapshot</code></td><td>Session</td><td>(none)</td><td>codebase, branch, head, vector_chunks, symbols, events</td></tr>
-          <tr><td><code>compact</code></td><td>Session</td><td>content</td><td>archived, archive_ref, chars, hint</td></tr>
-          <tr><td><code>status</code></td><td>Server</td><td>(none)</td><td>codebase_path, indexed, graph{n,r,f}</td></tr>
-          <tr><td><code>health</code></td><td>Server</td><td>(none)</td><td>status, uptime_seconds, indexed, engines</td></tr>
-          <tr><td><code>index</code></td><td>Server</td><td>path, paths</td><td>status, message, path</td></tr>
-          <tr><td><code>retrieve</code></td><td>Server</td><td>ref_id, query</td><td>ref_id, content</td></tr>
-          <tr><td><code>introspect</code></td><td>Server</td><td>query, doc_path</td><td>tools, settings (full runtime schemas)</td></tr>
+          <tr><td><code>find_symbol</code></td><td><code>name</code>, <code>exact=true</code></td><td><code>symbols[].file</code>, <code>symbols[].name</code>, <code>symbols[].line</code></td><td>Exact definition discovery</td></tr>
+          <tr><td><code>search</code></td><td><code>query</code>, <code>limit=5</code>, <code>mode="bm25"</code></td><td><code>results[].file</code>, <code>results[].name</code>, <code>results[].score</code></td><td>Ranked exact-identifier retrieval</td></tr>
+          <tr><td><code>code(operation="lookup_symbols")</code></td><td><code>symbols</code> list</td><td><code>symbols[].file</code>, <code>symbols[].name</code>, <code>symbols[].line</code></td><td>Grouped three-symbol lookup</td></tr>
+          <tr><td><code>code(operation="get_document_symbols")</code></td><td><code>file_path</code></td><td><code>symbols[].name</code>, <code>symbols[].line</code>, <code>symbols[].signature</code></td><td>File-local symbol inventory</td></tr>
         </tbody>
       </table>
-      <p class="appendix-note">Table 9 is the print-friendly summary. The full schema artifact is included in the publication package so external readers can inspect exact parameter types, optional fields, and example payloads without relying on the proprietary server source.</p>
     </section>
 
     <section id="appendix-c">
-      <h2>Appendix C. Paired-Study Results by Tool Family</h2>
-      <p class="appendix-note">Table 10 groups aggregate token and latency by tool family. Rows marked <em>No</em> are MCP-native and excluded from the directly comparable subset and bootstrap analysis in Section 5.</p>
-      <div class="table-caption" id="table-10"><strong>Table 10.</strong> Paired-study results by tool family.</div>
-      <table class="table-compact appendix-results-table">
+      <h2>Appendix C. Category-Level Interaction Costs</h2>
+      <p class="appendix-note">Table 11 reports interaction-heavy details aggregated from <code>platform-1000-study-results.json</code>.</p>
+      <div class="table-caption"><strong>Table 11.</strong> Per-category interaction costs.</div>
+      <table class="table-fixed stats-table">
+        <colgroup>
+          <col class="c1">
+          <col class="c2">
+          <col class="c3">
+          <col class="c4">
+          <col class="c5">
+          <col class="c6">
+          <col class="c7">
+        </colgroup>
         <thead>
-          <tr><th>Tool family</th><th>Category</th><th>Lexical<br>equiv-<br>alent?</th><th class="num">Lexical<br>tokens</th><th class="num">Contextro<br>tokens</th><th>Contextro<br>latency<br>(ms)</th><th>Reduction</th></tr>
+          <tr>
+            <th>Category</th>
+            <th class="num">Baseline mean<br>tool calls</th>
+            <th class="num">Contextro mean<br>tool calls</th>
+            <th class="num">Baseline mean<br>files read</th>
+            <th class="num">Contextro mean<br>files read</th>
+            <th class="num">Baseline p95<br>latency</th>
+            <th class="num">Contextro p95<br>latency</th>
+          </tr>
         </thead>
         <tbody>
-          <tr><td>find_symbol ×8</td><td>Symbol discovery</td><td>Yes</td><td class="num">34,481</td><td class="num">413</td><td>1.37–9.13</td><td>98.8%</td></tr>
-          <tr><td>find_callers/find_callees ×6</td><td>Caller tracing</td><td>Yes</td><td class="num">25,915</td><td class="num">730</td><td>0.92–4.89</td><td>97.2%</td></tr>
-          <tr><td>search ×8</td><td>Semantic search</td><td>Yes</td><td class="num">96,366</td><td class="num">1,199</td><td>95.19–138.31</td><td>98.8%</td></tr>
-          <tr><td>explain ×6</td><td>Code understanding</td><td>Yes</td><td class="num">23,526</td><td class="num">944</td><td>6.22–8.26</td><td>96.0%</td></tr>
-          <tr><td>impact ×4</td><td>Impact analysis</td><td>Yes</td><td class="num">16,225</td><td class="num">377</td><td>0.90–3.68</td><td>97.7%</td></tr>
-          <tr><td>focus ×2</td><td>File context</td><td>Yes</td><td class="num">34,194</td><td class="num">540</td><td>4.81–7,009.60</td><td>98.4%</td></tr>
-          <tr><td>commit_search ×2</td><td>Git history</td><td>Yes</td><td class="num">46,106</td><td class="num">1,117</td><td>5.21–7.80</td><td>97.6%</td></tr>
-          <tr><td>code ×5 (3 comparable / 2 native)</td><td>AST operations</td><td>Mixed</td><td class="num">51,459</td><td class="num">1,627</td><td>0.97–11,222.49</td><td>96.8%</td></tr>
-          <tr><td>commit_history ×1</td><td>Git history</td><td>No</td><td class="num">—</td><td class="num">919</td><td>93.18</td><td>N/A</td></tr>
-          <tr><td>overview</td><td>Project structure</td><td>No</td><td class="num">—</td><td class="num">85</td><td>93.24</td><td>N/A</td></tr>
-          <tr><td>architecture</td><td>Project structure</td><td>No</td><td class="num">—</td><td class="num">893</td><td>436.75</td><td>N/A</td></tr>
-          <tr><td>analyze</td><td>Code quality</td><td>No</td><td class="num">—</td><td class="num">1,128</td><td>29.21</td><td>N/A</td></tr>
-          <tr><td>dead_code</td><td>Static analysis</td><td>No</td><td class="num">—</td><td class="num">933</td><td>1,307.18</td><td>N/A</td></tr>
-          <tr><td>circular_dependencies</td><td>Static analysis</td><td>No</td><td class="num">—</td><td class="num">545</td><td>0.77</td><td>N/A</td></tr>
-          <tr><td>test_coverage_map</td><td>Static analysis</td><td>No</td><td class="num">—</td><td class="num">555</td><td>11.16</td><td>N/A</td></tr>
-          <tr><td>audit</td><td>Full report</td><td>No</td><td class="num">—</td><td class="num">994</td><td>72.52</td><td>N/A</td></tr>
-          <tr><td>remember/recall/forget</td><td>Memory</td><td>No</td><td class="num">—</td><td class="num">161</td><td>4.04–13.35</td><td>N/A</td></tr>
-          <tr><td>session_snapshot/restore/compact</td><td>Session</td><td>No</td><td class="num">—</td><td class="num">984</td><td>0.86–53.54</td><td>N/A</td></tr>
-          <tr><td>status/health</td><td>Server ops</td><td>No</td><td class="num">—</td><td class="num">107</td><td>0.88–1.47</td><td>N/A</td></tr>
-          <tr><td>introspect</td><td>Self-documentation</td><td>No</td><td class="num">—</td><td class="num">46</td><td>0.31</td><td>N/A</td></tr>
-          <tr><td>repo_status</td><td>Multi-repo</td><td>No</td><td class="num">—</td><td class="num">102</td><td>1.40</td><td>N/A</td></tr>
-          <tr><td>knowledge (show)</td><td>Knowledge base</td><td>No</td><td class="num">—</td><td class="num">8</td><td>0.47</td><td>N/A</td></tr>
+          <tr><td>Symbol discovery</td><td class="num">2.763</td><td class="num">1.000</td><td class="num">1.763</td><td class="num">0.000</td><td class="num">229.197 ms</td><td class="num">0.032 ms</td></tr>
+          <tr><td>Exact search</td><td class="num">2.897</td><td class="num">1.000</td><td class="num">1.897</td><td class="num">0.000</td><td class="num">219.246 ms</td><td class="num">0.117 ms</td></tr>
+          <tr><td>Batch lookup</td><td class="num">6.000</td><td class="num">1.000</td><td class="num">3.000</td><td class="num">0.000</td><td class="num">669.866 ms</td><td class="num">0.063 ms</td></tr>
+          <tr><td>Document symbols</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">0.000</td><td class="num">0.116 ms</td><td class="num">0.155 ms</td></tr>
         </tbody>
       </table>
     </section>
-
   </article>
 </body>
 </html>

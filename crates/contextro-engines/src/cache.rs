@@ -48,11 +48,15 @@ impl QueryCache {
     /// Store a query result.
     pub fn put(&self, query: &str, result: serde_json::Value) {
         // Evict if at capacity (simple: just remove oldest by iterating once)
-        if self.entries.len() >= self.max_size {
-            // Remove first entry found (approximate LRU)
-            if let Some(key) = self.entries.iter().next().map(|e| e.key().clone()) {
-                self.entries.remove(&key);
-            }
+        let evict_key = if self.entries.len() >= self.max_size {
+            // Clone the key in a separate scope so the iterator guard is dropped
+            // before we try to remove from the same shard.
+            self.entries.iter().next().map(|entry| entry.key().clone())
+        } else {
+            None
+        };
+        if let Some(key) = evict_key {
+            self.entries.remove(&key);
         }
         self.entries.insert(
             query.to_string(),
@@ -81,5 +85,24 @@ impl QueryCache {
 
     pub fn size(&self) -> usize {
         self.entries.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::QueryCache;
+
+    #[test]
+    fn put_evicts_without_deadlocking() {
+        let cache = QueryCache::new(1, 60.0);
+
+        cache.put("first", json!({"value": 1}));
+        cache.put("second", json!({"value": 2}));
+
+        assert_eq!(cache.size(), 1);
+        assert!(cache.get("first").is_none());
+        assert_eq!(cache.get("second"), Some(json!({"value": 2})));
     }
 }

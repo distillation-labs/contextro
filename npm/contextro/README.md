@@ -116,7 +116,7 @@ impact("BaseEmbeddingService", max_depth=5)
 code(operation="get_document_symbols", file_path="src/server.rs")
 code(operation="search_symbols", symbol_name="auth")
 code(operation="pattern_search", pattern="fn $F($$$) -> Result", language="rust")
-code(operation="pattern_rewrite", pattern="println!($MSG)", replacement="tracing::info!($MSG)", dry_run=True)
+code(operation="pattern_rewrite", pattern="console.log($MSG)", replacement="logger.info($MSG)", dry_run=True)
 ```
 
 ### Search git history
@@ -238,4 +238,7 @@ All settings via environment variables:
 
 ## License
 
-Proprietary — © Distillation Labs. All rights reserved.
+Source-available under the Business Source License 1.1 (`BUSL-1.1`).
+Internal production use is permitted under the Additional Use Grant in
+`LICENSE`. This version converts to Apache License 2.0 on 2030-05-11, or on
+the fourth anniversary of its first public release, whichever comes first.

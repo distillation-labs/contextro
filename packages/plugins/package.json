@@ -1,0 +1,22 @@
+{
+  "name": "@contextro/plugins",
+  "version": "0.2.0",
+  "description": "Contextro plugins for Claude Code, GitHub Copilot CLI, OpenAI Codex, and Kiro.",
+  "license": "BUSL-1.1",
+  "author": "Distillation Labs",
+  "private": true,
+  "keywords": [
+    "contextro",
+    "mcp",
+    "plugin",
+    "claude-code",
+    "copilot",
+    "codex",
+    "kiro"
+  ],
+  "scripts": {
+    "validate": "node scripts/validate.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

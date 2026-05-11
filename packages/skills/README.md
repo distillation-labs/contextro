@@ -176,4 +176,7 @@ In this repo, `.agents/skills/dev-contextro-mcp/` is development-only Contextro 
 
 ## License
 
-Proprietary - internal Distillation Labs distribution only.
+Source-available under the Business Source License 1.1 (`BUSL-1.1`).
+Internal production use is permitted under the Additional Use Grant in
+`LICENSE`. This version converts to Apache License 2.0 on 2030-05-11, or on
+the fourth anniversary of its first public release, whichever comes first.

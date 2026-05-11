@@ -7,7 +7,7 @@
 1. Pick a feature from the list below
 2. Open an issue to discuss your approach
 3. Fork the repo, implement, and submit a PR
-4. Follow the [Developer Guide](DEVELOPER_GUIDE.md) for setup and test standards
+4. Follow the [README](../README.md) and [AGENTS](../AGENTS.md) for setup and test standards
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "skill_name": "breakthrough-researcher",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "description": "Eval suite for the deep research skill. Measures trigger quality, repository grounding, mechanism-level comparisons, negative evidence, and falsifiable experiment plans.",
   "categories": {
     "triggering": "Skill loads for deep research and nontrivial solution-space exploration",

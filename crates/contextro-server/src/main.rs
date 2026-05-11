@@ -384,6 +384,13 @@ impl ServerHandler for ContextroServer {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Handle --version / -V before starting the server.
+    let cli_args: Vec<String> = std::env::args().collect();
+    if cli_args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()

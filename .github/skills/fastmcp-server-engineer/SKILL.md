@@ -13,7 +13,7 @@ when_to_use: >
   typed schemas, return shaping, request context, visibility, validation mode, deployment, or
   server lifecycle.
 metadata:
-  version: "2.0.0"
+  version: "0.1.0"
   category: mcp-development
   tags: [fastmcp, server, tools, resources, prompts, validation, context, middleware, transport]
 license: Proprietary
