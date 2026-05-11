@@ -18,7 +18,7 @@ pub fn spawn() {
         if let Some(latest) = fetch_latest().await {
             if is_newer(&latest, CURRENT) {
                 eprintln!(
-                    "\n  contextro {} → {} available.\n  Update: npm install -g contextro  |  curl -fsSL https://install.contextro.dev | sh\n",
+                    "\n  contextro {} → {} available.\n  Update: npm install -g contextro\n",
                     CURRENT, latest
                 );
             }
