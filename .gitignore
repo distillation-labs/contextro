@@ -1,18 +1,7 @@
-__pycache__/
-*.py[cod]
-*$py.class
 *.so
 dist/
 build/
-*.egg-info/
-*.egg
-.eggs/
-*.whl
-
-# Virtual environments
-.venv/
-venv/
-env/
+target/
 
 # IDE
 .vscode/
@@ -22,11 +11,8 @@ env/
 *~
 
 # Testing
-.pytest_cache/
 .coverage
 htmlcov/
-.mypy_cache/
-.hypothesis/
 
 # LanceDB data
 .contextro/
@@ -53,7 +39,5 @@ Thumbs.db
 # Documentation build artifacts
 docs-preautoresearch-master/
 scratch/
-rust/contextro_fast/target/
-rust/ctx_fast/target/
 crates/target/
 .contextro-docs/
