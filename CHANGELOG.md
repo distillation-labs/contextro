@@ -218,7 +218,7 @@ All notable changes to this project will be documented in this file.
 - **`find_symbol(exact=False)` 94KB payload** — skip caller/callee graph traversal when `total_matches > 5`
 - **`session_snapshot` too shallow** — now includes codebase path, branch, head, chunk/symbol counts, and all tracked events
 - **Docker indexing path remap** — `index()` now auto-remaps host paths from `CTX_CODEBASE_HOST_PATH` to `CTX_CODEBASE_MOUNT_PATH` even without an explicit `CTX_PATH_PREFIX_MAP`, and invalid-path errors now explain the Docker mapping requirement
-- **Docker image reference drift** — Docker docs/compose examples now point at the published Docker Hub image `jassskalkat/contextro-mcp:latest`
+- **Docker image reference drift** — Docker docs/compose examples now point at the published Docker Hub image `distillation-labs/contextro-mcp:latest`
 
 ### Changed
 - `commit_history` output: removed misleading `+/-` fields (always 0 after `--numstat` removal)
