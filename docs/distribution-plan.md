@@ -1,8 +1,9 @@
 # Contextro v0.1.0 Distribution Plan
 
-**Status:** `jassskalkat/lagos` merged ✅ — ready to ship  
+**Status:** Repo transferred to `distillation-labs/contextro` ✅ — ready to ship  
 **Date:** 2026-05-10  
-**Version:** 0.1.0 (first stable Rust release; PyPI was 0.0.7)
+**Version:** 0.1.0 (first stable Rust release; PyPI was 0.0.7)  
+**Organization:** Distillation Labs (https://github.com/distillation-labs)
 
 ---
 
@@ -40,7 +41,7 @@ Contextro was previously distributed as a Python package on PyPI (`pip install c
 ```bash
 curl -fsSL https://install.contextro.dev | sh
 # or
-curl -fsSL https://raw.githubusercontent.com/jassskalkat/contextro/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/distillation-labs/contextro/main/install.sh | sh
 ```
 
 ---
@@ -107,12 +108,12 @@ npx contextro@latest
 
 ### 4. Homebrew tap (Mac/Linux power users)
 
-**What:** `brew install jassskalkat/tap/contextro`  
+**What:** `brew install distillation-labs/tap/contextro`  
 **Who:** Mac/Linux developers who prefer Homebrew.  
 **Status:** Not yet created. Lower priority.
 
 **Files needed:**
-- New repo: `github.com/jassskalkat/homebrew-tap`
+- New repo: `github.com/distillation-labs/homebrew-tap`
 - `Formula/contextro.rb` — Homebrew formula pointing to GitHub Release tarballs
 
 **Can be deferred** until there's user demand. The install script covers the same audience.
@@ -156,7 +157,7 @@ Step 5: Homebrew tap                           ← defer, low priority
 **Logic:**
 1. Detect OS (`uname -s`) and arch (`uname -m`)
 2. Map to target triple
-3. Download `https://github.com/jassskalkat/contextro/releases/download/v{VERSION}/contextro-{TARGET}.tar.gz`
+3. Download `https://github.com/distillation-labs/contextro/releases/download/v{VERSION}/contextro-{TARGET}.tar.gz`
 4. Verify SHA256 checksum
 5. Extract binary to `~/.local/bin/contextro` (Linux) or `/usr/local/bin/contextro` (macOS)
 6. Print success + MCP config snippet
@@ -202,7 +203,7 @@ npm/contextro/
 ```toml
 description = "..."
 license = "MIT"  # or proprietary — check LICENSE file
-repository = "https://github.com/jassskalkat/contextro"
+repository = "https://github.com/distillation-labs/contextro"
 homepage = "https://contextro.dev"
 ```
 
