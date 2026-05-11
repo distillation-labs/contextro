@@ -742,7 +742,7 @@
       <p>The stricter comparison is the 39-task subset with direct file-centric analogues. On that subset, token use fell to 6,638, a 98.0% reduction, while median latency fell from 498.89 ms to 4.89 ms and mean tool calls fell from 4.9 to 1.0. The gap between the 60-task and 39-task summaries reflects the presence of 21 MCP-native tasks that expose analysis surfaces absent from the grep-based pipeline.</p>
 
       <figure class="figure" id="fig-3">
-        <img src="../blog/assets/01_headline_metrics.svg" alt="Bar chart comparing total tokens, latency, tool calls, and files read in the grep-based pipeline and the Contextro pipeline." />
+        <img src="figures/01_headline_metrics.svg" alt="Bar chart comparing total tokens, latency, tool calls, and files read in the grep-based pipeline and the Contextro pipeline." />
         <figcaption><strong>Figure 3.</strong> Headline outcomes from the paired study. The figure summarizes the full task inventory; the stricter directly comparable subset is reported separately in Table 4.</figcaption>
       </figure>
 
@@ -764,7 +764,7 @@
       <p>Tail latency is concentrated in a small number of heavier operations. The <code>focus</code> category is bimodal because one request returns in 4.81 ms while another deep file-context request takes 7.01 s. The comparable <code>code</code> category also contains a repository-wide <code>pattern_search</code> outlier at 11.22 s.</p>
 
       <figure class="figure" id="fig-4">
-        <img src="../blog/assets/02_token_by_category.svg" alt="Token consumption by category for the grep-based pipeline and the Contextro pipeline." />
+        <img src="figures/02_token_by_category.svg" alt="Token consumption by category for the grep-based pipeline and the Contextro pipeline." />
         <figcaption><strong>Figure 4.</strong> Results by task category. The visualization focuses on discovery categories with direct file-centric analogues.</figcaption>
       </figure>
 
