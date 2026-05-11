@@ -1,2 +1,0 @@
-commit	metric	delta	status	description
-baseline	24299	+0	keep	baseline — 26 tool calls, avg 934 tokens/call, 1845/search, 4293 chunks

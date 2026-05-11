@@ -1,0 +1,18 @@
+[package]
+name = "contextro-engines"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Search engines: vector (LanceDB), BM25 (Tantivy), graph (petgraph), fusion"
+
+[dependencies]
+contextro-core = { workspace = true }
+contextro-config = { workspace = true }
+tantivy = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }

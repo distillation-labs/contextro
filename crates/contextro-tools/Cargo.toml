@@ -1,0 +1,24 @@
+[package]
+name = "contextro-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "All 35 MCP tool implementations for Contextro"
+
+[dependencies]
+contextro-core = { workspace = true }
+contextro-config = { workspace = true }
+contextro-engines = { workspace = true }
+contextro-indexing = { workspace = true }
+contextro-memory = { workspace = true }
+contextro-git = { workspace = true }
+contextro-parsing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+git2 = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+regex-lite = "0.1"

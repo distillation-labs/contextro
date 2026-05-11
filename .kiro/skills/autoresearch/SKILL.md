@@ -1,20 +1,20 @@
 ---
 name: autoresearch
 description: >
-  Use for autonomous, metric-driven experiment loops that modify code, benchmark each change,
-  keep only real wins, and continue until a breakthrough target is reached or the human stops
-  the run. Trigger when the user asks to run autoresearch, benchmark and improve a metric,
-  iterate autonomously on performance or quality, keep trying until a target is met, or run
-  controlled experiments without pausing after each step. Do not use for knowledge questions,
-  targeted bug fixes, code review, or direct implementation work that does not require a
-  repeated experiment loop.
+  Use for autonomous, metric-driven experiment loops that modify code, rerun benchmarks after
+  each change, keep only real wins, and continue until a breakthrough target is reached or the
+  human stops the run. Trigger when the user asks to run autoresearch, benchmark and improve a
+  metric, iterate autonomously on performance or quality, keep trying until a target is met, or
+  run controlled experiments without pausing after each step. Do not use for knowledge questions,
+  targeted bug fixes, code review, or direct implementation work that does not require a repeated
+  experiment loop.
 when_to_use: >
-  Especially useful for retrieval quality, token efficiency, indexing speed, workflow
-  automation, and any task where Contextro already has a benchmark or eval harness that can be
-  rerun after each experiment.
+  Especially useful for retrieval quality, token efficiency, indexing speed, workflow automation,
+  and any task where Contextro already has a benchmark or eval harness that can be rerun after
+  each experiment.
 metadata:
   author: contextro
-  version: "4.0.0"
+  version: "4.1.0"
   category: workflow-automation
   tags: [research, optimization, benchmarking, experimentation, autonomous]
 license: Proprietary
@@ -22,15 +22,16 @@ license: Proprietary
 
 # Autoresearch
 
-Run a disciplined experiment loop. Data decides. Keep only measurable wins.
+Run a disciplined experiment loop. Measure first, change one thing at a time, and keep only
+results that beat the noise floor and preserve guardrails.
 
 ## Use This Skill To Produce
 
 - a baseline grounded in the repo's real benchmark outputs
-- a breakthrough target, not a vague improvement goal
+- a concrete breakthrough target
 - a ranked hypothesis backlog
 - one-variable experiments with commit-level attribution
-- keep or discard decisions based on measured results
+- keep/discard decisions based on measured results
 - a durable lab notebook with results and insights
 
 ## Contextro Defaults
@@ -83,12 +84,11 @@ Name:
 - secondary guardrails
 - the breakthrough target
 
-If the user does not set a target, choose one that would be genuinely surprising, not a tiny local
-win.
+If the user does not set a target, choose one that is genuinely ambitious, not a tiny local win.
 
 ### 3. Build A Hypothesis Backlog
 
-Generate at least several candidate ideas before starting the loop.
+Generate several candidate ideas before starting the loop.
 
 Source hypotheses from:
 

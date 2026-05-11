@@ -1,0 +1,18 @@
+[package]
+name = "contextro-memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Semantic memory store, compaction archive, and session tracking"
+
+[dependencies]
+contextro-core = { workspace = true }
+contextro-config = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
