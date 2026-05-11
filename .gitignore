@@ -55,3 +55,4 @@ docs-preautoresearch-master/
 scratch/
 rust/contextro_fast/target/
 rust/ctx_fast/target/
+crates/target/
