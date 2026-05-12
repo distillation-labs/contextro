@@ -1,6 +1,6 @@
 //! Embedding service using model2vec-rs for fast static embeddings.
 //!
-//! Loads potion-base-16M from HuggingFace and provides
+//! Loads potion-code-16M from HuggingFace and provides
 //! embed/embed_batch operations for vector search.
 
 use std::sync::OnceLock;
@@ -11,22 +11,83 @@ use tracing::{error, info, warn};
 
 static MODEL: OnceLock<RwLock<Option<Model2Vec>>> = OnceLock::new();
 
-/// Default model to use for embeddings.
-const DEFAULT_MODEL: &str = "minishlab/potion-base-16M";
+/// Map short model key names to HuggingFace `owner/model_name` IDs.
+fn resolve_hf_id(key: &str) -> &str {
+    match key {
+        "potion-code-16m" | "potion-code-16M" => "minishlab/potion-code-16M",
+        "potion-base-8m"  | "potion-base-8M"  => "minishlab/potion-base-8M",
+        "potion-base-32m" | "potion-base-32M" => "minishlab/potion-base-32M",
+        other => other,
+    }
+}
+
+/// Locate a model in the HuggingFace Hub local cache.
+///
+/// The cache layout is `~/.cache/huggingface/hub/models--{owner}--{name}/snapshots/{hash}/`.
+/// `model2vec::Model2Vec::from_pretrained` expects a LOCAL directory path, not an HF model ID,
+/// so we must resolve the cache path ourselves.
+fn find_hf_cache_path(hf_id: &str) -> Option<String> {
+    // "minishlab/potion-code-16M" → "models--minishlab--potion-code-16M"
+    let cache_key = format!("models--{}", hf_id.replace('/', "--"));
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let snapshots = format!("{}/.cache/huggingface/hub/{}/snapshots", home, cache_key);
+
+    // Pick the first snapshot directory that contains tokenizer.json
+    std::fs::read_dir(&snapshots)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.path().to_string_lossy().into_owned())
+        .find(|p| std::path::Path::new(p).join("tokenizer.json").exists())
+}
 
 /// Get or initialize the embedding model.
+/// Reads the model key from Settings (CTX_EMBEDDING_MODEL), resolves to HuggingFace ID,
+/// then locates the locally-cached model directory to pass to model2vec.
 fn get_model() -> &'static RwLock<Option<Model2Vec>> {
     MODEL.get_or_init(|| {
-        info!("Loading embedding model: {}", DEFAULT_MODEL);
-        match Model2Vec::from_pretrained(DEFAULT_MODEL, None, None) {
-            Ok(model) => {
-                info!("Embedding model loaded successfully");
-                RwLock::new(Some(model))
+        let key = {
+            let settings = contextro_config::get_settings().read();
+            settings.embedding_model.clone()
+        };
+        let hf_id = resolve_hf_id(&key);
+
+        // Resolve to a local path (HF hub cache), or treat key as a literal local path
+        let model_path = find_hf_cache_path(hf_id)
+            .or_else(|| {
+                // Maybe the user set CTX_EMBEDDING_MODEL to an absolute local path
+                if std::path::Path::new(hf_id).join("tokenizer.json").exists() {
+                    Some(hf_id.to_string())
+                } else {
+                    None
+                }
+            });
+
+        match model_path {
+            Some(path) => {
+                info!("Loading embedding model: {} from {}", hf_id, path);
+                match Model2Vec::from_pretrained(&path, None, None) {
+                    Ok(model) => {
+                        info!("Embedding model loaded successfully ({} dims)", {
+                            match model.encode(["test"]) {
+                                Ok(e) => e.ncols(),
+                                Err(_) => 0,
+                            }
+                        });
+                        RwLock::new(Some(model))
+                    }
+                    Err(e) => {
+                        error!("Failed to load embedding model from '{}': {}. Vector search disabled.", path, e);
+                        RwLock::new(None)
+                    }
+                }
             }
-            Err(e) => {
+            None => {
                 error!(
-                    "Failed to load embedding model '{}': {}. Vector search disabled.",
-                    DEFAULT_MODEL, e
+                    "Embedding model '{}' (HF id: {}) not found in local cache (~/.cache/huggingface/hub). \
+                     Run `huggingface-cli download {}` or set CTX_EMBEDDING_MODEL to a local path. \
+                     Vector search disabled.",
+                    key, hf_id, hf_id
                 );
                 RwLock::new(None)
             }
