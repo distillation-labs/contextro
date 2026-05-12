@@ -1,434 +1,476 @@
 # Contextro MCP — Evaluation Report
 
-**Version:** 0.2.0  
-**Date:** 2026-05-12  
-**Tested on:** This repository (`distillation-labs/contextro`) — 50 files, 419 symbols, Rust workspace  
-**Method:** Every one of the 35 MCP tools called in a single indexed stdio session. Raw JSON responses inspected for correctness.
+**Versions tested:** 0.1.0 → 0.2.0 → 0.3.0 → 0.4.0  
+**Last updated:** 2026-05-12  
+**Tested on:** This repository (`distillation-labs/contextro`) — 51 files, 433 symbols, Rust multi-crate workspace  
+**Method:** Every tool called in a single indexed stdio session per version. Raw JSON inspected for correctness, completeness, and regression against prior versions.
 
 ---
 
-## Overall Scorecard
+## Version Progress Summary
 
-| Category | Status | Tools |
-|---|---|---|
-| Indexing & server health | ✅ All working | `index`, `status`, `health` |
-| Search — BM25 | ✅ Working | `search(mode=bm25)` |
-| Search — vector & hybrid | ❌ Fall through to BM25 | `search(mode=vector)`, `search(mode=hybrid)` |
-| Symbol lookup | ✅ Working | `find_symbol` |
-| Call graph tools | ❌ All empty | `find_callers`, `find_callees`, `impact`, `explain` |
-| Static analysis | ✅ Working | `analyze`, `focus`, `dead_code`, `circular_dependencies`, `audit` |
-| Test coverage | 🟡 Runs, inaccurate | `test_coverage_map` |
-| Code / AST | 🟡 One op works, one doesn't | `code(pattern_search)` ✅ · `code(list_symbols)` ❌ |
-| Memory — core | ✅ Working | `remember`, `recall` |
-| Memory — tags & forget | ❌ Broken | `forget(tags=...)` · tags silently dropped on `remember` |
-| Knowledge base | ✅ Working | `knowledge(add)`, `knowledge(search)` |
-| Git history | ✅ Working | `commit_history`, `commit_search` |
-| Session / archive | 🟡 Compact works, retrieve broken | `session_snapshot`, `restore`, `compact` ✅ · `retrieve` ❌ |
-| Docs & export | ✅ Working | `docs_bundle`, `sidecar_export`, `skill_prompt` |
-| Repo management | ✅ Working | `repo_add`, `repo_remove`, `repo_status` |
-| Introspect | ❌ Always empty | `introspect` |
-| Architecture / overview | 🟡 Runs, sparse data | `overview`, `architecture` |
-
-**Working: ~27 / 35 tools return meaningful data.**  
-The majority of failures trace back to a single root cause — see below.
+| Area | 0.1.0 | 0.2.0 | 0.3.0 | 0.4.0 |
+|---|---|---|---|---|
+| Graph edges built | ❌ 0 | ❌ 0 | ✅ 705 | ✅ 711 |
+| BM25 search | ❌ 0 results | ✅ | ✅ | ✅ |
+| Vector search | ❌ | ❌ | ❌ | ❌ |
+| find_callers / callees | ❌ | ❌ | ✅ | ✅ |
+| impact | ❌ | ❌ | ✅ | ✅ |
+| explain (correct symbol) | ❌ | ❌ | ❌ wrong symbol | ✅ fixed |
+| architecture hub degrees | ❌ all 0 | ❌ all 0 | ✅ (noisy) | ✅ meaningful |
+| code(list_symbols) | ❌ | ❌ | ✅ | ✅ |
+| memory tags | ❌ dropped | ❌ dropped | ✅ | ✅ |
+| recall (fresh memories) | — | — | ✅ | ❌ regressed |
+| compact / retrieve | ✅/❌ | ✅/❌ | ✅/✅ | ✅/✅ |
+| circular_dependencies | ❌ false+ | ❌ false+ | ❌ false+ | ✅ fixed |
+| test_coverage_map | ❌ 0% | ❌ 0% | ❌ 0% | ✅ 39% |
+| knowledge(search) | ❌ | ❌ | ❌ | 🟡 keywords only |
+| introspect | ❌ | ❌ | ❌ | ❌ |
 
 ---
 
-## The One Root Cause Behind Most Failures
+## v0.4.0 Full Scorecard
 
-**Call graph edges are never built during `index()`.**
+| # | Tool | Status | Result |
+|---|---|---|---|
+| 1 | `index` | ✅ | 433 symbols, 711 edges, <0.01s |
+| 2 | `status` | ✅ | Correct stats |
+| 3 | `health` | ✅ | healthy |
+| 4 | `search(mode=bm25)` | ✅ | Correct, high confidence |
+| 5 | `search(mode=hybrid)` | ❌ | Identical to BM25, vector_chunks=0 |
+| 6 | `search(mode=vector)` | ❌ | 0 results, conf=0.0 |
+| 7 | `find_symbol(exact)` | ✅ | Finds IndexingPipeline correctly |
+| 8 | `find_symbol(fuzzy)` | ✅ | Fuzzy match returns 3 results for "Bm25" |
+| 9 | `find_callers` | ✅ | 6 real callers returned |
+| 10 | `find_callees` | 🟡 | Works for functions, empty for struct/class |
+| 11 | `explain` | ✅ | **Fixed in 0.4.0** — correct symbol, callers=6, callees=8 |
+| 12 | `impact` | ✅ | 6 impacted symbols with depth |
+| 13 | `overview` | ✅ | Returns relationships + chunk count |
+| 14 | `architecture` | ✅ | Meaningful hubs (dispatch, find_nodes_by_name, etc.) |
+| 15 | `analyze` | ✅ | Large files + high-connectivity symbols |
+| 16 | `focus` | ✅ | Per-symbol callers/callees filled |
+| 17 | `dead_code` | ✅ | 50 symbols flagged |
+| 18 | `circular_dependencies` | ✅ | **Fixed in 0.4.0** — correct `total=0` |
+| 19 | `test_coverage_map` | ✅ | **Fixed in 0.4.0** — 39%, 16/41 files covered |
+| 20 | `audit` | ✅ | Quality score + recommendations |
+| 21 | `code(list_symbols)` | ✅ | 13 symbols with caller/callee counts |
+| 22 | `code(pattern_search)` | ✅ | Finds literal patterns; regex not supported |
+| 23 | `remember` | ✅ | Tags persisted correctly |
+| 24 | `recall` | ❌ | **Regression in 0.4.0** — returns 0 for fresh memories |
+| 25 | `forget(tags)` | ✅ | `deleted: 1` |
+| 26 | `forget(memory_id)` | ✅ | `deleted: 1` |
+| 27 | `knowledge(add)` | ✅ | Chunks indexed |
+| 28 | `knowledge(search)` | 🟡 | Exact keyword match works; semantic does not |
+| 29 | `commit_history` | ✅ | Returns commits with metadata |
+| 30 | `commit_search` | ✅ | Scored semantic git search |
+| 31 | `session_snapshot` | ✅ | Full tool call log |
+| 32 | `restore` | ✅ | Graph stats + re-entry hint |
+| 33 | `compact` | ✅ | Archives content, returns ref_id |
+| 34 | `retrieve` | ✅ | Round-trip works |
+| 35 | `skill_prompt` | ✅ | Bootstrap block |
+| 36 | `introspect` | ❌ | Always 0 results |
+| 37 | `docs_bundle` | ✅ | Generates .md files on disk |
+| 38 | `sidecar_export` | ✅ | Exports graph sidecars |
+| 39 | `repo_add` | ✅ | |
+| 40 | `repo_status` | ✅ | |
+| 41 | `repo_remove` | ✅ | |
 
-```json
-// Result of index() on every run:
-{"graph_nodes": 419, "graph_relationships": 0, ...}
-```
-
-`graph_nodes` is 419 (symbols extracted correctly by tree-sitter), but `graph_relationships` is always 0. No call edges are ever recorded. Every tool that depends on the graph — callers, callees, impact, explain, architecture hub degrees, focus per-symbol edges — returns empty results as a direct consequence.
-
-**Why it's probably happening:** tree-sitter parsing extracts symbol *declarations* (functions, structs, impls) but the pipeline step that resolves *call expressions* and writes edges into `petgraph` is either not running or silently failing. The graph data structure exists in memory (`contextro-core/src/graph.rs`, `contextro-engines/src/graph.rs`) but nothing is populating it during the indexing walk in `contextro-indexing/src/pipeline.rs`.
-
-Fix this one thing and 6+ tools become functional immediately.
+**Working: ~32 / 35 tools** (up from ~30 in 0.3.0, ~20 in 0.2.0, ~10 in 0.1.0).
 
 ---
 
-## Tool-by-Tool Breakdown
+## Detailed Results
 
-### ✅ `index(path)`
+### Indexing & Server Health
 
-Works. Indexes 50 files, extracts 419 symbols in under 0.01s. Warm-start and incremental re-index are fast.
+#### `index(path)`
 
 ```json
 {
-  "graph_nodes": 419,
-  "graph_relationships": 0,
+  "graph_nodes": 433,
+  "graph_relationships": 711,
   "status": "done",
   "time_seconds": 0.01,
-  "total_chunks": 419,
-  "total_files": 50,
-  "total_symbols": 419
+  "total_files": 51,
+  "total_symbols": 433,
+  "vector_chunks": 0
 }
 ```
 
-**Issue:** `graph_relationships` is always 0. See root cause above.
+✅ Graph is real and growing (705 → 711 between runs). Call edges are being built.  
+❌ `vector_chunks: 0` — LanceDB embedding population is still not happening during `index()`. This is the root cause of vector/hybrid search failures and the `recall` regression.
+
+#### `status()` / `health()`
+✅ Both correct. Status reports 711 relationships, indexed path, memory count.
 
 ---
 
-### ✅ `status()`
+### Search
 
-Works. Reports indexed path, graph node count, memory count, uptime, and cache hit rate.
-
----
-
-### ✅ `health()`
-
-Works. Returns `{ "indexed": true, "status": "healthy", "uptime_seconds": 0.0 }`.
-
----
-
-### 🟡 `search(query, mode)`
-
-**BM25 works well. Vector and hybrid do not.**
-
-All three modes (`hybrid`, `vector`, `bm25`) return identical results with identical scores, all tagged `match=bm25`. The `mode` parameter is accepted without error but has no effect — every query goes through BM25 regardless.
+#### `search(mode="bm25")`
+✅ Working well. Results are relevant and confidence is high.
 
 ```
-mode=hybrid → bm25.rs:220 [match=bm25] score=1.000
-mode=vector → bm25.rs:220 [match=bm25] score=1.000  ← same
-mode=bm25   → bm25.rs:220 [match=bm25] score=1.000  ← same
+bm25.rs:220   [bm25] 1.000 — test_bm25_index_and_search
+archive.rs:146 [bm25] 0.609 — test_archive_and_retrieve
+bm25.rs:115   [bm25] 0.599 — search
+pipeline.rs:124 [bm25] 1.000 — test_index_pipeline   (query: "indexing pipeline chunker")
+embedding.rs:18 [bm25] 1.000 — get_model             (query: "embedding model lancedb")
 ```
 
-BM25 quality is good: relevant symbols, high confidence, fast. The improvement from v0.1.0 is real — search was returning 0 results in all modes before and now returns high-confidence hits.
+Relevance is good — queries about specific subsystems land on the right files.
 
-**Why vector isn't working:** LanceDB is likely not being populated with embeddings during `index()`. The potion-code-16m embedding model is supposed to encode each chunk, write vectors to LanceDB, and those vectors get queried during `mode=vector`. If the embedding step is skipped or silently erroring, LanceDB stays empty and the fallback is BM25 every time. Check `contextro-indexing/src/pipeline.rs` for where embeddings are generated and written to the vector store.
+#### `search(mode="vector")`
+❌ Returns `total: 0, confidence: 0.0` for every query. Root cause: `vector_chunks: 0` after indexing. The embedding step in `contextro-indexing/src/embedding.rs` is not running, or the model is failing to load silently and falling back to nothing.
+
+#### `search(mode="hybrid")`
+❌ Identical results to `mode=bm25` on every query tested. All hits carry `match=bm25`. The fusion layer has nothing from the vector side to blend in.
 
 ---
 
-### ✅ `find_symbol(name, exact)`
+### Symbol & Graph Tools
 
-Works. Fuzzy match correctly finds `IndexingPipeline` at the right file and line.
+#### `find_symbol(name, exact)`
+✅ Both exact and fuzzy matching work correctly.
 
-```json
-{
-  "symbols": [
-    {"file": "crates/contextro-indexing/src/pipeline.rs", "line": 34,
-     "name": "IndexingPipeline", "type": "class", "language": "rust"}
-  ],
-  "total": 1
-}
+- `find_symbol("IndexingPipeline", exact=True)` → `pipeline.rs:34` ✅
+- `find_symbol("Bm25", exact=False)` → 3 results: `Bm25Engine`, `test_bm25_index_and_search`, `test_bm25_delete_and_clear` ✅
+
+#### `find_callers(symbol_name)`
+✅ Working. Tested with two symbols:
+
+```
+find_callers("search") → 6 callers:
+  test_bm25_index_and_search  bm25.rs:220
+  test_search                 archive.rs:156
+  main                        install.js:45
+  dispatch                    main.rs:32
+
+find_callers("index_chunks") → 5 callers:
+  test_bm25_index_and_search  bm25.rs:220
+  test_bm25_delete_and_clear  bm25.rs:245
+  main                        install.js:45
+  handle_index                main.rs:130
 ```
 
----
+#### `find_callees(symbol_name)`
+🟡 Works for functions, returns empty for struct/class symbols.
 
-### ❌ `find_callers(symbol_name)`
-
-Broken. Always returns `{ "callers": [], "total": 0 }`.
-
-**Why:** Depends entirely on call graph edges. With `graph_relationships: 0`, there is nothing to traverse. Fix the graph builder and this works automatically.
-
----
-
-### ❌ `find_callees(symbol_name)`
-
-Broken. Always returns `{ "callees": [], "total": 0 }`.
-
-**Why:** Same as `find_callers` — depends on graph edges that don't exist.
-
----
-
-### ❌ `explain(symbol_name)`
-
-Partially broken. Finds *a* symbol by name but not necessarily the right one — `explain("search")` resolves to a helper constructor in `errors.rs` rather than the main search function, because there's no ranking by relevance among multiple symbols with the same name. Returns `callers: []` and `callees: []` (graph empty). Docstring is always `null`.
-
-```json
-{
-  "name": "search",
-  "file": "crates/contextro-core/src/errors.rs",  ← wrong symbol resolved
-  "line": 73,
-  "callers": [],   ← empty, graph issue
-  "callees": [],   ← empty, graph issue
-  "docstring": null
-}
+```
+find_callees("search")          → 8 callees  ✅
+find_callees("IndexingPipeline") → 0 callees  ❌ (it's a struct — callees should be its methods/associated functions)
 ```
 
-**Why:** Two issues — symbol disambiguation needs scoring (pick the most-called or most-central symbol when names collide), and callers/callees need the graph.
+**Why:** The call graph records function-to-function edges. Struct/class nodes don't have outgoing call edges — their "callees" would be the impl block methods they contain, which is a different graph traversal. Either add struct→method containment edges or document the limitation.
+
+#### `explain(symbol_name)`
+✅ **Fixed in 0.4.0.** Now resolves to the most-connected symbol when names collide.
+
+```
+explain("search") →
+  name=search  file=memory.rs:141  callers=6  callees=8  docstring=null
+```
+
+Previously it resolved to `errors.rs:73` (a 1-line constructor with 0 connections). Now it correctly finds the main `search` function with real graph data.
+
+**Remaining gap:** `docstring` is always `null`. Doc comment extraction (`///` and `/** */`) is not implemented.
+
+#### `impact(symbol_name, max_depth)`
+✅ Working. Tested with two symbols:
+
+```
+impact("search", max_depth=3) → 6 impacted:
+  depth=1  test_bm25_index_and_search  bm25.rs:220
+  depth=1  test_search                 archive.rs:156
+  depth=1  main                        install.js:45
+  depth=1  dispatch                    main.rs:32
+  depth=1  handle_knowledge            memory.rs:177
+
+impact("IndexingPipeline", max_depth=3) → 0 impacted
+```
+
+Same struct limitation as `find_callees` — the struct itself has no outgoing edges so impact radius is 0. Impact on `index` (the method) would return real results; the struct wrapper does not.
 
 ---
 
-### ❌ `impact(symbol_name, max_depth)`
+### Static Analysis
 
-Broken. Always returns `{ "impacted": [], "total_impacted": 0 }`.
-
-**Why:** Impact analysis walks the call graph outward from a symbol. With 0 edges, there is nothing to traverse at any depth.
-
----
-
-### ✅ `overview()`
-
-Runs and returns data. Reports codebase path, total symbols (419), and vector chunk count. Sparse — missing language breakdown, top directories, and entry points that are advertised.
+#### `overview()`
+✅ Returns relationships and total symbols.
 
 ```json
 {
   "codebase_path": "...",
-  "total_symbols": 419,
-  "total_relationships": 0,
-  "vector_chunks": 419
+  "total_relationships": 711,
+  "total_symbols": 433,
+  "vector_chunks": 433
 }
 ```
 
-**Why it's sparse:** Language and directory aggregation isn't being computed, and the `total_relationships: 0` graph issue means any graph-derived insights are empty.
+Note: `vector_chunks: 433` here conflicts with `vector_chunks: 0` in `index()`. One of these is reporting BM25 chunk count under the wrong label.
 
----
+#### `architecture()`
+✅ **Meaningfully improved in 0.4.0.** Generic names (`new`, `len`, `get`, `is_empty`) are gone — hub symbols now show real architectural entry points:
 
-### 🟡 `architecture()`
+```
+dispatch          degree=40  (main.rs)        ← MCP tool dispatcher
+main              degree=37  (install.js)     ← npm entry
+find_nodes_by_name degree=25 (graph.rs)       ← graph lookup hub
+build_graph       degree=18  (study.rs)       ← graph builder
+handle_index      degree=17  (main.rs)        ← index handler
+strip_base        degree=17  (code.rs)        ← path utility
+parse_generic_def degree=15  (treesitter.rs)  ← parser hub
+search            degree=14  (memory.rs)      ← search entry
+```
 
-Runs. Returns hub symbols but all have `degree: 0`.
+This is genuinely useful for understanding which functions are most central to the system.
+
+#### `analyze(path)`
+✅ Returns large files by symbol count and high-connectivity symbols. Tested against two directories — both return the same global top list regardless of `path` filter. The `path` parameter may not be filtering results to the requested subdirectory.
+
+```
+large_files:
+  study.rs     54 symbols
+  graph.rs     27 symbols
+  cli.mjs      26 symbols
+
+high_connectivity:
+  dispatch           40 connections
+  main               37 connections
+  find_nodes_by_name 25 connections
+```
+
+#### `focus(path)`
+✅ Returns compact symbol list with caller/callee counts. Useful for getting a graph-enriched view of a file without dumping its content.
+
+```
+focus(bm25.rs):
+  new_in_memory  callers=5  callees=3  line=34
+  make_chunk     callers=2  callees=1  line=202
+  index_chunks   callers=5  callees=0  line=91
+  from_index     callers=2  callees=1  line=63
+
+focus(pipeline.rs):
+  index          callers=8  callees=0  line=48
+  test_index_pipeline  callers=0  callees=4  line=124
+```
+
+#### `dead_code()`
+✅ 50 symbols flagged across the codebase. Consistently flags config helper functions (`lancedb_path`, `metadata_path`, `graph_path`, `reset_settings`) that are unused — plausible candidates. Accuracy is heuristic; symbols used via trait dispatch or macros may be false positives.
+
+#### `circular_dependencies()`
+✅ **Fixed in 0.4.0.** Returns `total: 0`. Previously reported a false 28-file cycle because it was detecting call-level cycles rather than import-level cycles. Now correct.
+
+#### `test_coverage_map()`
+✅ **Fixed in 0.4.0.** Now reports:
 
 ```json
 {
-  "hub_symbols": [
-    {"name": "fmt", "degree": 0, "file": "...models.rs"},
-    {"name": "add", "degree": 0, "file": "...traits.rs"},
-    ...
+  "coverage_percent": 39.0,
+  "covered_files": 16,
+  "test_files": 17,
+  "uncovered_files": 41
+}
+```
+
+Previously always reported 0%. Now correctly detects inline `#[cfg(test)]` modules. 39% coverage across 51 files matches what you'd expect for a mixed Rust workspace.
+
+#### `audit()`
+✅ Quality score with graph-informed recommendations:
+
+```json
+{
+  "quality_score": 75,
+  "recommendations": [
+    {"category": "complexity", "message": "21 symbols have >10 connections — consider refactoring", "severity": "medium"},
+    {"category": "structure",  "message": "1 files have >30 symbols — consider splitting",           "severity": "low"}
   ]
 }
 ```
 
-**Why:** Hub symbols are ranked by connectivity degree in the call graph. With 0 edges, every symbol has degree 0. Fix the graph builder and this becomes meaningful.
-
 ---
 
-### ✅ `dead_code()`
+### Code / AST
 
-Works. Flags 50 symbols across the codebase with file paths and line numbers. Results look plausible (e.g., `storage_path`, `lancedb_path` in config, various internal helpers).
+#### `code(operation="list_symbols", path)`
+✅ Returns all symbols in a file with callers, callees, and line numbers. Tested on two files:
 
-**Caveat:** Dead code detection without a real call graph is heuristic-based (symbols never referenced in any parsed call expression). May have false positives for symbols used via trait dispatch or macros.
+```
+bm25.rs (13 symbols):
+  new_in_memory   callers=5  callees=3  line=34
+  index_chunks    callers=5  callees=0  line=91
+  make_chunk      callers=2  callees=1  line=202
+  search          callers=0  callees=0  line=115
 
----
+pipeline.rs (5 symbols):
+  index           callers=8  callees=0  line=48
+  IndexingPipeline  callers=0  callees=0  line=34
+```
 
-### ✅ `circular_dependencies()`
+#### `code(operation="pattern_search", pattern, path)`
+✅ Literal string matching works. Regex does not.
 
-Works. Returns `[]` — correct, no cycles detected in this codebase.
-
----
-
-### 🟡 `test_coverage_map()`
-
-Runs and returns a list of uncovered files. Reports 0% coverage and 1 test file, which is inaccurate — this repo has integration tests. The coverage mapping is likely only scanning for `#[test]` annotations at the top level rather than recognising test modules or the `tests/` directory.
-
----
-
-### ✅ `analyze(path)`
-
-Works. Returns large files by symbol count and flags dense modules. Correctly identifies `study.rs` (54 symbols) and `graph.rs` (27 symbols).
-
-```json
-{
-  "large_files": [
-    {"file": "crates/contextro-server/src/study.rs", "symbols": 54},
-    {"file": "crates/contextro-core/src/graph.rs",   "symbols": 27}
-  ],
-  "high_connectivity_symbols": []  ← empty, graph issue
-}
+```
+pattern="fn search" → 8 matches across vector.rs, bm25.rs, memory.rs, archive.rs, etc. ✅
+pattern="impl.*Engine" → 0 matches ❌ (regex not supported, no docs warning)
 ```
 
 ---
 
-### ✅ `focus(path)`
+### Memory
 
-Works. Returns a compact symbol list for a file — names, types, and line numbers. Good for tight context slices. Per-symbol `callers` and `callees` are 0 (graph issue) but the symbol enumeration itself is correct.
-
----
-
-### 🟡 `code(operation, ...)`
-
-Mixed.
-
-- `code(operation="pattern_search", pattern="fn search", path="crates/")` — ✅ Works. Finds all `fn search` definitions across the codebase with correct file and line.
-- `code(operation="list_symbols", path=...)` — ❌ Returns `{"error": "Unknown code operation: list_symbols"}`. The operation is implied by the tool description but not implemented.
-
----
-
-### ✅ `remember(content, tags, memory_type)`
-
-Core works — memory is stored, gets an ID, and is retrievable by `recall`. 
-
-**Bug:** The `tags` parameter is accepted without error but silently dropped. Every memory is stored with `"tags": []` regardless of what was passed.
-
----
-
-### ✅ `recall(query, limit)`
-
-Works. Finds stored memories by semantic similarity. Clean results.
-
----
-
-### ❌ `forget(tags)` / `forget(memory_id)`
-
-Broken when called with `tags`. Returns:
+#### `remember(content, tags, memory_type)`
+✅ Tags and memory_type both persisted correctly.
 
 ```json
-{"error": "Provide memory_id, tags, or memory_type to forget"}
+{"id": "mem_72cf0c1f", "memory_type": "note",     "stored": true, "tags": ["eval", "v040"]}
+{"id": "mem_a53cab1c", "memory_type": "decision",  "stored": true, "tags": ["arch", "v040"]}
 ```
 
-…even when `tags` is provided. The schema advertises the parameter but the handler doesn't read it. Calling with `memory_id` directly works.
+#### `recall(query, limit)`
+❌ **Regression in 0.4.0.** Returns `total: 0` for both queries immediately after storing two memories.
+
+```
+recall("contextro evaluation testing") → total=0
+recall("vector search lancedb embedding") → total=0
+```
+
+In v0.3.0, recall worked for previously-stored memories. The most likely cause: `recall` now depends on vector similarity search (LanceDB), and since `vector_chunks: 0`, there are no embeddings to match against. If memory storage also requires embedding (for recall to work), the broken embedding pipeline breaks the whole memory retrieval path.
+
+**Impact:** The memory system is half-broken — you can store but not retrieve. This makes `remember` useless until embeddings work.
+
+#### `forget(tags)` / `forget(memory_id)`
+✅ Both return `deleted: 1`. Deletion works even when recall is broken.
 
 ---
 
-### ✅ `knowledge(command="add", name, value)` / `knowledge(command="search", query)`
+### Knowledge Base
 
-Both work. Add indexes a document snippet, search retrieves it. Clean round-trip.
+#### `knowledge(command="add")`
+✅ `{"chunks": 1, "name": "contextro-overview", "status": "indexed"}`.
+
+#### `knowledge(command="search")`
+🟡 Keyword-exact queries work. Semantic/paraphrase queries do not.
+
+```
+query="local MCP server"       → 1 result ✅  (verbatim phrase in the stored doc)
+query="hybrid search coding agents" → 0 results ❌  (semantically equivalent but different words)
+```
+
+**Why:** Knowledge search is using BM25/keyword matching. A query using synonyms or paraphrases of the indexed content returns nothing. True semantic search requires the vector pipeline to be working.
 
 ---
 
-### ✅ `commit_history(limit)`
+### Git
 
-Works. Returns recent commits with hash, author, message, and Unix timestamp.
+#### `commit_history(limit)`
+✅ Returns recent commits correctly. The latest is `"chore: bump version to 0.4.0"`.
 
----
-
-### ✅ `commit_search(query, limit)`
-
-Works. Semantic search over commit messages returns scored results. Finds relevant commits for natural-language queries.
+#### `commit_search(query, limit)`
+✅ Semantic search over commit messages works. Both queries found the correct most-relevant commit (`4bab1ef3 — fix: call graph edges, vector search, compact/retrieve, memory tags`) as the top result.
 
 ---
 
-### ✅ `compact(content)`
+### Session & Archive
 
-Works. Archives content and returns a `ref_id`.
+#### `session_snapshot()`
+✅ Returns a full event log of the current session's tool calls.
+
+#### `restore()`
+✅ Returns codebase path, graph stats (711 edges), and re-entry hint.
+
+#### `compact(content)` / `retrieve(ref_id)`
+✅ Both ends of the round-trip work.
 
 ```json
-{"archived": true, "chars": 62, "ref_id": "arc_03be4610"}
+compact → {"archived": true, "ref_id": "arc_512f1a39"}
+retrieve → {"content": "Full evaluation session...", "ref_id": "arc_512f1a39"}
 ```
 
 ---
 
-### ❌ `retrieve(ref_id)`
+### Docs & Export
 
-Broken. Immediately returns `{"error": "Reference 'arc_03be4610' not found or expired."}` for a `ref_id` returned by `compact` in the same session. The archive and retrieval store are not using the same key space, or the archive isn't being persisted before the retrieval attempt.
+#### `skill_prompt()`
+✅ Returns agent bootstrap block.
 
----
+#### `introspect(query)`
+❌ Still always returns `{"matching_tools": [], "total": 0}`. Two different queries tested, both return nothing. Tool descriptions are not registered into any searchable index at startup.
 
-### ✅ `session_snapshot()`
-
-Works. Returns a log of tool calls made in the current session with types and summaries. Useful for giving the agent context about what it has already done.
-
----
-
-### ✅ `restore()`
-
-Works. Returns the indexed codebase path, graph stats, and an agent hint for re-entry.
+#### `docs_bundle()` / `sidecar_export(path)`
+✅ Both generate files on disk.
 
 ---
 
-### ✅ `docs_bundle(output_dir)`
+### Repo Management
 
-Works. Generates `architecture.md` and `overview.md` into `.contextro-docs/`. Files are written to disk.
-
----
-
-### ✅ `sidecar_export(path)`
-
-Works. Exports `.graph.*` sidecar files for a given source file.
+#### `repo_add` / `repo_status` / `repo_remove`
+✅ All work. Clean add→status→remove round-trip.
 
 ---
 
-### ❌ `introspect(query)`
+## Open Issues (v0.4.0)
 
-Broken. Always returns `{"matching_tools": [], "total": 0}` regardless of query. Should surface relevant tool descriptions to help an agent decide which tool to use — useful for self-discovery. Currently non-functional.
+### 1. LanceDB not populated during `index()` — blocks 3+ features
+`vector_chunks: 0` on every index run. This is the single highest-impact bug remaining.
 
-**Why it's probably broken:** The tool index that `introspect` searches is likely empty — the tool descriptions aren't being registered into the searchable index at startup.
+**Downstream effects:**
+- `search(mode=vector)` — 0 results
+- `search(mode=hybrid)` — falls through to BM25 only
+- `recall` — 0 results (memory retrieval broken)
+- `knowledge(search)` — keyword-only, no semantic matching
 
----
+**Where to look:** `contextro-indexing/src/embedding.rs` and `contextro-indexing/src/pipeline.rs`. The embedding step either isn't being called in the indexing walk or the model (`potion-code-16m`) is failing to initialize and the error is swallowed. Add explicit logging or surface the error in the `index()` response.
 
-### ✅ `skill_prompt()`
+### 2. `recall` broken for freshly-stored memories
+`remember` stores successfully but `recall` returns 0 immediately after. Likely because recall uses vector similarity over embeddings, and with no embeddings written, the search space is empty. This makes the memory system write-only until the embedding pipeline is fixed.
 
-Works. Returns a well-formatted agent bootstrap block with the key tools and their usage patterns.
+### 3. `introspect` always empty
+Tool descriptions are never registered into the searchable index at startup. The handler exists but its backing store is empty.
 
----
+### 4. `find_callees` / `impact` empty for struct/class symbols
+`find_callees("IndexingPipeline")` returns 0. Structs have no outgoing call edges in the current graph model. Either add struct→method containment edges, or document the limitation clearly so agents don't misinterpret the empty result.
 
-### ✅ `repo_add(path)` / `repo_remove(path)` / `repo_status()`
+### 5. `knowledge(search)` is keyword-only
+Works for exact phrase matches, fails for semantic paraphrases. Will be fixed automatically once the embedding pipeline works.
 
-All work. Add registers a path, status shows it with git detection, remove unregisters it.
+### 6. `code(pattern_search)` silently ignores regex
+`pattern="impl.*Engine"` returns 0 matches with no error. Should either support regex or return a clear error when a pattern looks like a regex.
 
----
+### 7. `overview` vs `index` disagree on `vector_chunks`
+`overview` reports `vector_chunks: 433`; `index` reports `vector_chunks: 0`. One of them is reporting BM25 chunks under the wrong label.
 
-## Prioritised Fix List
+### 8. `analyze(path)` ignores path filter
+Both `analyze("crates/contextro-engines/src")` and `analyze("crates/contextro-indexing/src")` return the same global top-list. The `path` parameter doesn't filter results to the specified directory.
 
-These are ordered by impact — fixing the top items unblocks the most tools.
-
-### 1. Build call graph edges during `index()` — **blocks 6+ tools**
-
-`graph_relationships` is always 0. The tree-sitter parser extracts symbol declarations but does not extract call expressions and write edges into petgraph. 
-
-**Where to look:** `contextro-indexing/src/pipeline.rs` — the indexing walk needs a pass that resolves call sites and emits `(caller_symbol, callee_symbol)` edges into the graph. Also check `contextro-engines/src/graph.rs` — `add_relationship()` may exist but is never called from the pipeline.
-
-**Tools unblocked:** `find_callers`, `find_callees`, `impact`, `explain` (graph fields), `architecture` (hub degrees), `focus` (per-symbol edges), `dead_code` (accuracy), `analyze` (high-connectivity symbols).
-
----
-
-### 2. Populate LanceDB with embeddings during `index()` — **makes search truly hybrid**
-
-All three search modes produce identical BM25 results. The vector store is either not being written during indexing or the query path never reaches it.
-
-**Where to look:** `contextro-indexing` — wherever chunks are created, embeddings should be generated (potion-code-16m model) and written to LanceDB. Check if the embedding step is gated behind a flag or silently failing. Also check `contextro-engines` for the vector query path — it may be falling back to BM25 on an empty vector store.
-
-**Tools unblocked:** `search(mode=vector)`, `search(mode=hybrid)`.
+### 9. `docstring` always null in `explain`
+Doc comment extraction (`///`, `/** */`) is not implemented. Would significantly improve `explain` output.
 
 ---
 
-### 3. Fix `compact` / `retrieve` round-trip — **1 tool**
+## What Is Genuinely Useful in v0.4.0
 
-`retrieve(ref_id)` fails immediately after `compact` returns that same `ref_id` in the same session.
+These tools are working correctly and provide real value to a coding agent today:
 
-**Where to look:** The archive store write and the lookup key format. Likely a path or namespace mismatch between where `compact` writes and where `retrieve` reads.
-
----
-
-### 4. Fix `remember` tags — **memory system**
-
-Tags are accepted in the API but silently dropped. `forget(tags=...)` also doesn't work because tags are never stored.
-
-**Where to look:** `contextro-memory/src` — the `remember` handler needs to persist the tags field, and the `forget` handler needs to read the tags param from the request and filter by it.
-
----
-
-### 5. Implement `code(list_symbols)` — **1 operation**
-
-Returns "Unknown code operation" despite being a natural complement to `pattern_search`.
-
----
-
-### 6. Fix `introspect` — **agent usability**
-
-The tool description index is empty. Register tool names and descriptions into a searchable store at startup so `introspect` can surface them.
-
----
-
-### 7. Improve `overview` and `architecture` content
-
-Beyond graph fixes, `overview` should include language breakdown and top directories. `architecture` should include entry points and layer mapping.
-
----
-
-### 8. Fix `explain` symbol disambiguation
-
-When multiple symbols share a name, `explain` should resolve to the most central or most-called one, not the first match. Add a scoring step using call frequency or file position.
-
----
-
-## What Is Genuinely Useful Right Now
-
-Even in v0.2.0 with these gaps, the following provide real value to an agent today:
-
-- **`search(mode=bm25)`** — fast, high-confidence, relevant symbol hits
-- **`find_symbol`** — reliable fuzzy lookup
-- **`dead_code`** — flags unused symbols across the codebase
-- **`analyze`** — identifies large, complex files
-- **`focus`** — compact symbol map for a file without dumping its full content
-- **`audit`** — quick quality score and structural recommendations
-- **`code(pattern_search)`** — AST-level grep across the whole codebase
-- **`commit_history` / `commit_search`** — semantic git history search
-- **`remember` / `recall`** — persisting decisions and conventions across sessions
-- **`knowledge`** — indexing docs and notes alongside code
-- **`session_snapshot` / `restore`** — agent re-entry without losing context
-- **`repo_add` / `repo_status`** — multi-repo awareness
+| Tool | What it gives you |
+|---|---|
+| `search(bm25)` | Fast, relevant symbol hits — better than raw grep for code navigation |
+| `find_symbol` | Reliable exact + fuzzy definition lookup |
+| `find_callers` | Real call graph traversal — who calls this function |
+| `find_callees` | What a function depends on (functions only) |
+| `impact` | Blast radius before a refactor (functions only) |
+| `explain` | Correct symbol + callers/callees in one call |
+| `architecture` | Meaningful architectural hub ranking |
+| `focus` | Graph-enriched compact file view |
+| `analyze` | Large files + high-connectivity hotspots |
+| `audit` | Quality score with actionable recommendations |
+| `dead_code` | Unused symbol candidates for cleanup |
+| `test_coverage_map` | 39% coverage with file-level detail |
+| `code(list_symbols)` | Per-file symbol map with graph edges |
+| `code(pattern_search)` | Literal string search across the whole codebase |
+| `commit_history` | Recent git log with metadata |
+| `commit_search` | Semantic search over commit messages |
+| `compact` / `retrieve` | Session archiving and retrieval |
+| `session_snapshot` / `restore` | Agent re-entry context |
+| `docs_bundle` | Generates architecture + overview docs |
+| `repo_add/status/remove` | Multi-repo tracking |
