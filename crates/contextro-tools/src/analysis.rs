@@ -18,14 +18,15 @@ const GENERIC_NAMES: &[&str] = &[
     "send", "recv", "read", "write", "flush", "close",
 ];
 
-pub fn handle_overview(graph: &CodeGraph, codebase: Option<&str>, total_chunks: usize) -> Value {
+pub fn handle_overview(graph: &CodeGraph, codebase: Option<&str>, total_chunks: usize, vector_chunks: usize) -> Value {
     let node_count = graph.node_count();
     let rel_count = graph.relationship_count();
     json!({
         "codebase_path": codebase,
         "total_symbols": node_count,
         "total_relationships": rel_count,
-        "vector_chunks": total_chunks,
+        "total_chunks": total_chunks,
+        "vector_chunks": vector_chunks,
     })
 }
 
@@ -54,8 +55,24 @@ pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
 }
 
 pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let _path = args.get("path").and_then(|v| v.as_str());
-    let nodes = graph.find_nodes_by_name("", false);
+    let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let all_nodes = graph.find_nodes_by_name("", false);
+
+    // Filter nodes to the requested path prefix if specified
+    let nodes: Vec<_> = if path_filter.is_empty() {
+        all_nodes
+    } else {
+        let abs_filter = if std::path::Path::new(path_filter).is_absolute() {
+            path_filter.to_string()
+        } else {
+            codebase.map(|b| format!("{}/{}", b, path_filter))
+                .unwrap_or_else(|| path_filter.to_string())
+        };
+        all_nodes.into_iter()
+            .filter(|n| n.location.file_path.starts_with(&abs_filter))
+            .collect()
+    };
+
     let mut complex_fns: Vec<Value> = Vec::new();
     let mut file_sizes: HashMap<String, usize> = HashMap::new();
 

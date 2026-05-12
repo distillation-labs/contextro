@@ -169,14 +169,17 @@ fn pattern_search(args: &Value, codebase: Option<&str>) -> Value {
         })
         .unwrap_or_else(|| base.to_string());
 
-    // Convert ast-grep-style pattern ($NAME, $$$) to regex
-    let regex_pattern = pattern_to_regex(pattern);
-    let re = match regex_lite::Regex::new(&regex_pattern) {
-        Ok(r) => r,
-        Err(_) => {
-            // Fallback to literal search
-            regex_lite::Regex::new(&regex_lite::escape(pattern)).unwrap()
-        }
+    // If the pattern contains ast-grep metavariables ($NAME, $$$), convert them.
+    // Otherwise, treat the pattern as a regex first; fall back to literal string
+    // matching if the regex is invalid. This lets callers use "impl.*Engine" style
+    // patterns without needing to know about ast-grep syntax.
+    let re = if pattern.contains('$') {
+        let regex_pattern = pattern_to_regex(pattern);
+        regex_lite::Regex::new(&regex_pattern)
+            .unwrap_or_else(|_| regex_lite::Regex::new(&regex_lite::escape(pattern)).unwrap())
+    } else {
+        regex_lite::Regex::new(pattern)
+            .unwrap_or_else(|_| regex_lite::Regex::new(&regex_lite::escape(pattern)).unwrap())
     };
 
     let mut matches: Vec<Value> = Vec::new();

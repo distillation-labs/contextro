@@ -4,6 +4,13 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-12
+
+### Fixed
+
+- **Vector search fully operational** — the embedding model (`potion-code-16M`) was never loading in any prior version because `Model2Vec::from_pretrained` expects a local filesystem path, not a HuggingFace model ID string. Added `find_hf_cache_path()` which resolves the HuggingFace Hub local cache layout (`~/.cache/huggingface/hub/models--{owner}--{name}/snapshots/{hash}/`) and passes the correct directory path to the model loader. Vector search now reports `vector_chunks` equal to the full chunk count after indexing (e.g. 400+ for a Rust workspace), and `mode=hybrid` and `mode=vector` return real semantic results with confidence scores. This was the root cause of all vector/semantic search issues reported since v0.1.0.
+- **Server no longer hangs under concurrent requests** — v0.4.0 added a `parking_lot::Mutex` dispatch lock to serialize tool calls and fix a recall race condition, but `parking_lot::Mutex::lock()` is a blocking call that starves Tokio worker threads when used inside async tasks. Multiple simultaneous MCP requests would cause the server to deadlock after the first response. The blocking mutex has been removed; concurrent request handling now works correctly.
+
 ## [0.4.0] - 2026-05-12
 
 ### Fixed
