@@ -19,10 +19,7 @@ fn main() {
     println!("║  CONTEXTRO RUST MCP — PERFORMANCE BENCHMARK                 ║");
     println!(
         "║  Target: {:<52}║",
-        codebase
-            .chars()
-            .take(52)
-            .collect::<String>()
+        codebase.chars().take(52).collect::<String>()
     );
     println!("╠══════════════════════════════════════════════════════════════╣");
 
