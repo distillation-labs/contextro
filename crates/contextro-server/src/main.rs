@@ -54,6 +54,7 @@ impl ContextroServer {
                 &s.graph,
                 cb,
                 s.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
+                s.vector_index.len(),
             ),
             "architecture" => contextro_tools::analysis::handle_architecture(&s.graph, cb),
             "analyze" => contextro_tools::analysis::handle_analyze(&args, &s.graph, cb),
