@@ -101,7 +101,19 @@ fn vector_search(query: &str, limit: usize, index: &VectorIndex) -> Vec<SearchRe
         return vec![];
     }
     match embed(query) {
-        Some(qv) => index.search(&qv, limit),
+        Some(qv) => {
+            let mut results = index.search(&qv, limit);
+            // Normalize scores relative to the top result so the best match
+            // shows confidence=1.0, making vector and BM25 scores comparable.
+            if let Some(max) = results.first().map(|r| r.score) {
+                if max > 0.0 {
+                    for r in &mut results {
+                        r.score /= max;
+                    }
+                }
+            }
+            results
+        }
         None => vec![],
     }
 }
