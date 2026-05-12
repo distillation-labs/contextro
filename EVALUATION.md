@@ -1,33 +1,34 @@
 # Contextro MCP — Evaluation Report
 
-**Versions tested:** 0.1.0 → 0.2.0 → 0.3.0 → 0.4.0 → 0.5.0  
+**Versions tested:** 0.1.0 → 0.2.0 → 0.3.0 → 0.4.0 → 0.5.0 → 0.7.0  
 **Last updated:** 2026-05-12  
-**Tested on:** This repository (`distillation-labs/contextro`) — 46 files, 403 symbols, Rust multi-crate workspace  
-**Method:** Every tool called in a single indexed stdio session per version (~48 calls in v0.5.0). Raw JSON inspected for correctness, completeness, and regression against prior versions. v0.5.0 includes additional quality checks: vector vs BM25 divergence, recall semantic distance, compact/retrieve roundtrip, and API parameter probing.
+**Tested on:** This repository (`distillation-labs/contextro`) — 46 files, 409 symbols, Rust multi-crate workspace  
+**Method:** Every tool called in a single indexed stdio session per version. v0.7.0 tested with ~60 calls including vector/BM25 divergence checks, recall semantic quality at three abstraction levels, API parameter probing, and compact/retrieve roundtrip.
 
 ---
 
 ## Version Progress Summary
 
-| Area | 0.1.0 | 0.2.0 | 0.3.0 | 0.4.0 | 0.5.0 |
-|---|---|---|---|---|---|
-| Graph edges built | ❌ 0 | ❌ 0 | ✅ 705 | ✅ 711 | ✅ 718 |
-| BM25 search | ❌ 0 results | ✅ | ✅ | ✅ | ✅ |
-| Vector search | ❌ | ❌ | ❌ | ❌ | ✅ **FIXED** |
-| Hybrid search | ❌ | ❌ | ❌ BM25 fallback | ❌ BM25 fallback | ✅ **FIXED** |
-| find_callers / callees | ❌ | ❌ | ✅ | ✅ | ✅ (param renamed) |
-| impact | ❌ | ❌ | ✅ | ✅ | ✅ (param renamed) |
-| explain (correct symbol) | ❌ | ❌ | ❌ wrong symbol | ✅ fixed | ✅ |
-| architecture hub degrees | ❌ all 0 | ❌ all 0 | ✅ (noisy) | ✅ meaningful | ✅ |
-| code(list_symbols) | ❌ | ❌ | ✅ | ✅ | ✅ (API changed) |
-| memory tags | ❌ dropped | ❌ dropped | ✅ | ✅ | ✅ |
-| recall (fresh memories) | — | — | ✅ | ❌ regressed | ✅ **FIXED** |
-| compact / retrieve | ✅/❌ | ✅/❌ | ✅/✅ | ✅/✅ | ✅/✅ (API changed) |
-| circular_dependencies | ❌ false+ | ❌ false+ | ❌ false+ | ✅ fixed | ✅ |
-| test_coverage_map | ❌ 0% | ❌ 0% | ❌ 0% | ✅ 39% | ✅ 42.1% |
-| knowledge(search) | ❌ | ❌ | ❌ | 🟡 keywords only | 🟡 empty KB |
-| introspect | ❌ | ❌ | ❌ | ❌ | ✅ **FIXED** |
-| analyze path filtering | ❌ | ❌ | ❌ | ❌ global only | ✅ **FIXED** |
+| Area | 0.1.0 | 0.2.0 | 0.3.0 | 0.4.0 | 0.5.0 | 0.7.0 |
+|---|---|---|---|---|---|---|
+| Graph edges built | ❌ 0 | ❌ 0 | ✅ 705 | ✅ 711 | ✅ 718 | ✅ 748 |
+| BM25 search | ❌ 0 results | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Vector search | ❌ | ❌ | ❌ | ❌ | ✅ FIXED | ✅ conf=1.0 |
+| Hybrid search | ❌ | ❌ | ❌ BM25 only | ❌ BM25 only | ✅ FIXED | ✅ |
+| find_callers / callees | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| impact (0-caller hint) | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ **hint added** |
+| explain docstring | ❌ | ❌ | ❌ | ❌ null | ❌ null | ✅ **FIXED** |
+| architecture hub degrees | ❌ all 0 | ❌ all 0 | ✅ (noisy) | ✅ meaningful | ✅ | ✅ |
+| code(lookup_symbols) | ❌ | ❌ | ✅ | ✅ | ❌ broken | ✅ **FIXED** |
+| memory tags | ❌ dropped | ❌ dropped | ✅ | ✅ | ✅ | ✅ |
+| recall (fresh memories) | — | — | ✅ | ❌ regressed | ✅ FIXED | ✅ all 3 levels |
+| recall semantic quality | — | — | — | — | 🟡 close only | ✅ abstract works |
+| compact / retrieve | ✅/❌ | ✅/❌ | ✅/✅ | ✅/✅ | ✅/✅ | ✅/✅ |
+| circular_dependencies | ❌ false+ | ❌ false+ | ❌ false+ | ✅ fixed | ✅ | ✅ |
+| test_coverage_map | ❌ 0% | ❌ 0% | ❌ 0% | ✅ 39% | ✅ 42.1% | ✅ 42.1% |
+| knowledge(search) | ❌ | ❌ | ❌ | 🟡 keywords only | 🟡 empty KB | ❌ add broken |
+| introspect | ❌ | ❌ | ❌ | ❌ | ✅ FIXED | ❌ **regressed** |
+| analyze path filtering | ❌ | ❌ | ❌ | ❌ global only | ✅ FIXED | ✅ |
 
 ---
 
@@ -320,27 +321,203 @@ Vector search returns confidence ~0.146 while BM25 returns 1.0 for the same quer
 
 | Tool | What it gives you |
 |---|---|
-| `search(bm25)` | Fast, relevant symbol hits — better than raw grep |
-| `search(vector)` | Semantic search — finds conceptually related code even with different keywords |
-| `search(hybrid)` | Blended results — best of both modes |
+| `search(bm25/vector/hybrid)` | All three modes working; vector diverges meaningfully from BM25 |
 | `find_symbol` | Exact + fuzzy definition lookup |
-| `find_callers` | Real call graph traversal — who calls this function |
-| `find_callees` | What a function depends on (functions only) |
+| `find_callers` / `find_callees` | Real call graph traversal (functions only) |
 | `impact` | Blast radius before refactoring |
 | `explain` | Symbol + callers/callees in one call |
-| `architecture` | Hub ranking — most connected symbols |
-| `analyze` | Per-directory high-connectivity hotspots (path filtering fixed) |
-| `focus` | Graph-enriched compact file view |
-| `audit` | Quality score + recommendations |
-| `dead_code` | Unused symbol candidates |
-| `test_coverage_map` | 42.1% file-level coverage |
-| `code(get_document_symbols)` | Per-file symbol map with line ranges |
-| `code(search_symbols)` | Fuzzy symbol name lookup |
-| `code(pattern_search)` | Regex pattern search across codebase |
-| `remember` / `recall` / `forget` | Persistent semantic memory — store and retrieve context |
+| `architecture` / `analyze` / `focus` | Structural analysis, path-filtered |
+| `audit` / `dead_code` / `circular_dependencies` / `test_coverage_map` | Quality metrics |
+| `code(get_document_symbols/search_symbols/pattern_search)` | AST + regex code navigation |
+| `remember` / `recall` / `forget` | Persistent semantic memory |
 | `commit_history` / `commit_search` | Git log + semantic commit search |
 | `compact` / `retrieve` | Session context archiving and retrieval |
 | `session_snapshot` / `restore` | Agent re-entry context |
-| `introspect` | Tool self-discovery — find the right tool for a task |
-| `docs_bundle` / `sidecar_export` | Generates documentation + graph sidecars |
+| `introspect` | Tool self-discovery |
+| `docs_bundle` / `sidecar_export` | Docs + graph sidecars |
 | `repo_add/status/remove` | Multi-repo tracking |
+
+---
+
+## v0.7.0 Full Scorecard
+
+> **Index stats:** 409 symbols, 748 edges, 46 files, `vector_chunks: 409`, `time_seconds: 0.0`
+
+| # | Tool | Status | Notes |
+|---|---|---|---|
+| 1 | `index` | ✅ | 409 symbols, 748 edges, vector_chunks=409, sub-ms |
+| 2 | `status` | ✅ | Accurate pre/post state |
+| 3 | `health` | ✅ | healthy |
+| 4 | `search(bm25)` | ✅ | conf=1.0, relevant results |
+| 5 | `search(vector)` | ✅ | conf=1.0 (**improved from 0.146**), semantic divergence confirmed |
+| 6 | `search(hybrid)` | ✅ | conf=1.0 |
+| 7 | `search(filtered)` | ✅ | language + symbol_type filters accepted |
+| 8 | `find_symbol(exact)` | ✅ | `IndexingPipeline` → `pipeline.rs:34` |
+| 9 | `find_symbol(fuzzy)` | ✅ | "bm25" → 3 results; "dispatch" → 1 |
+| 10 | `find_callers(search)` | ✅ | 4 callers returned |
+| 11 | `find_callers(dispatch)` | ✅ | 0 callers + **new hint**: "root entry point, check external callers" |
+| 12 | `find_callees(dispatch)` | ✅ | 41 callees |
+| 13 | `find_callees(index)` | 🟡 | 0 callees — `index` in pipeline.rs is a method on a struct |
+| 14 | `explain(dispatch)` | ✅ | callers=0, callees=41 |
+| 15 | `explain(IndexingPipeline)` | ✅ | **docstring FIXED**: `"Orchestrates the full indexing flow."` |
+| 16 | `impact(search)` | ✅ | 7 impacted symbols with depth |
+| 17 | `impact(dispatch)` | ✅ | 0 impacted + hint (root entry point) |
+| 18 | `overview` | ✅ | Consistent with index stats |
+| 19 | `architecture` | ✅ | dispatch(42), main(37), find_nodes_by_name(26) |
+| 20 | `analyze(engines)` | ✅ | find_nodes_by_name(26), get_node_degree(15) |
+| 21 | `analyze(indexing)` | ✅ | get_model(9), index(8), embed_batch(7) — different from engines ✅ |
+| 22 | `dead_code` | ✅ | metadata_path, encode, lancedb_path flagged |
+| 23 | `circular_dependencies` | ✅ | total=0 |
+| 24 | `test_coverage_map` | ✅ | 42.1%, 17 test files |
+| 25 | `audit` | ✅ | score=75, 22 symbols >10 connections |
+| 26 | `focus(bm25.rs)` | ✅ | Preview + symbols |
+| 27 | `code(get_document_symbols)` | ✅ | Symbols with line ranges, signatures |
+| 28 | `code(search_symbols)` | ✅ | "dispatch" → 1 result |
+| 29 | `code(lookup_symbols)` | ✅ | **FIXED** — ["dispatch","IndexingPipeline"] → 2 results |
+| 30 | `code(pattern_search literal)` | ✅ | "fn search" → 8 matches |
+| 31 | `code(pattern_search regex)` | ✅ | "impl.*[Ee]ngine" → 2 matches |
+| 32 | `code(search_codebase_map)` | ❌ | Returns empty (total_files=0, total_symbols=0) |
+| 33 | `sidecar_export` | ✅ | Exported |
+| 34 | `remember` | ✅ | Stored with tags |
+| 35 | `recall(direct match)` | ✅ | Returns correct memory immediately |
+| 36 | `recall(semantic)` | ✅ | "which function handles incoming tool requests" → dispatch memory ✅ |
+| 37 | `recall(abstract)` | ✅ | "how does vector embedding get stored" → pipeline memory ✅ |
+| 38 | `forget(memory_id)` | ✅ | deleted=1 |
+| 39 | `knowledge(add)` | ❌ | **New regression**: "Content is empty — nothing indexed" even with content provided |
+| 40 | `knowledge(search)` | 🟡 | Returns 0 (KB is empty due to add being broken) |
+| 41 | `commit_history` | ✅ | 5 commits returned |
+| 42 | `commit_search` | ✅ | Correct top result for both queries |
+| 43 | `session_snapshot` | ✅ | Full event log |
+| 44 | `restore` | ✅ | Path + graph stats + hint |
+| 45 | `compact` | ✅ | archived=true, ref_id returned |
+| 46 | `retrieve` | ✅ | Roundtrip confirmed — exact content returned |
+| 47 | `introspect` | ❌ | **Regressed from v0.5.0** — returns 0 for all queries |
+| 48 | `skill_prompt` | ✅ | Bootstrap block with correct tool names |
+| 49 | `docs_bundle` | ✅ | architecture.md + overview.md generated |
+| 50 | `repo_add/status/remove` | ✅ | Clean round-trip |
+
+**Working: ~43 / 50 tool calls** (up from ~36 in v0.5.0).
+
+---
+
+## v0.7.0 Notable Changes
+
+### ✅ New wins
+
+**`docstring` in `explain` is finally populated.**
+```
+explain("IndexingPipeline") → docstring: "Orchestrates the full indexing flow."
+```
+Was `null` across all prior versions. Doc comment extraction (`///`) now works.
+
+**`impact` gives a useful hint for root entry points.**
+```
+impact("dispatch") → hint: "0 callers found — this symbol is a root entry point
+(nothing calls it in the parsed AST). It is safe to change its signature,
+but check external callers (CLI, tests, MCP handlers) manually."
+```
+Previously returned a silent empty result that looked like a bug.
+
+**`code(lookup_symbols)` fixed.**
+```
+lookup_symbols(symbols=["dispatch","IndexingPipeline"]) → 2 results ✅
+```
+Was broken in v0.5.0 even with correct params.
+
+**Vector search confidence normalised.**
+```
+v0.5.0: vector conf=0.146 vs BM25 conf=1.0  (misleading)
+v0.7.0: vector conf=1.0   vs BM25 conf=1.0  (calibrated)
+```
+
+**Recall now works at all three semantic abstraction levels.**
+```
+direct:   "indexing pipeline symbol extraction"         → pipeline memory ✅
+semantic: "which function handles incoming tool requests" → dispatch memory ✅
+abstract: "how does vector embedding get stored"          → pipeline memory ✅
+```
+
+**Vector search diverges correctly from BM25.**
+```
+Q: "code that builds and traverses a graph"
+  vector unique: ['main.rs', 'treesitter.rs']   ← semantic hits
+  bm25 unique:   ['graph.rs', 'engines graph']  ← keyword hits
+
+Q: "storing data persistently across sessions"
+  vector unique: ['session.rs', 'main.rs', 'embedding.rs']  ← semantic hits
+  bm25 unique:   ['archive.rs', 'memory.rs']                ← keyword hits
+```
+
+### ❌ Regressions in v0.7.0
+
+**`introspect` broken again** (was fixed in v0.5.0).
+```
+introspect("search code semantically")      → total=0
+introspect("store retrieve memory context") → total=0
+introspect("call graph callers impact")     → total=0
+```
+Three different queries, all return 0. Tool description index is empty again.
+
+**`knowledge(add)` broken with a new error.**
+```
+knowledge(command="add", name="ctx-kb", content="Contextro MCP...") →
+  {"error": "Content is empty — nothing indexed", "name": "ctx-kb"}
+```
+Content is clearly non-empty. The handler is likely not reading the `content` field from the request args.
+
+**`code(search_codebase_map)` broken.**
+```
+search_codebase_map(query="embedding vector") → {files: [], total_files: 0, total_symbols: 0}
+```
+Was returning a directory listing in v0.5.0 (not great but functional). Now returns empty.
+
+---
+
+## Open Issues (v0.7.0)
+
+### 1. `introspect` regressed — again
+Fixed in v0.5.0, broken again in v0.7.0. Three queries tested, all return 0. The tool description index is not being populated at startup. This is a recurring regression — needs a test.
+
+### 2. `knowledge(add)` content parsing broken
+`{"command":"add","name":"ctx-kb","content":"..."}` returns "Content is empty". The handler is not reading `content` from the JSON args. Downstream: `knowledge(search)` always returns 0 because the KB can never be populated.
+
+### 3. `code(search_codebase_map)` returns empty
+Was at least returning a directory listing in v0.5.0. Now returns `{files:[], total_files:0}` regardless of query.
+
+### 4. Struct/class nodes still have no callers/callees
+`find_callees("index")` where `index` is a method on `IndexingPipeline` still returns 0. The graph records module-level functions as call targets but not struct methods via their impl blocks. Documented via the `impact` hint now, which is an improvement.
+
+### 5. `tags` tool still absent
+Removed in v0.5.0, not restored. No way to enumerate all stored memory tags.
+
+### 6. `docstring` still null for functions
+Fixed for structs/classes in v0.7.0, but `explain("dispatch")` still shows `docstring: null`. Function-level `///` doc comments are not yet extracted.
+
+---
+
+## What Is Working in v0.7.0
+
+Every tool in this list was tested and produced correct, non-error output in the v0.7.0 session:
+
+| Tool | What it gives you |
+|---|---|
+| `search(bm25/vector/hybrid)` | All three modes, calibrated confidence (all ~1.0), meaningful semantic divergence |
+| `find_symbol(exact/fuzzy)` | Definition lookup, works for both |
+| `find_callers` / `find_callees` | Call graph traversal with helpful hints for edge cases |
+| `impact` | Blast radius + root-entry-point hint when callers=0 |
+| `explain` | Symbol + graph + **docstring now populated for classes** |
+| `architecture` | Hub ranking, stable and meaningful |
+| `analyze(path)` | Per-directory hotspots, path filtering confirmed working |
+| `focus` | Graph-enriched file view |
+| `audit` / `dead_code` / `circular_dependencies` / `test_coverage_map` | Full quality suite |
+| `code(get_document_symbols)` | Per-file symbols with signatures and line ranges |
+| `code(search_symbols)` | Symbol name lookup |
+| `code(lookup_symbols)` | Multi-symbol lookup by name list |
+| `code(pattern_search)` | Literal + regex pattern search |
+| `remember` / `recall` / `forget` | Semantic memory at all abstraction levels |
+| `commit_history` / `commit_search` | Git log + semantic search |
+| `compact` / `retrieve` | Context archiving roundtrip confirmed |
+| `session_snapshot` / `restore` | Agent re-entry context |
+| `skill_prompt` | Correct bootstrap block |
+| `docs_bundle` / `sidecar_export` | Doc generation |
+| `repo_add` / `repo_status` / `repo_remove` | Multi-repo management |
