@@ -83,6 +83,11 @@ pub fn handle_recall(args: &Value, store: &MemoryStore) -> Value {
     }
 }
 
+pub fn handle_tags(store: &MemoryStore) -> Value {
+    let tags = store.list_tags();
+    json!({"tags": tags, "total": tags.len()})
+}
+
 pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     let id = args.get("memory_id").and_then(|v| v.as_str());
     let tags_owned: Option<String> = match args.get("tags") {
