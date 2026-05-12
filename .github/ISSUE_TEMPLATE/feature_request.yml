@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest a new tool, language support, or behaviour improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Please describe what you'd like and why.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation where you felt something was missing or painful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should Contextro do differently or additionally?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you thought about?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Search / BM25
+        - Vector / embeddings
+        - Graph / call analysis
+        - Memory (remember/recall)
+        - Parsing / language support
+        - MCP tool API
+        - HTTP transport
+        - Performance
+        - Documentation
+        - Other

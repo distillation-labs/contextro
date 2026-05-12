@@ -5,15 +5,25 @@ use std::time::Instant;
 type GraphOp<'a> = (&'static str, Box<dyn Fn() -> usize + 'a>);
 
 fn main() {
-    let platform_path = Path::new("/Users/japneetkalkat/platform");
+    let codebase = std::env::args().nth(1).unwrap_or_else(|| {
+        eprintln!("Usage: contextro-bench <path-to-codebase>");
+        std::process::exit(1);
+    });
+    let platform_path = Path::new(&codebase);
     if !platform_path.is_dir() {
-        eprintln!("ERROR: /Users/japneetkalkat/platform not found");
+        eprintln!("ERROR: '{}' is not a directory", codebase);
         std::process::exit(1);
     }
 
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║  CONTEXTRO RUST MCP — PERFORMANCE BENCHMARK                 ║");
-    println!("║  Target: /Users/japneetkalkat/platform                      ║");
+    println!(
+        "║  Target: {:<52}║",
+        codebase
+            .chars()
+            .take(52)
+            .collect::<String>()
+    );
     println!("╠══════════════════════════════════════════════════════════════╣");
 
     let settings = contextro_config::Settings::default();
