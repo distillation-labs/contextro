@@ -4,6 +4,18 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-12
+
+### Fixed
+
+- JS/TS parser now extracts call relationships from function bodies — `find_callers`, `find_callees`, `impact`, and `explain` are functional on TypeScript and JavaScript codebases.
+- JS/TS parser now recognises arrow functions (`const foo = () =>`), `export const`, `export default`, abstract classes, and class methods in addition to bare `function`/`class` declarations.
+- Rust parser now tracks `impl` blocks and extracts methods with correct `parent` context; previously all methods inside `impl` were silently dropped.
+- Rust parser now extracts call relationships from function and method bodies.
+- Rust parser now extracts enums and traits as symbols.
+- Docstrings populated for JS/TS (JSDoc `/** */` and `//` comments) and Rust (`///` doc comments), improving `explain` and search quality.
+- `code_snippet` populated for JS/TS and Rust symbols, making `lookup_symbols` with `include_source` work without falling back to file reads.
+
 ## [0.7.0] - 2026-05-12
 
 ### Fixed
