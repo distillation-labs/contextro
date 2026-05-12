@@ -76,7 +76,10 @@ impl MemoryStore {
         Ok(id)
     }
 
-    /// Search memories by substring match on content.
+    /// Search memories. Query is split on whitespace and ALL words must appear
+    /// somewhere in the content (word-level AND, not phrase match). This makes
+    /// multi-word queries like "contextro evaluation" work even when the words
+    /// are not adjacent in the stored content.
     pub fn recall(
         &self,
         query: &str,
@@ -86,10 +89,38 @@ impl MemoryStore {
         project: Option<&str>,
     ) -> Result<Vec<Memory>, ContextroError> {
         let conn = self.conn.lock();
-        let mut sql = String::from("SELECT id, content, memory_type, project, tags, created_at, accessed_at, ttl, source FROM memories WHERE content LIKE ?1");
-        let like = format!("%{}%", query);
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(like)];
-        let mut idx = 2;
+        let words: Vec<String> = query
+            .split_whitespace()
+            .filter(|w| w.len() >= 2)
+            .map(|w| w.to_lowercase())
+            .collect();
+
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
+        let mut idx = 1usize;
+
+        // Build per-word LIKE clauses (each word must appear somewhere in content)
+        let word_clause = if words.is_empty() {
+            String::new()
+        } else {
+            let clauses: Vec<String> = words
+                .iter()
+                .map(|w| {
+                    param_values.push(Box::new(format!("%{}%", w)));
+                    let c = format!("LOWER(content) LIKE ?{}", idx);
+                    idx += 1;
+                    c
+                })
+                .collect();
+            format!("({})", clauses.join(" AND "))
+        };
+
+        let mut sql = String::from(
+            "SELECT id, content, memory_type, project, tags, created_at, accessed_at, ttl, source FROM memories WHERE 1=1",
+        );
+        if !word_clause.is_empty() {
+            sql.push_str(" AND ");
+            sql.push_str(&word_clause);
+        }
 
         if let Some(mt) = memory_type {
             sql.push_str(&format!(" AND memory_type = ?{}", idx));
