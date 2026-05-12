@@ -190,6 +190,7 @@ fn parse_rust_def(
     } else {
         vec![]
     };
+    let docstring = extract_rust_docstring(lines, idx);
 
     Some(Symbol {
         name,
@@ -199,7 +200,7 @@ fn parse_rust_def(
         line_end: (end_line + 1) as u32,
         language: "rust".to_string(),
         signature: line.to_string(),
-        docstring: String::new(),
+        docstring,
         parent: None,
         code_snippet: String::new(),
         imports: vec![],
@@ -414,6 +415,31 @@ fn extract_rust_calls(lines: &[&str], start: usize, end: usize) -> Vec<String> {
         }
     }
     calls
+}
+
+/// Extract `///` doc comments immediately preceding a Rust definition at `idx`.
+/// Skips `#[...]` attribute lines between the doc comments and the definition.
+fn extract_rust_docstring(lines: &[&str], idx: usize) -> String {
+    if idx == 0 {
+        return String::new();
+    }
+    let mut doc_lines: Vec<&str> = Vec::new();
+    let mut i = idx;
+    while i > 0 {
+        i -= 1;
+        let trimmed = lines[i].trim();
+        if trimmed.starts_with("///") {
+            doc_lines.push(trimmed.trim_start_matches("///").trim());
+        } else if trimmed.starts_with("#[") || trimmed.starts_with("//!") {
+            // attribute or inner doc — skip but keep scanning
+            continue;
+        } else {
+            break;
+        }
+    }
+    doc_lines.reverse();
+    let s = doc_lines.join(" ").trim().to_string();
+    s
 }
 
 fn extract_imports_simple(content: &str, language: &str) -> Vec<String> {

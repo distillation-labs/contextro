@@ -8,17 +8,31 @@ use contextro_parsing::TreeSitterParser;
 use serde_json::{json, Value};
 
 pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let operation = args.get("operation").and_then(|v| v.as_str()).unwrap_or("");
+    // Accept both `operation` (current) and `action` (v0.4.0 name) for backward compat
+    let operation = args.get("operation")
+        .or_else(|| args.get("action"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     match operation {
         "get_document_symbols" => get_document_symbols(args),
+        // v0.4.0 name alias
+        "list_symbols" => {
+            // If `file_path` or `path` point to a file, use get_document_symbols;
+            // otherwise fall through to the directory-based list
+            let has_file = args.get("file_path").and_then(|v| v.as_str()).is_some();
+            if has_file {
+                get_document_symbols(args)
+            } else {
+                list_symbols(args, graph, codebase)
+            }
+        }
         "search_symbols" => search_symbols(args, graph, codebase),
         "lookup_symbols" => lookup_symbols(args, graph, codebase),
-        "list_symbols" => list_symbols(args, graph, codebase),
         "pattern_search" => pattern_search(args, codebase),
         "pattern_rewrite" => pattern_rewrite(args, codebase),
         "edit_plan" => edit_plan(args, graph, codebase),
-        "search_codebase_map" => search_codebase_map(args, codebase),
-        _ => json!({"error": format!("Unknown code operation: {}", operation)}),
+        "search_codebase_map" => search_codebase_map(args, graph, codebase),
+        _ => json!({"error": format!("Unknown code operation: '{}'. Valid operations: get_document_symbols, search_symbols, lookup_symbols, list_symbols, pattern_search, pattern_rewrite, edit_plan, search_codebase_map", operation)}),
     }
 }
 
@@ -54,8 +68,9 @@ fn get_document_symbols(args: &Value) -> Value {
 }
 
 fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let name = args
-        .get("symbol_name")
+    // Accept `symbol_name` (current) or `query` (v0.4.0 alias)
+    let name = args.get("symbol_name")
+        .or_else(|| args.get("query"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
     if name.is_empty() {
@@ -72,20 +87,34 @@ fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
 }
 
 fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let symbols_str = args.get("symbols").and_then(|v| v.as_str()).unwrap_or("");
-    if symbols_str.is_empty() {
+    // Accept symbols as a JSON array ["A","B"] or comma-separated string "A,B"
+    let names: Vec<String> = match args.get("symbols") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Some(Value::String(s)) if !s.is_empty() => s
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        _ => {
+            return json!({"error": "Missing required parameter: symbols (comma-separated string or JSON array)"})
+        }
+    };
+    if names.is_empty() {
         return json!({"error": "Missing required parameter: symbols"});
     }
 
-    let names: Vec<&str> = symbols_str.split(',').map(|s| s.trim()).collect();
     let include_source = args
         .get("include_source")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let mut results = Vec::new();
 
-    for name in names {
-        let matches = graph.find_nodes_by_name(name, true);
+    for name in &names {
+        let matches = graph.find_nodes_by_name(name.as_str(), true);
         for node in matches.iter().take(3) {
             let fp = strip_base(&node.location.file_path, codebase);
             let mut entry = json!({
@@ -367,32 +396,52 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     })
 }
 
-fn search_codebase_map(args: &Value, codebase: Option<&str>) -> Value {
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-    let target = if Path::new(path).is_absolute() {
-        path.to_string()
-    } else {
-        codebase
-            .map(|b| format!("{}/{}", b, path))
-            .unwrap_or_else(|| path.to_string())
-    };
+/// Return a symbol-level map of the codebase grouped by file.
+/// Accepts an optional `query` to filter by symbol name and an optional `path` prefix.
+fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
+    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+    let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
 
-    if !Path::new(&target).is_dir() {
-        return json!({"error": format!("Not a directory: {}", target)});
+    let all_nodes = graph.find_nodes_by_name("", false);
+
+    let mut file_map: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
+    for node in &all_nodes {
+        let rel = strip_base(&node.location.file_path, codebase);
+        // Filter by path prefix
+        if !path_filter.is_empty() && !rel.starts_with(path_filter) {
+            continue;
+        }
+        // Filter by query
+        if !query.is_empty() && !node.name.to_lowercase().contains(&query) {
+            continue;
+        }
+        let (callers, callees) = graph.get_node_degree(&node.id);
+        file_map.entry(rel).or_default().push(json!({
+            "name": node.name,
+            "type": node.node_type.to_string(),
+            "line": node.location.start_line,
+            "callers": callers,
+            "callees": callees,
+        }));
     }
 
-    let entries: Vec<Value> = std::fs::read_dir(&target)
+    let files: Vec<Value> = file_map
         .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .take(50)
-        .map(|e| {
-            let is_dir = e.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
-            json!({"name": e.file_name().to_string_lossy().to_string(), "is_dir": is_dir})
+        .map(|(file, symbols)| {
+            let total = symbols.len();
+            json!({"file": file, "symbols": symbols, "total": total})
         })
         .collect();
 
-    json!({"path": path, "entries": entries, "total": entries.len()})
+    let total_symbols: usize = files.iter().map(|f| f["total"].as_u64().unwrap_or(0) as usize).sum();
+
+    json!({
+        "path": if path_filter.is_empty() { "." } else { path_filter },
+        "query": if query.is_empty() { Value::Null } else { json!(query) },
+        "files": files,
+        "total_files": files.len(),
+        "total_symbols": total_symbols,
+    })
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

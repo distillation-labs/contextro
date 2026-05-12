@@ -69,6 +69,7 @@ impl ContextroServer {
             "remember" => contextro_tools::memory::handle_remember(&args, &s.memory_store),
             "recall" => contextro_tools::memory::handle_recall(&args, &s.memory_store),
             "forget" => contextro_tools::memory::handle_forget(&args, &s.memory_store),
+            "tags" => contextro_tools::memory::handle_tags(&s.memory_store),
             "knowledge" => contextro_tools::memory::handle_knowledge(&args, &s.knowledge),
             "compact" => contextro_tools::session::handle_compact(&args, &s.archive),
             "session_snapshot" => {
@@ -178,7 +179,11 @@ impl ContextroServer {
                 *self.state.codebase_path.write() = Some(path.to_string());
                 self.state.query_cache.invalidate();
 
-                json!({
+                // Auto-populate knowledge base with project docs (README, CLAUDE.md, etc.)
+                // Only runs on first index or when KB is empty so user content is not overwritten.
+                let kb_populated = auto_populate_knowledge(path, &self.state.knowledge);
+
+                let mut resp = json!({
                     "status": "done",
                     "total_files": result.total_files,
                     "total_symbols": result.total_symbols,
@@ -187,7 +192,11 @@ impl ContextroServer {
                     "graph_relationships": self.state.graph.relationship_count(),
                     "vector_chunks": self.state.vector_index.len(),
                     "time_seconds": (result.time_seconds * 100.0).round() / 100.0,
-                })
+                });
+                if kb_populated > 0 {
+                    resp["knowledge_docs_indexed"] = serde_json::json!(kb_populated);
+                }
+                resp
             }
             Err(e) => json!({"error": format!("Indexing failed: {}", e)}),
         }
@@ -223,144 +232,62 @@ impl ContextroServer {
             Arc::new(serde_json::from_str(schema_json).unwrap_or_default())
         };
 
-        let path_schema =
-            mk(r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#);
-        let name_schema = mk(
-            r#"{"type":"object","properties":{"name":{"type":"string"},"exact":{"type":"boolean"}},"required":["name"]}"#,
-        );
-        let sym_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string"}},"required":["symbol_name"]}"#,
-        );
-        let query_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"mode":{"type":"string"}},"required":["query"]}"#,
-        );
-        let impact_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string"},"max_depth":{"type":"integer"}},"required":["symbol_name"]}"#,
-        );
-        let code_schema = mk(
-            r#"{"type":"object","properties":{"operation":{"type":"string"},"file_path":{"type":"string"},"symbol_name":{"type":"string"},"symbols":{"type":"string"},"pattern":{"type":"string"},"path":{"type":"string"}},"required":["operation"]}"#,
-        );
-        let mem_schema = mk(
-            r#"{"type":"object","properties":{"content":{"type":"string"},"memory_type":{"type":"string"},"tags":{"type":"string"},"ttl":{"type":"string"}},"required":["content"]}"#,
-        );
-        let recall_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"memory_type":{"type":"string"},"tags":{"type":"string"}},"required":["query"]}"#,
-        );
-        let knowledge_schema = mk(
-            r#"{"type":"object","properties":{"command":{"type":"string"},"name":{"type":"string"},"query":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"}},"required":["command"]}"#,
-        );
-        let ref_schema = mk(
-            r#"{"type":"object","properties":{"ref_id":{"type":"string"}},"required":["ref_id"]}"#,
-        );
-        let commit_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"},"author":{"type":"string"}},"required":["query"]}"#,
-        );
-        let hist_schema = mk(r#"{"type":"object","properties":{"limit":{"type":"integer"}}}"#);
+        // All schemas use current param names; backward-compat aliases are handled in dispatch.
+        let path_schema = mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative path to a directory"}},"required":["path"]}"#);
+        let name_schema = mk(r#"{"type":"object","properties":{"name":{"type":"string","description":"Symbol name to search for"},"exact":{"type":"boolean","description":"true=exact match, false=fuzzy (default: true)"}},"required":["name"]}"#);
+        let sym_schema  = mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Name of the function, struct, or class"}},"required":["symbol_name"]}"#);
+        let query_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"}},"required":["query"]}"#);
+        let impact_schema = mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol whose change impact to trace"},"max_depth":{"type":"integer","description":"BFS depth (default: 5)"}},"required":["symbol_name"]}"#);
+        let code_schema = mk(r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"file_path":{"type":"string","description":"Absolute path to file (get_document_symbols)"},"symbol_name":{"type":"string","description":"Symbol name (search_symbols, lookup_symbols)"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"path":{"type":"string","description":"Directory path (list_symbols, search_codebase_map)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#);
+        let mem_schema = mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#);
+        let recall_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"What to search for in memories"},"limit":{"type":"integer","description":"Max results (default: 5)"},"memory_type":{"type":"string","description":"Filter by type: note, decision, …"},"tags":{"type":"string","description":"Filter by tag"}},"required":["query"]}"#);
+        let knowledge_schema = mk(r#"{"type":"object","properties":{"command":{"type":"string","description":"add | search | show | remove | update (omit to auto-detect from query)"},"name":{"type":"string","description":"Knowledge base name (add, remove, update)"},"query":{"type":"string","description":"Search query (search); also triggers search when command is omitted"},"value":{"type":"string","description":"Content or file/directory path to index (add)"},"limit":{"type":"integer","description":"Max results (search, default: 5)"}}}"#);
+        let ref_schema = mk(r#"{"type":"object","properties":{"ref_id":{"type":"string","description":"Reference ID returned by compact"}},"required":["ref_id"]}"#);
+        let commit_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Keywords or description to search commit messages"},"limit":{"type":"integer","description":"Max results"},"author":{"type":"string","description":"Filter by author name"}},"required":["query"]}"#);
+        let hist_schema = mk(r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Number of commits to return (default: 20)"}}}"#);
 
         vec![
-            Tool::new("status", "Get server status", empty.clone()),
-            Tool::new("health", "Health check", empty.clone()),
-            Tool::new("index", "Index a codebase", path_schema.clone()),
-            Tool::new(
-                "search",
-                "Semantic + keyword + graph hybrid search",
-                query_schema,
-            ),
-            Tool::new("find_symbol", "Find a symbol definition", name_schema),
-            Tool::new(
-                "find_callers",
-                "Who calls this function?",
-                sym_schema.clone(),
-            ),
-            Tool::new(
-                "find_callees",
-                "What does this function call?",
-                sym_schema.clone(),
-            ),
-            Tool::new("explain", "Full symbol explanation", sym_schema.clone()),
-            Tool::new("impact", "What breaks if I change this?", impact_schema),
-            Tool::new("overview", "Project structure summary", empty.clone()),
-            Tool::new(
-                "architecture",
-                "Layers, entry points, hub symbols",
-                empty.clone(),
-            ),
-            Tool::new("analyze", "Code smells and complexity", path_schema.clone()),
-            Tool::new(
-                "focus",
-                "Low-token context slice for a file",
-                path_schema.clone(),
-            ),
-            Tool::new(
-                "dead_code",
-                "Entry-point reachability analysis",
-                empty.clone(),
-            ),
-            Tool::new(
-                "circular_dependencies",
-                "SCC-based circular deps",
-                empty.clone(),
-            ),
-            Tool::new(
-                "test_coverage_map",
-                "Static test coverage map",
-                empty.clone(),
-            ),
-            Tool::new(
-                "code",
-                "AST operations: symbols, patterns, rewrites",
-                code_schema,
-            ),
-            Tool::new("remember", "Store a note or decision", mem_schema),
-            Tool::new("recall", "Search memories by meaning", recall_schema),
-            Tool::new(
-                "forget",
-                "Delete memories",
-                mk(
-                    r#"{"type":"object","properties":{"memory_id":{"type":"string"},"tags":{"type":"string"},"memory_type":{"type":"string"}}}"#,
-                ),
-            ),
-            Tool::new("knowledge", "Index and search docs/notes", knowledge_schema),
-            Tool::new(
-                "compact",
-                "Archive session content",
-                mk(
-                    r#"{"type":"object","properties":{"content":{"type":"string"}},"required":["content"]}"#,
-                ),
-            ),
-            Tool::new(
-                "session_snapshot",
-                "Recover state after compaction",
-                empty.clone(),
-            ),
-            Tool::new("restore", "Project re-entry summary", empty.clone()),
-            Tool::new("retrieve", "Fetch sandboxed large output", ref_schema),
-            Tool::new(
-                "commit_search",
-                "Semantic search over git history",
-                commit_schema,
-            ),
-            Tool::new("commit_history", "Browse recent commits", hist_schema),
-            Tool::new("repo_add", "Register another repo", path_schema.clone()),
-            Tool::new("repo_remove", "Unregister a repo", path_schema),
-            Tool::new("repo_status", "View all repos", empty.clone()),
-            Tool::new("audit", "Packaged audit report", empty.clone()),
-            Tool::new(
-                "docs_bundle",
-                "Generate docs bundle",
-                mk(r#"{"type":"object","properties":{"output_dir":{"type":"string"}}}"#),
-            ),
-            Tool::new(
-                "sidecar_export",
-                "Generate .graph.* sidecars",
-                mk(r#"{"type":"object","properties":{"path":{"type":"string"}}}"#),
-            ),
-            Tool::new("skill_prompt", "Print agent bootstrap block", empty.clone()),
-            Tool::new(
-                "introspect",
-                "Look up Contextro docs",
-                mk(r#"{"type":"object","properties":{"query":{"type":"string"}}}"#),
-            ),
+            Tool::new("status",  "Show indexing state, graph stats, memory count, uptime", empty.clone()),
+            Tool::new("health",  "Health check — returns healthy/unhealthy", empty.clone()),
+            Tool::new("index",   "Index a codebase: builds symbol graph, BM25 index, and vector index. Args: path (required)", path_schema.clone()),
+            Tool::new("search",  "Hybrid/vector/BM25 code search. Args: query (required), limit, mode (hybrid|vector|bm25), language", query_schema),
+            Tool::new("find_symbol",  "Find where a symbol is defined. Args: name (required), exact", name_schema),
+            Tool::new("find_callers", "Who calls this function? Args: symbol_name (required)", sym_schema.clone()),
+            Tool::new("find_callees", "What does this function call? Args: symbol_name (required)", sym_schema.clone()),
+            Tool::new("explain",      "Full symbol explanation: callers, callees, docstring. Args: symbol_name (required)", sym_schema.clone()),
+            Tool::new("impact",       "Transitive blast radius of changing a symbol. Args: symbol_name (required), max_depth", impact_schema),
+            Tool::new("overview",     "High-level project summary: file counts, languages, quality metrics", empty.clone()),
+            Tool::new("architecture", "Architectural layers, entry points, hub symbols by connectivity", empty.clone()),
+            Tool::new("analyze",      "Code complexity and hotspots for a directory. Args: path (required)", path_schema.clone()),
+            Tool::new("focus",        "Per-symbol callers/callees for a single file. Args: path (required)", path_schema.clone()),
+            Tool::new("dead_code",    "Symbols with no callers (unreachable from entry points)", empty.clone()),
+            Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
+            Tool::new("test_coverage_map",     "File-level test coverage estimate", empty.clone()),
+            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(file_path), search_symbols(symbol_name), lookup_symbols(symbols:[]), list_symbols(path), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
+            Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
+            Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
+            Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
+            Tool::new("forget",   "Delete memories. Args: memory_id | tags | memory_type (at least one required)",
+                mk(r#"{"type":"object","properties":{"memory_id":{"type":"string","description":"ID of a specific memory to delete"},"tags":{"type":"string","description":"Delete all memories with this tag"},"memory_type":{"type":"string","description":"Delete all memories of this type"}}}"#)),
+            Tool::new("knowledge", "Index and search project docs/notes. Args: command (add|search|show|remove), name, query, value", knowledge_schema),
+            Tool::new("compact",   "Archive session content and get a ref_id for later retrieval. Args: content (required)",
+                mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Session content to archive"}},"required":["content"]}"#)),
+            Tool::new("session_snapshot", "Show all tool calls in this session — useful after compaction", empty.clone()),
+            Tool::new("restore",  "Project re-entry summary: graph size, path, recent session activity", empty.clone()),
+            Tool::new("retrieve", "Fetch previously archived content by ref_id. Args: ref_id (required)", ref_schema),
+            Tool::new("commit_search",  "Semantic search over git commit messages. Args: query (required), limit, author", commit_schema),
+            Tool::new("commit_history", "Recent git commits with author and timestamp. Args: limit", hist_schema),
+            Tool::new("repo_add",    "Register an additional repository for multi-repo analysis. Args: path", path_schema.clone()),
+            Tool::new("repo_remove", "Unregister a repository. Args: path", path_schema),
+            Tool::new("repo_status", "Show all registered repositories", empty.clone()),
+            Tool::new("audit",        "Code quality audit report with recommendations", empty.clone()),
+            Tool::new("docs_bundle",  "Generate Markdown docs bundle. Args: output_dir",
+                mk(r#"{"type":"object","properties":{"output_dir":{"type":"string","description":"Output directory for generated docs (default: .contextro-docs)"}}}"#)),
+            Tool::new("sidecar_export", "Export graph sidecar files alongside source. Args: path",
+                mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Directory to write .graph.* sidecar files"}}}"#)),
+            Tool::new("skill_prompt", "Return the agent bootstrap block for use in system prompts", empty.clone()),
+            Tool::new("introspect",   "Find the right Contextro tool for a task. Args: query",
+                mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"}}}"#)),
         ]
     }
 }
@@ -369,6 +296,33 @@ impl Default for ContextroServer {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Scan `root` for project documentation files and add them to the knowledge store.
+/// Returns the number of documents indexed. Does nothing if the KB already has content.
+fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeStore) -> usize {
+    if knowledge.show().into_iter().any(|(_, count)| count > 0) {
+        return 0; // KB already has content; don't overwrite
+    }
+    let candidates = [
+        "README.md", "README.txt", "README",
+        "CLAUDE.md", "AGENTS.md",
+        "docs/README.md", "docs/index.md",
+        "CONTRIBUTING.md",
+    ];
+    let mut count = 0;
+    for name in &candidates {
+        let p = std::path::Path::new(root).join(name);
+        if let Ok(content) = std::fs::read_to_string(&p) {
+            if !content.trim().is_empty() {
+                let chunks = knowledge.add(name, &content);
+                if chunks > 0 {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
 }
 
 impl ServerHandler for ContextroServer {
