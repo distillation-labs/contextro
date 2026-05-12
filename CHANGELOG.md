@@ -4,6 +4,16 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-12
+
+### Fixed
+
+- **`code(lookup_symbols)` now accepts JSON arrays** — previously the `symbols` parameter was parsed with `as_str()`, so passing `symbols: ["A","B"]` always returned "Missing required parameter: symbols". Now accepts both a JSON array `["A","B"]` and a comma-separated string `"A,B"`.
+- **`tags` tool restored** — the tool was silently removed in a prior refactor. It is now re-added and returns all unique tags across all stored memories, sorted alphabetically. `MemoryStore::list_tags()` is the new backing method.
+- **`find_callers` / `find_callees` now hint on type nodes** — when the queried symbol is a struct, class, or enum (which have no call-graph edges by definition), the response includes a `hint` field explaining that types have no call edges and suggesting querying a method or constructor instead. Previously the tool silently returned 0 with no explanation.
+- **`recall` now finds semantically related memories** — switched from AND matching (all query words must appear) to OR matching (any stemmed word matches), with Rust-side re-ranking by match count. Stop words (`how`, `does`, `work`, `use`, `is`, etc.) are filtered before matching. Word stems are used (`indexing` → `index`, `storing` → `stor`) so paraphrases no longer silently miss relevant memories.
+- **`explain` now populates `docstring` for Rust functions** — the parser previously left `docstring` as `null` for all Rust symbols. It now scans the lines immediately before each function/struct definition for `///` doc comments and populates the field.
+
 ## [0.5.0] - 2026-05-12
 
 ### Fixed
