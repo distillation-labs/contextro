@@ -69,6 +69,7 @@ impl ContextroServer {
             "remember" => contextro_tools::memory::handle_remember(&args, &s.memory_store),
             "recall" => contextro_tools::memory::handle_recall(&args, &s.memory_store),
             "forget" => contextro_tools::memory::handle_forget(&args, &s.memory_store),
+            "tags" => contextro_tools::memory::handle_tags(&s.memory_store),
             "knowledge" => contextro_tools::memory::handle_knowledge(&args, &s.knowledge),
             "compact" => contextro_tools::session::handle_compact(&args, &s.archive),
             "session_snapshot" => {
@@ -313,6 +314,7 @@ impl ContextroServer {
             ),
             Tool::new("remember", "Store a note or decision", mem_schema),
             Tool::new("recall", "Search memories by meaning", recall_schema),
+            Tool::new("tags", "List all memory tags in use", empty.clone()),
             Tool::new(
                 "forget",
                 "Delete memories",
