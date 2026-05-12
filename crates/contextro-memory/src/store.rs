@@ -2,6 +2,27 @@
 
 use std::path::Path;
 
+/// Common English words unlikely to discriminate between memories.
+const STOP_WORDS: &[&str] = &[
+    "a", "an", "the", "is", "it", "in", "on", "at", "to", "for", "of", "or", "and",
+    "how", "does", "what", "which", "why", "when", "where", "who", "do", "did",
+    "be", "was", "are", "were", "been", "have", "has", "had", "can", "could",
+    "this", "that", "these", "those", "with", "from", "by", "as", "but", "not",
+    "work", "works", "use", "used", "using", "get", "set", "will", "would", "should",
+    "we", "my", "our", "their", "its", "me", "him", "her", "us", "them",
+];
+
+/// Light suffix-stripping to improve recall across word forms ("indexing" → "index").
+fn stem_word(word: &str) -> String {
+    let w = word.to_lowercase();
+    for suffix in &["tion", "ing", "ion", "ers", "ed", "er", "ly", "es", "s"] {
+        if w.len() > suffix.len() + 3 && w.ends_with(suffix) {
+            return w[..w.len() - suffix.len()].to_string();
+        }
+    }
+    w
+}
+
 use chrono::{Duration, Utc};
 use contextro_core::models::{Memory, MemoryTtl, MemoryType};
 use contextro_core::ContextroError;
@@ -76,10 +97,9 @@ impl MemoryStore {
         Ok(id)
     }
 
-    /// Search memories. Query is split on whitespace and ALL words must appear
-    /// somewhere in the content (word-level AND, not phrase match). This makes
-    /// multi-word queries like "contextro evaluation" work even when the words
-    /// are not adjacent in the stored content.
+    /// Search memories. Query terms are stemmed, stop words removed, then matched
+    /// with OR logic (any term can match). Results are re-ranked in Rust by how
+    /// many stems appear in the content so the most relevant memory ranks first.
     pub fn recall(
         &self,
         query: &str,
@@ -89,29 +109,44 @@ impl MemoryStore {
         project: Option<&str>,
     ) -> Result<Vec<Memory>, ContextroError> {
         let conn = self.conn.lock();
-        let words: Vec<String> = query
+
+        // Build meaningful stems: strip stop words, apply light suffix stripping
+        let raw_words: Vec<String> = query
             .split_whitespace()
             .filter(|w| w.len() >= 2)
             .map(|w| w.to_lowercase())
             .collect();
 
+        let stems: Vec<String> = {
+            let filtered: Vec<String> = raw_words
+                .iter()
+                .filter(|w| !STOP_WORDS.contains(&w.as_str()))
+                .map(|w| stem_word(w))
+                .filter(|s| s.len() >= 2)
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            // Fall back to unfiltered words if everything was a stop word
+            if filtered.is_empty() { raw_words.clone() } else { filtered }
+        };
+
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
         let mut idx = 1usize;
 
-        // Build per-word LIKE clauses (each word must appear somewhere in content)
-        let word_clause = if words.is_empty() {
+        // OR logic: any stem can match (results re-ranked by match count in Rust)
+        let word_clause = if stems.is_empty() {
             String::new()
         } else {
-            let clauses: Vec<String> = words
+            let clauses: Vec<String> = stems
                 .iter()
-                .map(|w| {
-                    param_values.push(Box::new(format!("%{}%", w)));
+                .map(|s| {
+                    param_values.push(Box::new(format!("%{}%", s)));
                     let c = format!("LOWER(content) LIKE ?{}", idx);
                     idx += 1;
                     c
                 })
                 .collect();
-            format!("({})", clauses.join(" AND "))
+            format!("({})", clauses.join(" OR "))
         };
 
         let mut sql = String::from(
@@ -137,7 +172,9 @@ impl MemoryStore {
             param_values.push(Box::new(p.to_string()));
             let _ = idx;
         }
-        sql.push_str(&format!(" ORDER BY created_at DESC LIMIT {}", limit));
+        // Fetch extra candidates so Rust re-ranking can pick the best `limit` matches
+        let fetch_limit = (limit * 3).max(30);
+        sql.push_str(&format!(" ORDER BY created_at DESC LIMIT {}", fetch_limit));
 
         let params_ref: Vec<&dyn rusqlite::types::ToSql> =
             param_values.iter().map(|p| p.as_ref()).collect();
@@ -165,7 +202,40 @@ impl MemoryStore {
             })
             .map_err(|e| ContextroError::Memory(format!("Query map failed: {}", e)))?;
 
-        Ok(rows.flatten().collect())
+        let candidates: Vec<Memory> = rows.flatten().collect();
+
+        // Re-rank: count stem matches per memory, highest match count first
+        let mut ranked: Vec<(usize, Memory)> = candidates
+            .into_iter()
+            .map(|m| {
+                let cl = m.content.to_lowercase();
+                let hits = stems.iter().filter(|s| cl.contains(s.as_str())).count();
+                (hits, m)
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.created_at.cmp(&a.1.created_at)));
+
+        Ok(ranked.into_iter().take(limit).map(|(_, m)| m).collect())
+    }
+
+    /// List all unique tags across all memories, sorted alphabetically.
+    pub fn list_tags(&self) -> Vec<String> {
+        let conn = self.conn.lock();
+        let mut stmt = match conn.prepare("SELECT tags FROM memories WHERE tags != ''") {
+            Ok(s) => s,
+            Err(_) => return vec![],
+        };
+        let mut tag_set = std::collections::HashSet::new();
+        if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
+            for row in rows.flatten() {
+                for tag in row.split(',').map(|t| t.trim()).filter(|t| !t.is_empty()) {
+                    tag_set.insert(tag.to_string());
+                }
+            }
+        }
+        let mut tags: Vec<String> = tag_set.into_iter().collect();
+        tags.sort();
+        tags
     }
 
     /// Delete memories by ID, tags, or memory_type.
