@@ -200,15 +200,27 @@ pub fn handle_introspect(args: &Value) -> Value {
     ];
 
     if query.is_empty() {
-        let names: Vec<&str> = tools.iter().map(|(n, _)| *n).collect();
-        return json!({"tools": names, "total": names.len()});
+        let all: Vec<Value> = tools
+            .iter()
+            .map(|(n, d)| json!({"tool": n, "description": d}))
+            .collect();
+        return json!({"tools": all, "total": all.len()});
     }
 
-    let query_lower = query.to_lowercase();
+    // Split query into words; a tool matches if every word appears somewhere in
+    // its name or description (case-insensitive). This handles multi-word queries
+    // like "semantic search" or "index codebase" correctly.
+    let words: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(|w| w.to_string())
+        .collect();
+
     let matching: Vec<Value> = tools
         .iter()
         .filter(|(n, d)| {
-            n.contains(query_lower.as_str()) || d.to_lowercase().contains(&query_lower)
+            let haystack = format!("{} {}", n.to_lowercase(), d.to_lowercase());
+            words.iter().all(|w| haystack.contains(w.as_str()))
         })
         .map(|(n, d)| json!({"tool": n, "description": d}))
         .collect();

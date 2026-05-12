@@ -122,14 +122,20 @@ impl KnowledgeStore {
         }
     }
 
-    pub fn add(&self, name: &str, content: &str) {
-        let chunks: Vec<String> = content
-            .lines()
-            .collect::<Vec<_>>()
-            .chunks(20)
-            .map(|c| c.join("\n"))
-            .collect();
+    /// Index content under `name`. Returns the number of chunks stored.
+    pub fn add(&self, name: &str, content: &str) -> usize {
+        if content.trim().is_empty() {
+            return 0;
+        }
+        let lines: Vec<&str> = content.lines().collect();
+        let chunks: Vec<String> = if lines.is_empty() {
+            vec![]
+        } else {
+            lines.chunks(20).map(|c| c.join("\n")).collect()
+        };
+        let count = chunks.len();
         self.docs.write().insert(name.to_string(), chunks);
+        count
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<(String, String)> {
@@ -210,8 +216,11 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
             } else {
                 value.to_string()
             };
-            knowledge.add(name, &content);
-            json!({"status": "indexed", "name": name, "chunks": content.lines().count() / 20 + 1})
+            let chunk_count = knowledge.add(name, &content);
+            if chunk_count == 0 {
+                return json!({"error": "Content is empty — nothing indexed", "name": name});
+            }
+            json!({"status": "indexed", "name": name, "chunks": chunk_count})
         }
         "search" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
@@ -244,8 +253,8 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
             } else {
                 String::new()
             };
-            knowledge.add(n, &content);
-            json!({"status": "updated", "name": n})
+            let chunk_count = knowledge.add(n, &content);
+            json!({"status": "updated", "name": n, "chunks": chunk_count})
         }
         _ => json!({"error": format!("Unknown knowledge command: {}", command)}),
     }

@@ -179,12 +179,22 @@ fn relativize(filepath: &str, codebase: Option<&str>) -> String {
 }
 
 /// Resolve a symbol name: try exact match first, fall back to fuzzy.
+/// Ranks candidates by call frequency (in_degree + out_degree) so that the most
+/// connected symbol wins when multiple symbols share the same name.
 fn resolve_symbol(name: &str, graph: &CodeGraph) -> Vec<contextro_core::UniversalNode> {
     let exact = graph.find_nodes_by_name(name, true);
     if !exact.is_empty() {
-        return exact;
+        let mut ranked = exact;
+        ranked.sort_by_key(|n| {
+            let (in_d, out_d) = graph.get_node_degree(&n.id);
+            std::cmp::Reverse(in_d + out_d)
+        });
+        return ranked;
     }
-    // Fuzzy fallback — return top matches
-    let fuzzy = graph.find_nodes_by_name(name, false);
+    let mut fuzzy = graph.find_nodes_by_name(name, false);
+    fuzzy.sort_by_key(|n| {
+        let (in_d, out_d) = graph.get_node_degree(&n.id);
+        std::cmp::Reverse(in_d + out_d)
+    });
     fuzzy.into_iter().take(5).collect()
 }

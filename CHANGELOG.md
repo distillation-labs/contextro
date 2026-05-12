@@ -4,6 +4,18 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-12
+
+### Fixed
+
+- **Embedding model upgraded to potion-base-16M** — switched from `minishlab/potion-base-8M` to `minishlab/potion-base-16M` for higher quality code embeddings. Model load failures now log at `error` level so they are never silently swallowed.
+- **`explain` resolves to the most connected symbol** — when multiple symbols share a name, `resolve_symbol` now ranks candidates by call frequency (in_degree + out_degree) before selecting. `explain("search")` now returns the main search function with 6 callers instead of a 1-line error constructor with 0 connections.
+- **`circular_dependencies` no longer produces false positives** — replaced the call-edge-based file graph with an import-edge scanner that reads `use crate::` and `use super::` statements from Rust source files. Normal cross-module function calls no longer inflate the cycle count.
+- **`test_coverage_map` now detects inline Rust test modules** — files containing `#[cfg(test)]` or `#[test]` attributes are now counted as covered regardless of filename. Coverage percentage is no longer stuck at 0% for codebases that rely on inline `#[test]` blocks.
+- **Generic names filtered from `architecture` and `analyze` rankings** — `new`, `len`, `get`, `is_empty`, `clone`, `default`, and other stdlib-common method names are now excluded from hub symbol and high-connectivity rankings, making the results much more architecturally meaningful.
+- **`introspect` now supports multi-word queries** — query terms are split on whitespace and each word must appear in the tool name or description. Queries like "semantic search" or "index codebase" now return correct results instead of 0 matches.
+- **`knowledge(add)` reports accurate chunk counts** — the response now reflects the actual number of chunks stored (not a formula that could over-report). Empty content returns an error instead of falsely claiming 1 chunk was indexed, which was causing `knowledge(search)` to return 0 results after a no-op add.
+
 ## [0.3.0] - 2026-05-12
 
 ### Fixed

@@ -7,6 +7,17 @@ use contextro_core::NodeType;
 use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
+/// Generic method names that appear everywhere and inflate graph metrics.
+/// Filtered out of architecture hub rankings and high-connectivity reports.
+const GENERIC_NAMES: &[&str] = &[
+    "new", "default", "clone", "drop", "fmt", "from", "into", "as_ref", "as_mut",
+    "len", "is_empty", "iter", "iter_mut", "get", "get_mut", "set", "push", "pop",
+    "insert", "remove", "contains", "clear", "extend", "collect", "map", "filter",
+    "unwrap", "unwrap_or", "expect", "ok", "err",
+    "to_string", "to_owned", "parse", "deref", "deref_mut",
+    "send", "recv", "read", "write", "flush", "close",
+];
+
 pub fn handle_overview(graph: &CodeGraph, codebase: Option<&str>, total_chunks: usize) -> Value {
     let node_count = graph.node_count();
     let rel_count = graph.relationship_count();
@@ -22,6 +33,7 @@ pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
     let mut scored: Vec<(String, String, usize)> = nodes
         .iter()
+        .filter(|n| !GENERIC_NAMES.contains(&n.name.as_str()))
         .map(|n| {
             let (in_d, out_d) = graph.get_node_degree(&n.id);
             (n.name.clone(), n.location.file_path.clone(), in_d + out_d)
@@ -51,6 +63,9 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         *file_sizes
             .entry(node.location.file_path.clone())
             .or_default() += 1;
+        if GENERIC_NAMES.contains(&node.name.as_str()) {
+            continue;
+        }
         let (in_d, out_d) = graph.get_node_degree(&node.id);
         if in_d + out_d > 5 {
             complex_fns.push(json!({"name": node.name, "file": strip_base(&node.location.file_path, codebase), "connections": in_d + out_d}));
@@ -142,28 +157,61 @@ pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     json!({"dead_symbols": dead, "total": dead.len(), "note": "Symbols with zero callers that aren't entry points"})
 }
 
-/// Circular dependency detection using Tarjan's SCC at file level.
+/// Circular dependency detection at the file/module import level.
+/// Scans `use crate::` and `use super::` statements — not call edges — to avoid
+/// false positives from normal cross-module function calls.
 pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    // Build file-level dependency graph
     let nodes = graph.find_nodes_by_name("", false);
+    let mut all_files: HashSet<String> = HashSet::new();
+    for node in &nodes {
+        all_files.insert(node.location.file_path.clone());
+    }
+
     let mut file_deps: HashMap<String, HashSet<String>> = HashMap::new();
 
-    for node in &nodes {
-        let callees = graph.get_callees(&node.id);
-        for callee in &callees {
-            let callee_nodes = graph.find_nodes_by_name(&callee.name, true);
-            for cn in &callee_nodes {
-                if cn.location.file_path != node.location.file_path {
-                    file_deps
-                        .entry(node.location.file_path.clone())
-                        .or_default()
-                        .insert(cn.location.file_path.clone());
-                }
+    for file_path in &all_files {
+        if !file_path.ends_with(".rs") {
+            continue;
+        }
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+            // Only intra-crate references can form cycles
+            let after_prefix = if trimmed.starts_with("use crate::") {
+                &trimmed[11..]
+            } else if trimmed.starts_with("use super::") {
+                &trimmed[11..]
+            } else {
+                continue;
+            };
+
+            // Extract the first path segment (the module name)
+            let segment = after_prefix
+                .split(|c: char| c == ':' || c == ';' || c == ' ' || c == '{' || c == ',')
+                .next()
+                .unwrap_or("")
+                .trim();
+            if segment.is_empty() {
+                continue;
+            }
+
+            // Find a file in the indexed set that matches this module name
+            if let Some(dep_file) = all_files.iter().find(|f| {
+                let stem = Path::new(f).file_stem().map(|s| s.to_string_lossy().to_string());
+                stem.as_deref() == Some(segment) && f.as_str() != file_path.as_str()
+            }) {
+                file_deps
+                    .entry(file_path.clone())
+                    .or_default()
+                    .insert(dep_file.clone());
             }
         }
     }
 
-    // Find SCCs using iterative Tarjan's
     let files: Vec<String> = file_deps.keys().cloned().collect();
     let sccs = tarjan_scc(&files, &file_deps);
 
@@ -179,7 +227,9 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
     json!({"circular_dependencies": cycles, "total": cycles.len()})
 }
 
-/// Static test coverage map: which files have associated test files.
+/// Static test coverage map.
+/// Recognises both external test files (test_*.rs, *_test.rs, tests/ dir) and
+/// Rust inline test modules (`#[cfg(test)]` / `#[test]` attributes).
 pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
     let mut source_files: HashSet<String> = HashSet::new();
@@ -202,6 +252,16 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
         }
     }
 
+    // Check source files for inline #[cfg(test)] or #[test] blocks
+    let mut inline_tested: HashSet<String> = HashSet::new();
+    for fp in &source_files {
+        if let Ok(content) = std::fs::read_to_string(fp) {
+            if content.contains("#[cfg(test)]") || content.contains("#[test]") {
+                inline_tested.insert(fp.clone());
+            }
+        }
+    }
+
     // Match test files to source files by naming convention
     let mut covered: Vec<String> = Vec::new();
     let mut uncovered: Vec<String> = Vec::new();
@@ -211,14 +271,14 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy();
-        let has_test = test_files.iter().any(|t| {
+        let has_external_test = test_files.iter().any(|t| {
             let t_stem = Path::new(t)
                 .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy();
             t_stem == format!("test_{}", src_stem) || t_stem == format!("{}_test", src_stem)
         });
-        if has_test {
+        if has_external_test || inline_tested.contains(src) {
             covered.push(strip_base(src, codebase));
         } else {
             uncovered.push(strip_base(src, codebase));
@@ -235,7 +295,7 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
         "coverage_percent": (coverage_pct * 10.0).round() / 10.0,
         "covered_files": covered.len(),
         "uncovered_files": uncovered.len(),
-        "test_files": test_files.len(),
+        "test_files": test_files.len() + inline_tested.len(),
         "uncovered": uncovered.into_iter().take(20).collect::<Vec<_>>(),
     })
 }

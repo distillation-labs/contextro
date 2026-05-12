@@ -1,18 +1,18 @@
 //! Embedding service using model2vec-rs for fast static embeddings.
 //!
-//! Loads potion-base-8M (or potion-base-32M) from HuggingFace and provides
+//! Loads potion-base-16M from HuggingFace and provides
 //! embed/embed_batch operations for vector search.
 
 use std::sync::OnceLock;
 
 use model2vec::Model2Vec;
 use parking_lot::RwLock;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 static MODEL: OnceLock<RwLock<Option<Model2Vec>>> = OnceLock::new();
 
 /// Default model to use for embeddings.
-const DEFAULT_MODEL: &str = "minishlab/potion-base-8M";
+const DEFAULT_MODEL: &str = "minishlab/potion-base-16M";
 
 /// Get or initialize the embedding model.
 fn get_model() -> &'static RwLock<Option<Model2Vec>> {
@@ -24,9 +24,9 @@ fn get_model() -> &'static RwLock<Option<Model2Vec>> {
                 RwLock::new(Some(model))
             }
             Err(e) => {
-                warn!(
-                    "Failed to load embedding model: {}. Vector search disabled.",
-                    e
+                error!(
+                    "Failed to load embedding model '{}': {}. Vector search disabled.",
+                    DEFAULT_MODEL, e
                 );
                 RwLock::new(None)
             }
