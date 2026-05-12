@@ -89,7 +89,16 @@ pub fn handle_tags(store: &MemoryStore) -> Value {
 }
 
 pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
-    let id = args.get("memory_id").and_then(|v| v.as_str());
+    // Accept `memory_id` (current) or first element of `ids` array (v0.4.0 alias)
+    let id_owned: Option<String> = args.get("memory_id")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or_else(|| match args.get("ids") {
+            Some(Value::Array(arr)) => arr.first().and_then(|v| v.as_str()).map(String::from),
+            Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        });
+    let id = id_owned.as_deref();
     let tags_owned: Option<String> = match args.get("tags") {
         Some(Value::Array(arr)) => {
             let joined = arr
@@ -180,7 +189,10 @@ impl Default for KnowledgeStore {
 }
 
 pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
-    let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+    // If `query` is provided without `command`, default to search (backward compat)
+    let command = args.get("command").and_then(|v| v.as_str()).unwrap_or_else(|| {
+        if args.get("query").and_then(|v| v.as_str()).is_some() { "search" } else { "" }
+    });
     match command {
         "show" => {
             let bases: Vec<Value> = knowledge
