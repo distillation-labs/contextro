@@ -4,6 +4,17 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-12
+
+### Fixed
+
+- **Backward compatibility for renamed parameters** — agents that used v0.4.0 parameter names no longer silently fail. All four graph tools (`find_callers`, `find_callees`, `explain`, `impact`) now accept both `symbol_name` (current) and `symbol` (v0.4.0). The `code` tool accepts both `operation` and `action`. `code(search_symbols)` accepts both `symbol_name` and `query`. `code(list_symbols)` routes correctly based on presence of `file_path`. `forget` accepts both `memory_id` (current) and `ids` array (v0.4.0). `knowledge` accepts a bare `query` without `command` and defaults to search.
+- **`code(search_codebase_map)` returns symbol map** — previously returned a raw directory listing. Now returns a per-file breakdown of symbols with name, type, line number, and caller/callee counts. Accepts an optional `query` to filter by symbol name and `path` to restrict to a subdirectory.
+- **Vector search confidence scores now match BM25** — in standalone `mode=vector` queries, raw cosine similarity (e.g. 0.146) was displayed while BM25 showed 1.0 for every top result. Vector results are now normalized so the top result always shows 1.0, making scores comparable across modes.
+- **`impact` explains entry points** — when a symbol has 0 transitive callers (i.e. nothing in the AST calls it), the response now includes a `hint` explaining it is a root entry point and suggesting manual checks for external callers.
+- **Knowledge base auto-populated on index** — after a successful `index()`, Contextro scans for `README.md`, `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, and `docs/index.md` in the indexed root and automatically adds them to the knowledge store. Subsequent `knowledge(search)` queries work on a fresh install without requiring manual `knowledge(add)`. The KB is only populated once (skipped if already has content).
+- **Tool descriptions updated** — all 35 tool definitions now include explicit parameter names, types, and descriptions in their JSON schemas. Agents reading `list_tools` will see the correct parameter names without needing to rely on external documentation.
+
 ## [0.6.0] - 2026-05-12
 
 ### Fixed
