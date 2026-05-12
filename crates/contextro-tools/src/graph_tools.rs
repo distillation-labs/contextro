@@ -31,7 +31,20 @@ pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&st
         }
     }
 
-    json!({"symbol": name, "callers": callers, "total": callers.len()})
+    let mut result = json!({"symbol": name, "callers": callers, "total": callers.len()});
+    if callers.is_empty() {
+        let is_type = matches.iter().any(|n| {
+            matches!(n.node_type, contextro_core::NodeType::Class | contextro_core::NodeType::Interface | contextro_core::NodeType::Enum)
+        });
+        if is_type {
+            result["hint"] = serde_json::Value::String(
+                "This is a type (struct/class/enum) — types have no call-graph edges. \
+                 Try querying a method or constructor: find_callers('new') or search for this type name."
+                .into(),
+            );
+        }
+    }
+    result
 }
 
 pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
@@ -59,7 +72,20 @@ pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&st
         }
     }
 
-    json!({"symbol": name, "callees": callees, "total": callees.len()})
+    let mut result = json!({"symbol": name, "callees": callees, "total": callees.len()});
+    if callees.is_empty() {
+        let is_type = matches.iter().any(|n| {
+            matches!(n.node_type, contextro_core::NodeType::Class | contextro_core::NodeType::Interface | contextro_core::NodeType::Enum)
+        });
+        if is_type {
+            result["hint"] = serde_json::Value::String(
+                "This is a type (struct/class/enum) — types have no call-graph edges. \
+                 Try querying its methods directly by name."
+                .into(),
+            );
+        }
+    }
+    result
 }
 
 pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
