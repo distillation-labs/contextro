@@ -72,20 +72,34 @@ fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
 }
 
 fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let symbols_str = args.get("symbols").and_then(|v| v.as_str()).unwrap_or("");
-    if symbols_str.is_empty() {
+    // Accept symbols as a JSON array ["A","B"] or comma-separated string "A,B"
+    let names: Vec<String> = match args.get("symbols") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Some(Value::String(s)) if !s.is_empty() => s
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        _ => {
+            return json!({"error": "Missing required parameter: symbols (comma-separated string or JSON array)"})
+        }
+    };
+    if names.is_empty() {
         return json!({"error": "Missing required parameter: symbols"});
     }
 
-    let names: Vec<&str> = symbols_str.split(',').map(|s| s.trim()).collect();
     let include_source = args
         .get("include_source")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let mut results = Vec::new();
 
-    for name in names {
-        let matches = graph.find_nodes_by_name(name, true);
+    for name in &names {
+        let matches = graph.find_nodes_by_name(name.as_str(), true);
         for node in matches.iter().take(3) {
             let fp = strip_base(&node.location.file_path, codebase);
             let mut entry = json!({
