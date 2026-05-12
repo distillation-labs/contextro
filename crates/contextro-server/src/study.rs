@@ -584,6 +584,7 @@ fn run_contextro_task(
             &indexed.bm25,
             &indexed.graph,
             &indexed.cache,
+            &contextro_engines::vector::VectorIndex::new(),
         ),
         "batch_lookup" | "document_symbols" => contextro_tools::code::handle_code(
             &task.mcp_args,

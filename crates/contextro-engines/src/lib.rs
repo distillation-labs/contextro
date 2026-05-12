@@ -6,3 +6,4 @@ pub mod fusion;
 pub mod graph;
 pub mod sandbox;
 pub mod search;
+pub mod vector;

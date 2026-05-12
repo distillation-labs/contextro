@@ -39,7 +39,7 @@ impl ContextroServer {
             "health" => self.handle_health(),
             "index" => self.handle_index(&args),
             "search" => {
-                contextro_tools::search::handle_search(&args, &s.bm25, &s.graph, &s.query_cache)
+                contextro_tools::search::handle_search(&args, &s.bm25, &s.graph, &s.query_cache, &s.vector_index)
             }
             "find_symbol" => self.handle_find_symbol(&args),
             "find_callers" => {
@@ -78,7 +78,7 @@ impl ContextroServer {
                 s.graph.node_count(),
                 s.graph.relationship_count(),
             ),
-            "retrieve" => contextro_tools::session::handle_retrieve(&args, &s.sandbox),
+            "retrieve" => contextro_tools::session::handle_retrieve(&args, &s.archive),
             "commit_search" => contextro_tools::git_tools::handle_commit_search(&args, cb),
             "commit_history" => contextro_tools::git_tools::handle_commit_history(&args, cb),
             "repo_add" => contextro_tools::git_tools::handle_repo_add(&args, &s.repo_registry),
@@ -151,6 +151,28 @@ impl ContextroServer {
                     .chunk_count
                     .store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
 
+                // Populate vector index
+                self.state.vector_index.clear();
+                let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
+                if let Some(vectors) = contextro_indexing::embed_batch(&texts) {
+                    for (chunk, vector) in chunks.iter().zip(vectors.into_iter()) {
+                        let result = contextro_core::models::SearchResult {
+                            id: chunk.id.clone(),
+                            filepath: chunk.filepath.clone(),
+                            symbol_name: chunk.symbol_name.clone(),
+                            symbol_type: chunk.symbol_type.clone(),
+                            language: chunk.language.clone(),
+                            line_start: chunk.line_start,
+                            line_end: chunk.line_end,
+                            score: 0.0,
+                            code: String::new(),
+                            signature: chunk.signature.clone(),
+                            match_sources: vec!["vector".into()],
+                        };
+                        self.state.vector_index.insert(vector, result);
+                    }
+                }
+
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(path.to_string());
                 self.state.query_cache.invalidate();
@@ -162,6 +184,7 @@ impl ContextroServer {
                     "total_chunks": chunks.len(),
                     "graph_nodes": self.state.graph.node_count(),
                     "graph_relationships": self.state.graph.relationship_count(),
+                    "vector_chunks": self.state.vector_index.len(),
                     "time_seconds": (result.time_seconds * 100.0).round() / 100.0,
                 })
             }

@@ -17,6 +17,7 @@ use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
 use contextro_engines::graph::CodeGraph;
 use contextro_engines::sandbox::OutputSandbox;
+use contextro_engines::vector::VectorIndex;
 use contextro_memory::archive::CompactionArchive;
 use contextro_memory::session::SessionTracker;
 use contextro_memory::store::MemoryStore;
@@ -27,6 +28,7 @@ pub struct AppState {
     pub started_at: Instant,
     pub graph: Arc<CodeGraph>,
     pub bm25: Arc<Bm25Engine>,
+    pub vector_index: Arc<VectorIndex>,
     pub query_cache: Arc<QueryCache>,
     pub sandbox: Arc<OutputSandbox>,
     pub session_tracker: Arc<SessionTracker>,
@@ -53,6 +55,7 @@ impl AppState {
             started_at: Instant::now(),
             graph: Arc::new(CodeGraph::new()),
             bm25: Arc::new(Bm25Engine::new_in_memory()),
+            vector_index: Arc::new(VectorIndex::new()),
             query_cache: Arc::new(QueryCache::new(
                 settings.search_cache_max_size,
                 settings.search_cache_ttl_seconds,

@@ -185,6 +185,11 @@ fn parse_rust_def(
     }
 
     let end_line = find_block_end_braces(lines, idx);
+    let calls = if is_fn {
+        extract_rust_calls(lines, idx, end_line)
+    } else {
+        vec![]
+    };
 
     Some(Symbol {
         name,
@@ -198,7 +203,7 @@ fn parse_rust_def(
         parent: None,
         code_snippet: String::new(),
         imports: vec![],
-        calls: vec![],
+        calls,
     })
 }
 
@@ -374,6 +379,37 @@ fn extract_python_calls(lines: &[&str], start: usize, end: usize) -> Vec<String>
                 && !calls.contains(&candidate)
             {
                 calls.push(candidate);
+            }
+        }
+    }
+    calls
+}
+
+fn extract_rust_calls(lines: &[&str], start: usize, end: usize) -> Vec<String> {
+    const SKIP: &[&str] = &[
+        "if", "for", "while", "match", "let", "use", "pub", "fn", "struct", "impl",
+        "return", "loop", "where", "async", "await", "move", "mod", "type", "trait",
+        "enum", "self", "super", "crate", "extern", "unsafe", "static", "const",
+        "mut", "ref", "continue", "break", "else", "in", "as", "dyn", "box",
+        "Some", "None", "Ok", "Err", "true", "false",
+    ];
+    let mut calls = Vec::new();
+    let upper = std::cmp::min(end, lines.len().saturating_sub(1));
+    for line in lines.iter().take(upper + 1).skip(start + 1) {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*') {
+            continue;
+        }
+        for part in trimmed.split(&[' ', '=', ',', '(', '!', '.', ':', '+', '-', '*', '/', '&', '|', '{', '}', ';', '<', '>', '?', '[', ']'][..]) {
+            let candidate = part.trim();
+            if candidate.len() > 1
+                && candidate.chars().next().map(|c| c.is_lowercase()).unwrap_or(false)
+                && candidate.chars().all(|c| c.is_alphanumeric() || c == '_')
+                && trimmed.contains(&format!("{}(", candidate))
+                && !SKIP.contains(&candidate)
+                && !calls.contains(&candidate.to_string())
+            {
+                calls.push(candidate.to_string());
             }
         }
     }

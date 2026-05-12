@@ -13,6 +13,7 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
         "get_document_symbols" => get_document_symbols(args),
         "search_symbols" => search_symbols(args, graph, codebase),
         "lookup_symbols" => lookup_symbols(args, graph, codebase),
+        "list_symbols" => list_symbols(args, graph, codebase),
         "pattern_search" => pattern_search(args, codebase),
         "pattern_rewrite" => pattern_rewrite(args, codebase),
         "edit_plan" => edit_plan(args, graph, codebase),
@@ -108,6 +109,42 @@ fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
     }
 
     json!({"symbols": results, "total": results.len()})
+}
+
+fn list_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
+    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    if path.is_empty() {
+        return json!({"error": "Missing required parameter: path"});
+    }
+    let base = codebase.unwrap_or(".");
+    let abs_path = if Path::new(path).is_absolute() {
+        path.to_string()
+    } else {
+        format!("{}/{}", base, path)
+    };
+
+    let all_nodes = graph.find_nodes_by_name("", false);
+    let symbols: Vec<Value> = all_nodes
+        .iter()
+        .filter(|n| {
+            n.location.file_path == abs_path
+                || n.location.file_path.starts_with(&format!("{}/", abs_path))
+        })
+        .map(|n| {
+            let fp = strip_base(&n.location.file_path, codebase);
+            let (callers, callees) = graph.get_node_degree(&n.id);
+            json!({
+                "name": n.name,
+                "type": n.node_type.to_string(),
+                "file": fp,
+                "line": n.location.start_line,
+                "callers": callers,
+                "callees": callees,
+            })
+        })
+        .collect();
+
+    json!({"path": path, "symbols": symbols, "total": symbols.len()})
 }
 
 /// Pattern search using grep-style matching with structural awareness.

@@ -19,16 +19,19 @@ pub fn handle_remember(args: &Value, store: &MemoryStore) -> Value {
             .and_then(|v| v.as_str())
             .unwrap_or("note"),
     );
-    let tags: Vec<String> = args
-        .get("tags")
-        .and_then(|v| v.as_str())
-        .map(|s| {
-            s.split(',')
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
-                .collect()
-        })
-        .unwrap_or_default();
+    let tags: Vec<String> = match args.get("tags") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Some(Value::String(s)) => s
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect(),
+        _ => vec![],
+    };
     let ttl = parse_ttl_arg(
         args.get("ttl")
             .and_then(|v| v.as_str())
@@ -82,7 +85,19 @@ pub fn handle_recall(args: &Value, store: &MemoryStore) -> Value {
 
 pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     let id = args.get("memory_id").and_then(|v| v.as_str());
-    let tags = args.get("tags").and_then(|v| v.as_str());
+    let tags_owned: Option<String> = match args.get("tags") {
+        Some(Value::Array(arr)) => {
+            let joined = arr
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(",");
+            if joined.is_empty() { None } else { Some(joined) }
+        }
+        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    };
+    let tags = tags_owned.as_deref();
     let memory_type = args.get("memory_type").and_then(|v| v.as_str());
 
     if id.is_none() && tags.is_none() && memory_type.is_none() {

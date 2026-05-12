@@ -1,6 +1,5 @@
 //! Session tools: compact, session_snapshot, restore, retrieve.
 
-use contextro_engines::sandbox::OutputSandbox;
 use contextro_memory::archive::CompactionArchive;
 use contextro_memory::session::SessionTracker;
 use serde_json::{json, Value};
@@ -32,12 +31,12 @@ pub fn handle_restore(codebase: Option<&str>, node_count: usize, rel_count: usiz
     })
 }
 
-pub fn handle_retrieve(args: &Value, sandbox: &OutputSandbox) -> Value {
+pub fn handle_retrieve(args: &Value, archive: &CompactionArchive) -> Value {
     let ref_id = args.get("ref_id").and_then(|v| v.as_str()).unwrap_or("");
     if ref_id.is_empty() {
         return json!({"error": "Missing required parameter: ref_id"});
     }
-    match sandbox.retrieve(ref_id) {
+    match archive.retrieve(ref_id) {
         Some(content) => json!({"ref_id": ref_id, "content": content}),
         None => json!({"error": format!("Reference '{}' not found or expired.", ref_id)}),
     }

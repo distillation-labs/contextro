@@ -1,12 +1,14 @@
 //! Search tool implementation.
 
-use serde_json::{json, Value};
-
+use contextro_core::models::SearchResult;
 use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
 use contextro_engines::fusion::ReciprocalRankFusion;
 use contextro_engines::graph::CodeGraph;
 use contextro_engines::search::{execute_search, SearchOptions};
+use contextro_engines::vector::VectorIndex;
+use contextro_indexing::embed;
+use serde_json::{json, Value};
 
 /// Execute the search tool.
 pub fn handle_search(
@@ -14,6 +16,7 @@ pub fn handle_search(
     bm25: &Bm25Engine,
     graph: &CodeGraph,
     cache: &QueryCache,
+    vector_index: &VectorIndex,
 ) -> Value {
     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
     if query.is_empty() {
@@ -31,17 +34,47 @@ pub fn handle_search(
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    let options = SearchOptions {
-        query: query.into(),
-        limit,
-        language,
-        mode,
+    let results = match mode.as_str() {
+        "vector" => {
+            vector_search(query, limit, vector_index)
+        }
+        "hybrid" => {
+            let bm25_results = {
+                let options = SearchOptions {
+                    query: query.into(),
+                    limit,
+                    language: language.clone(),
+                    mode: "bm25".into(),
+                };
+                let fusion = ReciprocalRankFusion::default();
+                execute_search(&options, bm25, graph, cache, &fusion).results
+            };
+            let vec_results = vector_search(query, limit, vector_index);
+            if vec_results.is_empty() {
+                bm25_results
+            } else {
+                fuse_results(bm25_results, vec_results, limit)
+            }
+        }
+        _ => {
+            let options = SearchOptions {
+                query: query.into(),
+                limit,
+                language,
+                mode,
+            };
+            let fusion = ReciprocalRankFusion::default();
+            execute_search(&options, bm25, graph, cache, &fusion).results
+        }
     };
-    let fusion = ReciprocalRankFusion::default();
-    let response = execute_search(&options, bm25, graph, cache, &fusion);
 
-    let results: Vec<Value> = response
-        .results
+    let confidence = if results.is_empty() {
+        0.0_f64
+    } else {
+        results[0].score.min(1.0)
+    };
+
+    let out: Vec<Value> = results
         .iter()
         .map(|r| {
             json!({
@@ -56,9 +89,60 @@ pub fn handle_search(
         .collect();
 
     json!({
-        "query": response.query,
-        "confidence": response.confidence,
-        "total": response.total,
-        "results": results,
+        "query": query,
+        "confidence": (confidence * 1000.0).round() / 1000.0,
+        "total": out.len(),
+        "results": out,
     })
+}
+
+fn vector_search(query: &str, limit: usize, index: &VectorIndex) -> Vec<SearchResult> {
+    if index.is_empty() {
+        return vec![];
+    }
+    match embed(query) {
+        Some(qv) => index.search(&qv, limit),
+        None => vec![],
+    }
+}
+
+/// Interleave BM25 and vector results, dedup by symbol name, keep highest score.
+fn fuse_results(
+    bm25: Vec<SearchResult>,
+    vector: Vec<SearchResult>,
+    limit: usize,
+) -> Vec<SearchResult> {
+    let mut seen = std::collections::HashSet::new();
+    let mut fused: Vec<SearchResult> = Vec::new();
+
+    // Normalise scores so both lists are in [0,1]
+    let bm25_max = bm25.first().map(|r| r.score).unwrap_or(1.0).max(1e-9);
+    let vec_max = vector.first().map(|r| r.score).unwrap_or(1.0).max(1e-9);
+
+    let mut candidates: Vec<SearchResult> = bm25
+        .into_iter()
+        .map(|mut r| {
+            r.score /= bm25_max;
+            r.match_sources = vec!["bm25".into()];
+            r
+        })
+        .chain(vector.into_iter().map(|mut r| {
+            r.score /= vec_max;
+            r.match_sources = vec!["vector".into()];
+            r
+        }))
+        .collect();
+
+    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+    for r in candidates {
+        let key = format!("{}:{}", r.filepath, r.line_start);
+        if seen.insert(key) {
+            fused.push(r);
+            if fused.len() >= limit {
+                break;
+            }
+        }
+    }
+    fused
 }
