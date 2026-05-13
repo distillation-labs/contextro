@@ -407,8 +407,8 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
     let mut file_map: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
     for node in &all_nodes {
         let rel = strip_base(&node.location.file_path, codebase);
-        // Filter by path prefix
-        if !path_filter.is_empty() && !rel.starts_with(path_filter) {
+        // Filter by path prefix ("." means no filter)
+        if !path_filter.is_empty() && path_filter != "." && !rel.starts_with(path_filter) {
             continue;
         }
         // Filter by query
