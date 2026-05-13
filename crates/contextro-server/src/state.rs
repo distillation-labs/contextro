@@ -108,6 +108,7 @@ impl AppState {
                 } else {
                     Some(sym.docstring.clone())
                 },
+                parent: sym.parent.clone(),
                 ..Default::default()
             };
             self.graph.add_node(node);

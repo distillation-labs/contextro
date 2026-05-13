@@ -177,7 +177,7 @@ focus(path="src/auth.rs")
 
 ---
 
-## All 35 Tools
+## All 37 Tools
 
 | Tool | What it does |
 |---|---|
@@ -189,12 +189,13 @@ focus(path="src/auth.rs")
 | `find_callees` | What does this function call? |
 | `explain` | Full symbol explanation |
 | `impact` | What breaks if I change this? |
+| `refactor_check` | Pre-refactor analysis: callers + callees + impact + risk in one call |
 | `analyze` | Code smells, complexity |
 | `overview` | Project structure |
 | `architecture` | Hub symbols, layers |
 | `focus` | Low-token context slice |
 | `dead_code` | Unreachable code detection |
-| `circular_dependencies` | SCC-based cycle detection |
+| `circular_dependencies` | Import cycle detection (Rust + TypeScript) |
 | `test_coverage_map` | Static test coverage |
 | `audit` | Packaged audit report |
 | `commit_search` | Semantic git history search |
@@ -205,6 +206,7 @@ focus(path="src/auth.rs")
 | `remember` | Store a note/decision |
 | `recall` | Search memories |
 | `forget` | Delete memories |
+| `tags` | List all memory tags |
 | `knowledge` | Index and search docs |
 | `compact` | Archive session content |
 | `session_snapshot` | Context recovery |

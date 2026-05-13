@@ -960,6 +960,31 @@ fn collect_calls_recursive(node: tree_sitter::Node, source: &[u8], calls: &mut V
                 }
             }
         }
+        "jsx_attribute" => {
+            // onClick={handleClick} → extract "handleClick" as a call edge
+            // The value is a jsx_expression containing an identifier
+            if let Some(value) = node.child_by_field_name("value") {
+                // jsx_expression: { identifier } or { obj.method }
+                let mut vc = value.walk();
+                for child in value.named_children(&mut vc) {
+                    if child.kind() == "identifier" {
+                        let name = node_text(child, source);
+                        if !name.is_empty()
+                            && name.len() > 1
+                            && !calls.contains(&name)
+                            && !is_keyword(&name)
+                            && name
+                                .chars()
+                                .next()
+                                .map(|c| c.is_alphabetic())
+                                .unwrap_or(false)
+                        {
+                            calls.push(name);
+                        }
+                    }
+                }
+            }
+        }
         _ => {}
     }
     let mut cursor = node.walk();

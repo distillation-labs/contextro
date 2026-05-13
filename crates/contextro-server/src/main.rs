@@ -229,7 +229,19 @@ impl ContextroServer {
         let (added, modified, deleted) =
             contextro_indexing::diff_file_states(&current_hashes, &stored_hashes);
         let changed_count = added.len() + modified.len() + deleted.len();
-        let is_incremental = !stored_hashes.is_empty() && changed_count < files.len() / 2;
+        let is_incremental = !stored_hashes.is_empty();
+
+        // If nothing changed and we already have an index, skip re-parsing
+        if is_incremental && changed_count == 0 && *self.state.indexed.read() {
+            return json!({
+                "status": "done",
+                "message": "No files changed since last index.",
+                "total_files": files.len(),
+                "incremental": {"files_added": 0, "files_modified": 0, "files_deleted": 0, "files_unchanged": files.len()},
+                "graph_nodes": self.state.graph.node_count(),
+                "graph_relationships": self.state.graph.relationship_count(),
+            });
+        }
 
         match pipeline.index(std::path::Path::new(path)) {
             Ok((result, symbols)) => {

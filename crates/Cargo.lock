@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "contextro"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-config"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "contextro-core",
  "once_cell",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-core"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "chrono",
  "serde",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-engines"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "contextro-config",
  "contextro-core",
@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-git"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "contextro-config",
  "contextro-core",
@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-indexing"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "contextro-config",
@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-memory"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "chrono",
  "contextro-config",
@@ -470,7 +470,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-parsing"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "contextro-core",
  "rayon",
@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "contextro-tools"
-version = "1.5.1"
+version = "1.6.0"
 dependencies = [
  "chrono",
  "contextro-config",

@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.5.1"
+version = "1.6.0"
 edition = "2021"
 license = "BUSL-1.1"
 authors = ["Distillation Labs"]
@@ -89,14 +89,14 @@ dashmap = "6"
 once_cell = "1"
 
 # Workspace crates
-contextro-core = { path = "contextro-core", version = "1.5.1" }
-contextro-config = { path = "contextro-config", version = "1.5.1" }
-contextro-parsing = { path = "contextro-parsing", version = "1.5.1" }
-contextro-indexing = { path = "contextro-indexing", version = "1.5.1" }
-contextro-engines = { path = "contextro-engines", version = "1.5.1" }
-contextro-memory = { path = "contextro-memory", version = "1.5.1" }
-contextro-git = { path = "contextro-git", version = "1.5.1" }
-contextro-tools = { path = "contextro-tools", version = "1.5.1" }
+contextro-core = { path = "contextro-core", version = "1.6.0" }
+contextro-config = { path = "contextro-config", version = "1.6.0" }
+contextro-parsing = { path = "contextro-parsing", version = "1.6.0" }
+contextro-indexing = { path = "contextro-indexing", version = "1.6.0" }
+contextro-engines = { path = "contextro-engines", version = "1.6.0" }
+contextro-memory = { path = "contextro-memory", version = "1.6.0" }
+contextro-git = { path = "contextro-git", version = "1.6.0" }
+contextro-tools = { path = "contextro-tools", version = "1.6.0" }
 
 [profile.release]
 opt-level = 3

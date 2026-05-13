@@ -105,6 +105,8 @@ pub struct UniversalNode {
     pub return_type: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parameter_types: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
 }
 
 impl Default for UniversalNode {
@@ -132,6 +134,7 @@ impl Default for UniversalNode {
             is_async: false,
             return_type: None,
             parameter_types: vec![],
+            parent: None,
         }
     }
 }
@@ -391,6 +394,7 @@ mod tests {
             is_async: false,
             return_type: None,
             parameter_types: vec![],
+            parent: None,
         }
     }
 

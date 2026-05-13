@@ -128,9 +128,15 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         .iter()
         .take(10)
         .map(|c| {
+            // #4: Type-qualified name if parent is available
+            let display = if let Some(ref parent) = c.parent {
+                format!("{}.{}", parent, c.name)
+            } else {
+                c.name.clone()
+            };
             format!(
                 "{} ({}:{})",
-                c.name,
+                display,
                 relativize(&c.location.file_path, codebase),
                 c.location.start_line
             )

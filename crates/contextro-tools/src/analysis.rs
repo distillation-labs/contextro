@@ -306,9 +306,6 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
     let mut file_deps: HashMap<String, HashSet<String>> = HashMap::new();
 
     for file_path in &all_files {
-        if !file_path.ends_with(".rs") {
-            continue;
-        }
         let content = match std::fs::read_to_string(file_path) {
             Ok(c) => c,
             Err(_) => continue,
@@ -316,36 +313,76 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
 
         for line in content.lines() {
             let trimmed = line.trim();
-            // Only intra-crate references can form cycles
-            let after_prefix = if trimmed.starts_with("use crate::") {
-                &trimmed[11..]
-            } else if trimmed.starts_with("use super::") {
-                &trimmed[11..]
-            } else {
-                continue;
-            };
 
-            // Extract the first path segment (the module name)
-            let segment = after_prefix
-                .split(|c: char| c == ':' || c == ';' || c == ' ' || c == '{' || c == ',')
-                .next()
-                .unwrap_or("")
-                .trim();
-            if segment.is_empty() {
-                continue;
+            // Rust: use crate:: / use super::
+            if file_path.ends_with(".rs") {
+                let after_prefix = if trimmed.starts_with("use crate::") {
+                    Some(&trimmed[11..])
+                } else if trimmed.starts_with("use super::") {
+                    Some(&trimmed[11..])
+                } else {
+                    None
+                };
+                if let Some(after) = after_prefix {
+                    let segment = after
+                        .split(|c: char| c == ':' || c == ';' || c == ' ' || c == '{' || c == ',')
+                        .next()
+                        .unwrap_or("")
+                        .trim();
+                    if !segment.is_empty() {
+                        if let Some(dep) = all_files.iter().find(|f| {
+                            let stem = Path::new(f)
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().to_string());
+                            stem.as_deref() == Some(segment) && f.as_str() != file_path.as_str()
+                        }) {
+                            file_deps
+                                .entry(file_path.clone())
+                                .or_default()
+                                .insert(dep.clone());
+                        }
+                    }
+                }
             }
 
-            // Find a file in the indexed set that matches this module name
-            if let Some(dep_file) = all_files.iter().find(|f| {
-                let stem = Path::new(f)
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_string());
-                stem.as_deref() == Some(segment) && f.as_str() != file_path.as_str()
-            }) {
-                file_deps
-                    .entry(file_path.clone())
-                    .or_default()
-                    .insert(dep_file.clone());
+            // TypeScript/JavaScript: import ... from './relative/path'
+            if (file_path.ends_with(".ts")
+                || file_path.ends_with(".tsx")
+                || file_path.ends_with(".js")
+                || file_path.ends_with(".jsx"))
+                && trimmed.starts_with("import ")
+            {
+                // Extract the path from: import ... from './foo' or import ... from '../bar'
+                if let Some(from_pos) = trimmed.find("from ") {
+                    let after_from = &trimmed[from_pos + 5..];
+                    let path_str = after_from
+                        .trim_start_matches(|c| c == '\'' || c == '"')
+                        .trim_end_matches(|c| c == '\'' || c == '"' || c == ';');
+                    // Only relative imports can form cycles
+                    if path_str.starts_with('.') {
+                        let dir = Path::new(file_path).parent().unwrap_or(Path::new(""));
+                        let resolved = dir.join(path_str);
+                        // Try common extensions
+                        let candidates = [
+                            resolved.with_extension("ts"),
+                            resolved.with_extension("tsx"),
+                            resolved.with_extension("js"),
+                            resolved.with_extension("jsx"),
+                            resolved.join("index.ts"),
+                            resolved.join("index.tsx"),
+                        ];
+                        for candidate in &candidates {
+                            let cand_str = candidate.to_string_lossy().to_string();
+                            if all_files.contains(&cand_str) && cand_str != *file_path {
+                                file_deps
+                                    .entry(file_path.clone())
+                                    .or_default()
+                                    .insert(cand_str);
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
