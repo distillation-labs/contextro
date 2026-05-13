@@ -106,7 +106,9 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
 pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
     let base = codebase.unwrap_or(".");
-    let target = if Path::new(path).is_absolute() {
+    let target = if path == "." || path.is_empty() {
+        base.to_string()
+    } else if Path::new(path).is_absolute() {
         path.to_string()
     } else {
         format!("{}/{}", base, path)
@@ -118,7 +120,7 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
     // Group symbols by file
     let mut by_file: HashMap<String, Vec<&_>> = HashMap::new();
     for node in &nodes {
-        if node.location.file_path.starts_with(&target) || target == base {
+        if node.location.file_path.starts_with(&target) {
             by_file
                 .entry(node.location.file_path.clone())
                 .or_default()
@@ -207,22 +209,34 @@ pub fn handle_introspect(args: &Value) -> Value {
         return json!({"tools": all, "total": all.len()});
     }
 
-    // Split query into words; a tool matches if every word appears somewhere in
-    // its name or description (case-insensitive). This handles multi-word queries
-    // like "semantic search" or "index codebase" correctly.
+    // Match tools where ANY query word appears in name or description.
+    // Rank by number of matching words (more matches = more relevant).
     let words: Vec<String> = query
         .to_lowercase()
         .split_whitespace()
         .map(|w| w.to_string())
         .collect();
 
-    let matching: Vec<Value> = tools
+    let mut scored: Vec<(usize, &str, &str)> = tools
         .iter()
-        .filter(|(n, d)| {
+        .filter_map(|(n, d)| {
             let haystack = format!("{} {}", n.to_lowercase(), d.to_lowercase());
-            words.iter().all(|w| haystack.contains(w.as_str()))
+            let hits = words
+                .iter()
+                .filter(|w| haystack.contains(w.as_str()))
+                .count();
+            if hits > 0 {
+                Some((hits, *n, *d))
+            } else {
+                None
+            }
         })
-        .map(|(n, d)| json!({"tool": n, "description": d}))
+        .collect();
+    scored.sort_by_key(|(hits, _, _)| std::cmp::Reverse(*hits));
+
+    let matching: Vec<Value> = scored
+        .iter()
+        .map(|(_, n, d)| json!({"tool": n, "description": d}))
         .collect();
 
     json!({"query": query, "matching_tools": matching, "total": matching.len()})

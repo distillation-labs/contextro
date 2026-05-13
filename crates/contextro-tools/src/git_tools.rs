@@ -157,7 +157,7 @@ pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
     }
     let name = args.get("name").and_then(|v| v.as_str());
     registry.add(path, name);
-    json!({"registered": true, "path": path})
+    json!({"registered": true, "path": path, "hint": "Run index(path) to build the graph and enable search for this repo."})
 }
 
 pub fn handle_repo_remove(args: &Value, registry: &RepoRegistry) -> Value {
