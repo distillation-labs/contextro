@@ -10,7 +10,6 @@ use serde_json::{json, Value};
 use tracing::info;
 
 use contextro_config::get_settings;
-use contextro_engines::bm25::Bm25Engine;
 
 mod http;
 mod state;
@@ -88,7 +87,25 @@ impl ContextroServer {
             "retrieve" => contextro_tools::session::handle_retrieve(&args, &s.archive),
             "commit_search" => contextro_tools::git_tools::handle_commit_search(&args, cb),
             "commit_history" => contextro_tools::git_tools::handle_commit_history(&args, cb),
-            "repo_add" => contextro_tools::git_tools::handle_repo_add(&args, &s.repo_registry),
+            "repo_add" => {
+                let reg_result =
+                    contextro_tools::git_tools::handle_repo_add(&args, &s.repo_registry);
+                if reg_result.get("error").is_some() {
+                    reg_result
+                } else {
+                    // Auto-index the added repo
+                    let index_result = self.handle_index(&args);
+                    let mut combined = reg_result;
+                    if index_result.get("status") == Some(&json!("done")) {
+                        combined["indexed"] = json!(true);
+                        combined["graph_nodes"] = index_result["graph_nodes"].clone();
+                        combined["graph_relationships"] =
+                            index_result["graph_relationships"].clone();
+                        combined["total_symbols"] = index_result["total_symbols"].clone();
+                    }
+                    combined
+                }
+            }
             "repo_remove" => {
                 contextro_tools::git_tools::handle_repo_remove(&args, &s.repo_registry)
             }
@@ -202,10 +219,6 @@ impl ContextroServer {
         let storage_dir = contextro_config::project_storage_dir(path);
         std::fs::create_dir_all(&storage_dir).ok();
 
-        // Use persistent BM25 index
-        let bm25_dir = storage_dir.join("bm25_index");
-        let persistent_bm25 = Bm25Engine::new_persistent(&bm25_dir);
-
         let pipeline = contextro_indexing::IndexingPipeline::new(settings);
 
         match pipeline.index(std::path::Path::new(path)) {
@@ -213,10 +226,10 @@ impl ContextroServer {
                 self.state.graph.clear();
                 self.state.build_graph(&symbols);
 
-                // Clear and rebuild BM25 with persistent engine
-                persistent_bm25.clear();
+                // Index chunks into the shared BM25 engine
+                self.state.bm25.clear();
                 let chunks = contextro_indexing::create_chunks(&symbols);
-                persistent_bm25.index_chunks(&chunks);
+                self.state.bm25.index_chunks(&chunks);
                 self.state
                     .chunk_count
                     .store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
@@ -244,10 +257,6 @@ impl ContextroServer {
                 }
 
                 // Swap in the persistent BM25 engine
-                // (We use a separate Arc here since AppState::bm25 is Arc<Bm25Engine>)
-                // For now, the persistent engine is used for this session; on next startup
-                // it will be reloaded from disk.
-
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(path.to_string());
                 self.state.query_cache.invalidate();
@@ -264,7 +273,6 @@ impl ContextroServer {
                     "graph_relationships": self.state.graph.relationship_count(),
                     "vector_chunks": self.state.vector_index.len(),
                     "time_seconds": (result.time_seconds * 100.0).round() / 100.0,
-                    "persistent_index": bm25_dir.to_string_lossy(),
                 });
                 if kb_populated > 0 {
                     resp["knowledge_docs_indexed"] = serde_json::json!(kb_populated);
