@@ -104,6 +104,13 @@ impl ContextroServer {
         // ── Response optimization (#1, #5, #7, #9) ──────────────────────────
         let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
+        // #5: Strip absolute codebase prefix from all file paths in response
+        let result = if let Some(base) = cb {
+            strip_absolute_paths(result, base)
+        } else {
+            result
+        };
+
         if result.get("error").is_some() {
             // #8: Actionable errors — add fuzzy suggestions for symbol-not-found
             let err_text = result["error"].as_str().unwrap_or("");
@@ -366,6 +373,31 @@ fn is_empty_value(v: &Value) -> bool {
         Value::Array(a) => a.is_empty(),
         Value::Object(m) => m.is_empty(),
         _ => false,
+    }
+}
+
+/// Recursively replace any string value that starts with `base/` with the relative path.
+fn strip_absolute_paths(value: Value, base: &str) -> Value {
+    let prefix = format!("{}/", base);
+    match value {
+        Value::String(s) => {
+            if s.starts_with(&prefix) {
+                Value::String(s[prefix.len()..].to_string())
+            } else if s == base {
+                Value::String(".".to_string())
+            } else {
+                Value::String(s)
+            }
+        }
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(k, v)| (k, strip_absolute_paths(v, base)))
+                .collect(),
+        ),
+        Value::Array(arr) => Value::Array(
+            arr.into_iter().map(|v| strip_absolute_paths(v, base)).collect(),
+        ),
+        other => other,
     }
 }
 
