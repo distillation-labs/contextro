@@ -1,0 +1,208 @@
+{
+  "skill_name": "contextro-release-tester",
+  "version": "0.1.0",
+  "categories": {
+    "triggering": "Skill loads for pre-release MCP validation and regression testing",
+    "workflow": "Skill follows the required local-RC and release-gate order",
+    "coverage": "Skill covers high-risk regressions and the full tool matrix",
+    "release_decision": "Skill blocks releases on silent failures, persistence loss, or misleading outputs",
+    "hygiene": "Skill avoids publish-first and cargo-test-only release decisions"
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "trigger-pre-release-validation",
+      "category": "triggering",
+      "prompt": "Before I tag the next Contextro release, test the MCP on external repos and tell me if it is safe to ship.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads for pre-release MCP validation.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill triggers",
+          "type": "routing",
+          "passing_condition": "Skill loads for pre-release MCP testing requests"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "trigger-full-tool-regression-pass",
+      "category": "triggering",
+      "prompt": "Run a regression pass on every Contextro tool before publish.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads for full tool-matrix regression testing.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill triggers",
+          "type": "routing",
+          "passing_condition": "Skill loads for all-tools-before-release requests"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "no-trigger-feature-implementation",
+      "category": "triggering",
+      "prompt": "Implement a new reranker for hybrid search.",
+      "should_trigger": false,
+      "expected_behavior": "Implementation work belongs to another skill or direct coding flow.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "no trigger",
+          "type": "routing",
+          "passing_condition": "Skill does not load for ordinary feature implementation"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "workflow-local-rc-before-publish",
+      "category": "workflow",
+      "prompt": "Set up the pre-release test flow for the MCP and only publish if it passes.",
+      "expected_behavior": "Skill uses the local RC workflow first and keeps packaging last.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "local RC comes first",
+          "type": "workflow",
+          "passing_condition": "Response starts with the local release-candidate workflow before any publish step"
+        },
+        {
+          "id": "a2",
+          "text": "packaging is last",
+          "type": "workflow",
+          "passing_condition": "Response keeps npm pack or publish after engine, real-MCP, and developer gates"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "workflow-real-client-and-restart",
+      "category": "workflow",
+      "prompt": "We changed persistence. Verify the release candidate like a real developer would.",
+      "expected_behavior": "Skill requires a real MCP client and restart-sensitive checks.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "real client required",
+          "type": "workflow",
+          "passing_condition": "Response requires testing through a real MCP client rather than unit tests alone"
+        },
+        {
+          "id": "a2",
+          "text": "restart checks included",
+          "type": "workflow",
+          "passing_condition": "Response includes restart-sensitive checks such as compact/retrieve or repo_status persistence"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "coverage-high-risk-first",
+      "category": "coverage",
+      "prompt": "Search got much faster. Test the MCP before release.",
+      "expected_behavior": "Skill still checks path errors, persistence, and output truth before celebrating speed.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "path and persistence checks remain required",
+          "type": "coverage",
+          "passing_condition": "Response includes path-validation and persistence checks, not only search speed"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "coverage-every-tool-matrix",
+      "category": "coverage",
+      "prompt": "Make sure every tool still works before we cut the release.",
+      "expected_behavior": "Skill requires the full tool regression matrix, not only search and index.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "tool matrix required",
+          "type": "coverage",
+          "passing_condition": "Response calls for exercising every public tool or explicitly references a full tool matrix"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "coverage-parameter-compatibility",
+      "category": "coverage",
+      "prompt": "We changed some tool schemas. How do we verify we did not break existing clients before release?",
+      "expected_behavior": "Skill includes canonical and legacy parameter checks.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "parameter compatibility is checked",
+          "type": "coverage",
+          "passing_condition": "Response includes canonical and legacy parameter compatibility checks"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "decision-block-silent-empty-output",
+      "category": "release_decision",
+      "prompt": "A few tools now return empty arrays instead of errors on bad paths, but everything else is fast. Can we ship?",
+      "expected_behavior": "Skill blocks the release.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "release is blocked",
+          "type": "release",
+          "passing_condition": "Response treats silent empty success-shaped output as a release blocker"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "decision-block-state-loss",
+      "category": "release_decision",
+      "prompt": "compact and retrieve work in one session, but state disappears after restart. Is that good enough for the release?",
+      "expected_behavior": "Skill blocks the release on persistence loss.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "persistence loss blocks release",
+          "type": "release",
+          "passing_condition": "Response blocks release when persisted state disappears after restart"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "hygiene-no-cargo-test-only",
+      "category": "hygiene",
+      "prompt": "cargo test passed. Do we really need the external repo gate before publish?",
+      "expected_behavior": "Skill insists on external repo validation.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "external repo gate stays required",
+          "type": "hygiene",
+          "passing_condition": "Response says cargo tests are necessary but not sufficient and keeps the external repo gate"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "hygiene-no-publish-first",
+      "category": "hygiene",
+      "prompt": "Let's publish to npm and test the package after that.",
+      "expected_behavior": "Skill rejects publish-first testing.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "publish-first is rejected",
+          "type": "hygiene",
+          "passing_condition": "Response keeps publish after the local RC and external repo gates"
+        }
+      ]
+    }
+  ]
+}

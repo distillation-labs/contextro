@@ -93,6 +93,8 @@ pub fn handle_search(
         });
     }
 
+    results = apply_symbol_query_guard(query, results);
+
     let confidence = confidence_label(&results);
 
     let out: Vec<Value> = results
@@ -113,6 +115,97 @@ pub fn handle_search(
         "confidence": confidence,
         "results": out,
     })
+}
+
+fn apply_symbol_query_guard(query: &str, results: Vec<SearchResult>) -> Vec<SearchResult> {
+    if !is_symbol_lookup_query(query) {
+        return results;
+    }
+
+    let normalized_query = normalize_identifier(query);
+    if normalized_query.len() < 3 {
+        return results;
+    }
+
+    results
+        .into_iter()
+        .filter(|result| result_matches_symbol_query(query, &normalized_query, result))
+        .collect()
+}
+
+fn is_symbol_lookup_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.is_empty() && trimmed.split_whitespace().count() == 1
+}
+
+fn result_matches_symbol_query(
+    query: &str,
+    normalized_query: &str,
+    result: &SearchResult,
+) -> bool {
+    let query_tokens = tokenize_identifier(query);
+    if query_tokens.is_empty() {
+        return true;
+    }
+
+    let matched = [result.symbol_name.as_str(), result.filepath.as_str()]
+        .iter()
+        .map(|field| {
+            let normalized_field = normalize_identifier(field);
+            if !normalized_query.is_empty() && normalized_field.contains(normalized_query) {
+                return query_tokens.len();
+            }
+
+            let field_tokens: HashSet<String> = tokenize_identifier(field).into_iter().collect();
+            query_tokens
+                .iter()
+                .filter(|token| {
+                    field_tokens.iter().any(|candidate| {
+                        candidate.contains(token.as_str()) || token.contains(candidate)
+                    })
+                })
+                .count()
+        })
+        .max()
+        .unwrap_or(0);
+
+    match query_tokens.len() {
+        0 => true,
+        1 => matched == 1,
+        2 => matched == 2,
+        _ => matched * 2 >= query_tokens.len(),
+    }
+}
+
+fn normalize_identifier(text: &str) -> String {
+    text.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+fn tokenize_identifier(text: &str) -> Vec<String> {
+    let mut spaced = String::with_capacity(text.len() * 2);
+    let mut prev_was_lower_or_digit = false;
+
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if ch.is_ascii_uppercase() && prev_was_lower_or_digit {
+                spaced.push(' ');
+            }
+            spaced.push(ch.to_ascii_lowercase());
+            prev_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        } else {
+            spaced.push(' ');
+            prev_was_lower_or_digit = false;
+        }
+    }
+
+    spaced
+        .split_whitespace()
+        .filter(|token| token.len() >= 3)
+        .map(String::from)
+        .collect()
 }
 
 fn vector_search(query: &str, limit: usize, index: &VectorIndex) -> Vec<SearchResult> {
@@ -226,6 +319,28 @@ mod tests {
         }
     }
 
+    fn make_named_result(
+        id: &str,
+        symbol_name: &str,
+        filepath: &str,
+        score: f64,
+        sources: &[&str],
+    ) -> SearchResult {
+        SearchResult {
+            id: id.into(),
+            filepath: filepath.into(),
+            symbol_name: symbol_name.into(),
+            symbol_type: "function".into(),
+            language: "rust".into(),
+            line_start: 1,
+            line_end: 1,
+            score,
+            code: String::new(),
+            signature: String::new(),
+            match_sources: sources.iter().map(|source| (*source).to_string()).collect(),
+        }
+    }
+
     #[test]
     fn test_fuse_results_preserves_score_spread() {
         let fused = fuse_results(
@@ -252,5 +367,56 @@ mod tests {
 
         assert_eq!(fused[0].id, "shared");
         assert!(fused[0].score > fused[1].score);
+    }
+
+    #[test]
+    fn test_symbol_query_guard_drops_partial_noise_matches() {
+        let filtered = apply_symbol_query_guard(
+            "zzzzzzzzzz_no_match_expected",
+            vec![
+                make_named_result(
+                    "noise-1",
+                    "match_url_with_domain_pattern",
+                    "traverse/utils.py",
+                    0.8,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "noise-2",
+                    "test_no_retry_on_400",
+                    "tests/ci/test_llm_retries.py",
+                    0.7,
+                    &["bm25"],
+                ),
+            ],
+        );
+
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_symbol_query_guard_keeps_full_identifier_matches() {
+        let filtered = apply_symbol_query_guard(
+            "browser_session",
+            vec![
+                make_named_result(
+                    "browser-session",
+                    "BrowserSession",
+                    "traverse/browser/session.py",
+                    0.9,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "session-only",
+                    "attach_handler_to_session",
+                    "traverse/browser/watchdog_base.py",
+                    0.7,
+                    &["bm25"],
+                ),
+            ],
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].symbol_name, "BrowserSession");
     }
 }

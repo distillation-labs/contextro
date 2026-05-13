@@ -53,6 +53,21 @@ impl RepoRegistry {
         removed
     }
 
+    pub fn remove_by_name(&self, name: &str) -> bool {
+        let mut repos = self.repos.write();
+        let matching_key = repos
+            .iter()
+            .find_map(|(path, stored_name)| (stored_name == name).then(|| path.clone()));
+        let Some(key) = matching_key else {
+            return false;
+        };
+        let removed = repos.remove(&key).is_some();
+        if removed {
+            self.save_locked(&repos);
+        }
+        removed
+    }
+
     pub fn list(&self) -> Vec<(String, String)> {
         let mut repos: Vec<(String, String)> = self
             .repos
@@ -209,11 +224,16 @@ pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
 
 pub fn handle_repo_remove(args: &Value, registry: &RepoRegistry) -> Value {
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-    if path.is_empty() {
-        return json!({"error": "Missing required parameter: path"});
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    if path.is_empty() && name.is_empty() {
+        return json!({"error": "Missing required parameter: path or name"});
     }
-    let removed = registry.remove(path);
-    json!({"removed": removed, "path": path})
+    if !path.is_empty() {
+        let removed = registry.remove(path);
+        return json!({"removed": removed, "path": path});
+    }
+    let removed = registry.remove_by_name(name);
+    json!({"removed": removed, "name": name})
 }
 
 pub fn handle_repo_status(registry: &RepoRegistry) -> Value {
@@ -299,6 +319,24 @@ mod tests {
         let repos = reloaded.list();
         assert_eq!(repos.len(), 1);
         assert_eq!(repos[0].1, "repo");
+
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_repo_remove_accepts_name() {
+        let path = temp_file("repos-remove.json");
+        let repo_dir = std::env::temp_dir().join("contextro-repo-remove-name-test");
+        let _ = std::fs::create_dir_all(&repo_dir);
+
+        let registry = RepoRegistry::with_path(&path);
+        assert!(registry.add(repo_dir.to_string_lossy().as_ref(), Some("repo-by-name")));
+
+        let result = handle_repo_remove(&json!({"name":"repo-by-name"}), &registry);
+        assert_eq!(result["removed"], true);
+        assert_eq!(result["name"], "repo-by-name");
+        assert!(registry.list().is_empty());
 
         let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_dir_all(repo_dir);

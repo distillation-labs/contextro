@@ -29,6 +29,24 @@ impl ContextroServer {
         }
     }
 
+    fn can_skip_reindex(
+        requested_path: &str,
+        loaded_path: Option<&str>,
+        indexed: bool,
+        is_incremental: bool,
+        changed_count: usize,
+    ) -> bool {
+        if !indexed || !is_incremental || changed_count != 0 {
+            return false;
+        }
+
+        let Some(loaded_path) = loaded_path else {
+            return false;
+        };
+
+        normalize_repo_dir(requested_path) == normalize_repo_dir(loaded_path)
+    }
+
     fn dispatch(&self, name: &str, args: Value) -> CallToolResult {
         let s = &self.state;
         let codebase = s.codebase_path.read().clone();
@@ -234,13 +252,23 @@ impl ContextroServer {
             contextro_indexing::diff_file_states(&current_hashes, &stored_hashes);
         let changed_count = added.len() + modified.len() + deleted.len();
         let is_incremental = !stored_hashes.is_empty();
+        let loaded_codebase = self.state.codebase_path.read().clone();
 
         // If nothing changed and we already have an index, skip re-parsing
-        if is_incremental && changed_count == 0 && *self.state.indexed.read() {
+        if Self::can_skip_reindex(
+            path,
+            loaded_codebase.as_deref(),
+            *self.state.indexed.read(),
+            is_incremental,
+            changed_count,
+        ) {
             return json!({
                 "status": "done",
                 "message": "No files changed since last index.",
                 "total_files": files.len(),
+                "total_symbols": self.state.graph.node_count(),
+                "total_chunks": self.state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
+                "vector_chunks": self.state.vector_index.len(),
                 "incremental": {"files_added": 0, "files_modified": 0, "files_deleted": 0, "files_unchanged": files.len()},
                 "graph_nodes": self.state.graph.node_count(),
                 "graph_relationships": self.state.graph.relationship_count(),
@@ -366,13 +394,8 @@ impl ContextroServer {
         let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
 
         let graph = &self.state.graph;
-        let matches = graph.find_nodes_by_name(name, true);
+        let matches = resolve_refactor_targets(name, graph);
         if matches.is_empty() {
-            let fuzzy = graph.find_nodes_by_name(name, false);
-            if !fuzzy.is_empty() {
-                let sugg: Vec<String> = fuzzy.iter().take(3).map(|n| n.name.clone()).collect();
-                return json!({"error": format!("Symbol '{}' not found.", name), "did_you_mean": sugg});
-            }
             return json!({"error": format!("Symbol '{}' not found.", name)});
         }
 
@@ -548,16 +571,17 @@ impl ContextroServer {
             Tool::new("commit_search",  "Semantic search over git commit messages. Args: query (required), limit, author", commit_schema),
             Tool::new("commit_history", "Recent git commits with author and timestamp. Args: limit", hist_schema),
             Tool::new("repo_add",    "Register an additional repository for multi-repo analysis. Args: path", required_path_schema.clone()),
-            Tool::new("repo_remove", "Unregister a repository. Args: path", required_path_schema),
+            Tool::new("repo_remove", "Unregister a repository. Args: path or name", 
+                mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Registered repository path"},"name":{"type":"string","description":"Registered repository name"}}}"#)),
             Tool::new("repo_status", "Show all registered repositories", empty.clone()),
             Tool::new("audit",        "Code quality audit report with recommendations", empty.clone()),
             Tool::new("docs_bundle",  "Generate Markdown docs bundle. Args: output_dir",
                 mk(r#"{"type":"object","properties":{"output_dir":{"type":"string","description":"Output directory for generated docs (default: .contextro-docs)"}}}"#)),
             Tool::new("sidecar_export", "Export graph sidecar files alongside source. Args: path",
                 mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Directory to write .graph.* sidecar files"}}}"#)),
-            Tool::new("skill_prompt", "Return the agent bootstrap block for use in system prompts", empty.clone()),
-            Tool::new("introspect",   "Find the right Contextro tool for a task. Args: query",
-                mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"}}}"#)),
+            Tool::new("skill_prompt", "Return the agent bootstrap block plus parameter conventions for use in system prompts", empty.clone()),
+            Tool::new("introspect",   "Find the right Contextro tool for a task. Args: query or tool",
+                mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"},"tool":{"type":"string","description":"Exact tool name for parameter docs and examples"}}}"#)),
             Tool::new("refactor_check", "Pre-refactor analysis: definition + callers + callees + transitive impact + risk in one call. Args: symbol_name (required), max_depth",
                 mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol to analyze before refactoring"},"max_depth":{"type":"integer","description":"BFS depth for impact (default: 3)"}},"required":["symbol_name"]}"#)),
         ]
@@ -579,23 +603,82 @@ fn format_response(value: &Value, max_tokens: usize) -> String {
     };
 
     if effective_budget > 0 && output.len() > effective_budget {
-        // Find last complete JSON object boundary before limit
-        let truncated = &output[..effective_budget];
-        if let Some(pos) = truncated.rfind("},") {
-            let budget_tokens = effective_budget / 4;
-            return format!(
-                "{}}}],\"truncated\":true,\"hint\":\"Response truncated to ~{} tokens. Use max_tokens for a different budget, or narrow your query.\"}}",
-                &output[..pos], budget_tokens
-            );
-        }
         let budget_tokens = effective_budget / 4;
-        return format!(
-            "{}...[truncated to ~{} tokens. Narrow your query or set max_tokens.]",
-            &output[..effective_budget],
-            budget_tokens
-        );
+        return truncate_response_json(cleaned, effective_budget, budget_tokens).to_string();
     }
     output
+}
+
+fn truncate_response_json(value: Value, budget_chars: usize, budget_tokens: usize) -> Value {
+    let mut candidate = value;
+    for _ in 0..12 {
+        let with_meta = add_truncation_metadata(candidate.clone(), budget_tokens);
+        if with_meta.to_string().len() <= budget_chars {
+            return with_meta;
+        }
+        candidate = shrink_json_value(candidate);
+    }
+
+    json!({
+        "truncated": true,
+        "hint": truncation_hint(budget_tokens),
+        "summary": "Response exceeded the token budget. Narrow your query or request a larger max_tokens budget.",
+    })
+}
+
+fn add_truncation_metadata(value: Value, budget_tokens: usize) -> Value {
+    match value {
+        Value::Object(mut map) => {
+            map.insert("truncated".into(), Value::Bool(true));
+            map.insert("hint".into(), Value::String(truncation_hint(budget_tokens)));
+            Value::Object(map)
+        }
+        other => json!({
+            "truncated": true,
+            "hint": truncation_hint(budget_tokens),
+            "value": other,
+        }),
+    }
+}
+
+fn truncation_hint(budget_tokens: usize) -> String {
+    format!(
+        "Response truncated to ~{} tokens. Use max_tokens for a different budget, or narrow your query.",
+        budget_tokens
+    )
+}
+
+fn shrink_json_value(value: Value) -> Value {
+    match value {
+        Value::String(text) => Value::String(shrink_text(text)),
+        Value::Array(items) => {
+            let target_len = if items.len() > 1 { items.len().div_ceil(2) } else { 1 };
+            Value::Array(
+                items.into_iter()
+                    .take(target_len)
+                    .map(shrink_json_value)
+                    .collect(),
+            )
+        }
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key, shrink_json_value(value)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+fn shrink_text(mut text: String) -> String {
+    let len = text.chars().count();
+    if len <= 80 {
+        return text;
+    }
+
+    let target = (len * 2 / 3).max(80);
+    text = text.chars().take(target.saturating_sub(1)).collect();
+    text.push('…');
+    text
 }
 
 fn strip_empty_nested(value: &Value, is_top_level: bool) -> Value {
@@ -877,6 +960,154 @@ impl ServerHandler for ContextroServer {
         let args = request.arguments.map(Value::Object).unwrap_or(Value::Null);
         let result = self.dispatch(&request.name, args);
         std::future::ready(Ok(result))
+    }
+}
+
+fn normalize_repo_dir(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| std::path::PathBuf::from(path))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn resolve_refactor_targets(
+    name: &str,
+    graph: &contextro_engines::graph::CodeGraph,
+) -> Vec<contextro_core::graph::UniversalNode> {
+    let exact = graph.find_nodes_by_name(name, true);
+    if !exact.is_empty() {
+        return rank_nodes_by_degree(exact, graph);
+    }
+    rank_nodes_by_degree(graph.find_nodes_by_name(name, false), graph)
+}
+
+fn rank_nodes_by_degree(
+    mut nodes: Vec<contextro_core::graph::UniversalNode>,
+    graph: &contextro_engines::graph::CodeGraph,
+) -> Vec<contextro_core::graph::UniversalNode> {
+    nodes.sort_by_key(|node| {
+        let (in_degree, out_degree) = graph.get_node_degree(&node.id);
+        std::cmp::Reverse(in_degree + out_degree)
+    });
+    nodes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_response, resolve_refactor_targets, ContextroServer};
+    use contextro_core::graph::{RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship};
+    use contextro_core::NodeType;
+    use contextro_engines::graph::CodeGraph;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn test_can_skip_reindex_only_for_same_loaded_repo() {
+        assert!(ContextroServer::can_skip_reindex(
+            "/tmp/repo-a",
+            Some("/tmp/repo-a"),
+            true,
+            true,
+            0,
+        ));
+
+        assert!(!ContextroServer::can_skip_reindex(
+            "/tmp/repo-a",
+            Some("/tmp/repo-b"),
+            true,
+            true,
+            0,
+        ));
+
+        assert!(!ContextroServer::can_skip_reindex(
+            "/tmp/repo-a",
+            None,
+            true,
+            true,
+            0,
+        ));
+    }
+
+    #[test]
+    fn test_format_response_truncation_stays_valid_json() {
+        let value = json!({
+            "symbol": "BrowserSession.close",
+            "callers": (0..120)
+                .map(|i| format!("caller_{i} (tests/file_{i}.py:{})", i + 1))
+                .collect::<Vec<_>>(),
+            "total": 120,
+        });
+
+        let rendered = format_response(&value, 200);
+        let parsed: Value = serde_json::from_str(&rendered).expect("truncated output should stay valid JSON");
+
+        assert_eq!(parsed["symbol"], "BrowserSession.close");
+        assert_eq!(parsed["total"], 120);
+        assert_eq!(parsed["truncated"], true);
+        assert!(parsed["callers"].as_array().unwrap().len() < 120);
+        assert!(parsed["hint"].as_str().unwrap().contains("Response truncated"));
+    }
+
+    #[test]
+    fn test_resolve_refactor_targets_supports_qualified_method_names() {
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "class-browser-session".into(),
+            name: "BrowserSession".into(),
+            node_type: NodeType::Class,
+            location: UniversalLocation {
+                file_path: "/tmp/repo/session.py".into(),
+                start_line: 1,
+                end_line: 20,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "method-close".into(),
+            name: "close".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "/tmp/repo/session.py".into(),
+                start_line: 22,
+                end_line: 30,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            parent: Some("BrowserSession".into()),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "caller".into(),
+            name: "shutdown".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "/tmp/repo/main.py".into(),
+                start_line: 5,
+                end_line: 12,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_relationship(UniversalRelationship {
+            id: "calls-close".into(),
+            source_id: "caller".into(),
+            target_id: "method-close".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+
+        let matches = resolve_refactor_targets("BrowserSession.close", &graph);
+        assert!(!matches.is_empty());
+        assert_eq!(matches[0].name, "close");
+        assert_eq!(matches[0].parent.as_deref(), Some("BrowserSession"));
     }
 }
 

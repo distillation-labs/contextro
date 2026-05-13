@@ -16,6 +16,17 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 36 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.2] - 2026-05-13
+
+### Fixed
+
+- **Repo switching no longer leaves stale graphs in memory** — the no-change index fast path now only skips work when the requested repo is already the active in-memory repo, so `repo_add` followed by `index(path)` cannot silently keep the wrong graph loaded.
+- **Large tool responses stay valid JSON** — oversized outputs are now shrunk structurally and marked as truncated instead of being cut mid-payload, which keeps busy calls like `find_callers` parseable by real MCP clients.
+- **Qualified symbol refactors resolve consistently** — `refactor_check` now uses the same ranked fuzzy fallback as the graph tools, so symbols like `BrowserSession.close` work across the MCP surface.
+- **Repo, docs, and knowledge contracts are more consistent** — `repo_remove(name=...)`, `knowledge(command=\"list\")`, exact `introspect(tool=...)`, and `skill_prompt` all work with the current schemas and agent guidance.
+- **Search and analysis outputs are more trustworthy under live use** — symbol-style no-match searches now return empty low-confidence results, generic hub symbols like `append` / `__init__` are filtered from architecture summaries, and `test_coverage_map` reports directional likely coverage instead of an obviously misleading single heuristic number.
+- **Generated artifacts are more useful and reliable** — `docs_bundle` now writes real overview/architecture docs, `sidecar_export` matches relative and absolute indexed paths correctly, and shipped skill docs now reference `arc_...` archive refs plus the current `symbol_name` conventions.
+
 ## [1.6.1] - 2026-05-13
 
 ### Fixed

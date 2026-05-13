@@ -2,6 +2,9 @@
 
 Use the local release binary as the thing you test. Do **not** use npm publish as the first time the MCP is exercised like a real product.
 
+If your agent supports repo-local skills in this repository, load
+`contextro-release-tester` to drive the same gate sequence consistently.
+
 ## One command to scaffold a local RC
 
 From the repo root:

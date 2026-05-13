@@ -29,6 +29,7 @@ const GENERIC_NAMES: &[&str] = &[
     "get_mut",
     "set",
     "push",
+    "append",
     "pop",
     "insert",
     "remove",
@@ -102,6 +103,13 @@ const GENERIC_NAMES: &[&str] = &[
     "array",
 ];
 
+pub(crate) fn is_generic_symbol_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    GENERIC_NAMES.contains(&name)
+        || GENERIC_NAMES.contains(&lower.as_str())
+        || (name.len() > 4 && name.starts_with("__") && name.ends_with("__"))
+}
+
 pub fn handle_overview(
     graph: &CodeGraph,
     codebase: Option<&str>,
@@ -168,7 +176,7 @@ pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
     let mut scored: Vec<(String, String, usize)> = nodes
         .iter()
-        .filter(|n| !GENERIC_NAMES.contains(&n.name.as_str()))
+        .filter(|n| !is_generic_symbol_name(&n.name))
         .filter(|n| !is_test_file(&n.location.file_path))
         .map(|n| {
             let (in_d, out_d) = graph.get_node_degree(&n.id);
@@ -215,7 +223,7 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         *file_sizes
             .entry(node.location.file_path.clone())
             .or_default() += 1;
-        if GENERIC_NAMES.contains(&node.name.as_str()) || is_test_file(&node.location.file_path) {
+        if is_generic_symbol_name(&node.name) || is_test_file(&node.location.file_path) {
             continue;
         }
         let (in_d, out_d) = graph.get_node_degree(&node.id);
@@ -316,8 +324,7 @@ pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
                 || name_lower.starts_with("__")
                 || name_lower == "setup"
                 || name_lower == "teardown";
-            let is_noise = GENERIC_NAMES.contains(&node.name.as_str())
-                || GENERIC_NAMES.contains(&name_lower.as_str());
+            let is_noise = is_generic_symbol_name(&node.name);
             if !is_entry && !is_noise && !is_pytest_fixture(node, &mut file_cache) {
                 dead.push(json!({
                     "name": node.name,
@@ -357,16 +364,12 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
 
             // Rust: use crate:: / use super::
             if file_path.ends_with(".rs") {
-                let after_prefix = if trimmed.starts_with("use crate::") {
-                    Some(&trimmed[11..])
-                } else if trimmed.starts_with("use super::") {
-                    Some(&trimmed[11..])
-                } else {
-                    None
-                };
+                let after_prefix = trimmed
+                    .strip_prefix("use crate::")
+                    .or_else(|| trimmed.strip_prefix("use super::"));
                 if let Some(after) = after_prefix {
                     let segment = after
-                        .split(|c: char| c == ':' || c == ';' || c == ' ' || c == '{' || c == ',')
+                        .split([':', ';', ' ', '{', ','])
                         .next()
                         .unwrap_or("")
                         .trim();
@@ -397,8 +400,8 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
                 if let Some(from_pos) = trimmed.find("from ") {
                     let after_from = &trimmed[from_pos + 5..];
                     let path_str = after_from
-                        .trim_start_matches(|c| c == '\'' || c == '"')
-                        .trim_end_matches(|c| c == '\'' || c == '"' || c == ';');
+                        .trim_start_matches(['\'', '"'])
+                        .trim_end_matches(['\'', '"', ';']);
                     // Only relative imports can form cycles
                     if path_str.starts_with('.') {
                         let dir = Path::new(file_path).parent().unwrap_or(Path::new(""));
@@ -450,13 +453,29 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
     let nodes = graph.find_nodes_by_name("", false);
     let mut source_files: HashSet<String> = HashSet::new();
     let mut test_files: HashSet<String> = HashSet::new();
+    let mut source_tokens: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut test_file_tokens: HashMap<String, HashSet<String>> = HashMap::new();
 
     for node in &nodes {
         let fp = &node.location.file_path;
+        let relative_path = strip_base(fp, codebase);
         if is_test_file(fp) {
             test_files.insert(fp.clone());
+            let entry = test_file_tokens.entry(fp.clone()).or_default();
+            entry.extend(coverage_tokens(&relative_path));
+            entry.extend(coverage_tokens(&node.name));
         } else {
             source_files.insert(fp.clone());
+            source_tokens
+                .entry(fp.clone())
+                .or_insert_with(|| coverage_tokens(&relative_path));
+        }
+    }
+
+    let mut source_token_frequency: HashMap<String, usize> = HashMap::new();
+    for tokens in source_tokens.values() {
+        for token in tokens {
+            *source_token_frequency.entry(token.clone()).or_default() += 1;
         }
     }
 
@@ -472,13 +491,15 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
         }
     }
 
+    let mut covered_exact: Vec<String> = Vec::new();
     let mut covered: Vec<String> = Vec::new();
     let mut uncovered: Vec<String> = Vec::new();
+    let mut likely_covered: Vec<String> = Vec::new();
 
     for src in &source_files {
         let src_stem = file_stem_stripped(src);
 
-        let has_test = inline_tested.contains(src)
+        let exact_match = inline_tested.contains(src)
             || test_files.iter().any(|t| {
                 let t_stem = file_stem_stripped(t);
                 t_stem == src_stem
@@ -486,13 +507,30 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
                     || t_stem == format!("{}_test", src_stem)
             });
 
-        if has_test {
+        let heuristic_match = !exact_match
+            && source_tokens.get(src).is_some_and(|src_tokens| {
+                test_file_tokens.values().any(|test_tokens| {
+                    has_probable_test_signal(src_tokens, test_tokens, &source_token_frequency)
+                })
+            });
+
+        if exact_match {
+            covered_exact.push(strip_base(src, codebase));
             covered.push(strip_base(src, codebase));
+        } else if heuristic_match {
+            let path = strip_base(src, codebase);
+            likely_covered.push(path.clone());
+            covered.push(path);
         } else {
             uncovered.push(strip_base(src, codebase));
         }
     }
 
+    let conservative_pct = if source_files.is_empty() {
+        0.0
+    } else {
+        covered_exact.len() as f64 / source_files.len() as f64 * 100.0
+    };
     let coverage_pct = if source_files.is_empty() {
         0.0
     } else {
@@ -503,11 +541,15 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
         "coverage_type": "static_heuristic",
         "coverage_percent": (coverage_pct * 10.0).round() / 10.0,
         "static_coverage_percent": (coverage_pct * 10.0).round() / 10.0,
+        "conservative_coverage_percent": (conservative_pct * 10.0).round() / 10.0,
         "covered_files": covered.len(),
+        "conservative_covered_files": covered_exact.len(),
+        "likely_covered_files": likely_covered.len(),
         "uncovered_files": uncovered.len(),
         "test_files": test_files.len() + inline_tested.len(),
+        "likely_covered": likely_covered.into_iter().take(20).collect::<Vec<_>>(),
         "uncovered": uncovered.into_iter().take(20).collect::<Vec<_>>(),
-        "note": "Static heuristic based on test file naming and inline test blocks. This is not runtime or line coverage.",
+        "note": "Static heuristic based on inline tests, exact filename matches, and source/test token overlap. Treat this as directional file coverage, not runtime or line coverage.",
     })
 }
 
@@ -526,7 +568,56 @@ fn file_stem_stripped(fp: &str) -> String {
     stem
 }
 
-fn is_test_file(fp: &str) -> bool {
+fn coverage_tokens(text: &str) -> HashSet<String> {
+    const GENERIC_COVERAGE_TOKENS: &[&str] = &[
+        "test", "tests", "spec", "ci", "e2e", "integration", "unit", "src", "lib", "app",
+        "main", "index", "init", "conftest", "python", "rust",
+    ];
+
+    let mut spaced = String::with_capacity(text.len() * 2);
+    let mut prev_was_lower_or_digit = false;
+
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if ch.is_ascii_uppercase() && prev_was_lower_or_digit {
+                spaced.push(' ');
+            }
+            spaced.push(ch.to_ascii_lowercase());
+            prev_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        } else {
+            spaced.push(' ');
+            prev_was_lower_or_digit = false;
+        }
+    }
+
+    spaced
+        .split_whitespace()
+        .filter(|token| token.len() >= 3)
+        .filter(|token| !GENERIC_COVERAGE_TOKENS.contains(token))
+        .map(String::from)
+        .collect()
+}
+
+fn has_probable_test_signal(
+    source_tokens: &HashSet<String>,
+    test_tokens: &HashSet<String>,
+    source_token_frequency: &HashMap<String, usize>,
+) -> bool {
+    let overlap: Vec<&String> = source_tokens.intersection(test_tokens).collect();
+    if overlap.is_empty() {
+        return false;
+    }
+
+    let strong_overlap = overlap
+        .iter()
+        .filter(|token| token.len() >= 4)
+        .filter(|token| source_token_frequency.get(token.as_str()).copied().unwrap_or(usize::MAX) <= 5)
+        .count();
+
+    strong_overlap >= 1 || overlap.iter().filter(|token| token.len() >= 4).count() >= 2
+}
+
+pub(crate) fn is_test_file(fp: &str) -> bool {
     let basename = Path::new(fp)
         .file_name()
         .unwrap_or_default()
@@ -544,7 +635,7 @@ fn is_test_file(fp: &str) -> bool {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn strip_base(file: &str, codebase: Option<&str>) -> String {
+pub(crate) fn strip_base(file: &str, codebase: Option<&str>) -> String {
     codebase
         .and_then(|b| Path::new(file).strip_prefix(b).ok())
         .map(|p| p.to_string_lossy().to_string())
@@ -694,7 +785,7 @@ fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use contextro_core::graph::{UniversalLocation, UniversalNode};
+    use contextro_core::graph::{RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship};
     use contextro_engines::graph::CodeGraph;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -753,5 +844,172 @@ mod tests {
         assert_eq!(result["total"], 0);
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_architecture_filters_generic_python_builtins() {
+        let graph = CodeGraph::new();
+        let file = "/tmp/browser_use/session.py";
+
+        graph.add_node(UniversalNode {
+            id: "append".into(),
+            name: "append".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.into(),
+                start_line: 10,
+                end_line: 12,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "__init__".into(),
+            name: "__init__".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.into(),
+                start_line: 20,
+                end_line: 25,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "browser-session".into(),
+            name: "BrowserSession".into(),
+            node_type: NodeType::Class,
+            location: UniversalLocation {
+                file_path: file.into(),
+                start_line: 30,
+                end_line: 60,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "caller-a".into(),
+            name: "make_session".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.into(),
+                start_line: 70,
+                end_line: 72,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "caller-b".into(),
+            name: "close_session".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.into(),
+                start_line: 80,
+                end_line: 82,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-1".into(),
+            source_id: "caller-a".into(),
+            target_id: "append".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-2".into(),
+            source_id: "caller-b".into(),
+            target_id: "__init__".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-3".into(),
+            source_id: "caller-a".into(),
+            target_id: "browser-session".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-4".into(),
+            source_id: "caller-b".into(),
+            target_id: "browser-session".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+
+        let result = handle_architecture(&graph, None);
+        let names = result["hub_symbols"]
+            .as_array()
+            .expect("hub symbols")
+            .iter()
+            .filter_map(|entry| entry["name"].as_str())
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"BrowserSession"));
+        assert!(!names.contains(&"append"));
+        assert!(!names.contains(&"__init__"));
+    }
+
+    #[test]
+    fn test_coverage_map_uses_test_symbol_overlap_for_probable_matches() {
+        let graph = CodeGraph::new();
+        let source = "/tmp/repo/traverse/browser/session.py";
+        let test = "/tmp/repo/tests/ci/test_cross_origin_click.py";
+
+        graph.add_node(UniversalNode {
+            id: "browser-session".into(),
+            name: "BrowserSession".into(),
+            node_type: NodeType::Class,
+            location: UniversalLocation {
+                file_path: source.into(),
+                start_line: 1,
+                end_line: 20,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "test-browser-session".into(),
+            name: "browser_session".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: test.into(),
+                start_line: 1,
+                end_line: 5,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let result = handle_test_coverage_map(&graph, Some("/tmp/repo"));
+        assert_eq!(result["covered_files"], 1);
+        assert_eq!(result["conservative_covered_files"], 0);
+        assert_eq!(result["likely_covered_files"], 1);
+        assert_eq!(result["likely_covered"][0], "traverse/browser/session.py");
     }
 }

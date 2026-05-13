@@ -57,6 +57,7 @@ done
 | `applied-ai-engineer` | Turn research ideas into benchmarked, observable, production-ready systems |
 | `autoresearch` | Autonomous metric-driven experiment loops until a breakthrough target is met |
 | `breakthrough-researcher` | Deep technical research, hypothesis generation, ranked experiment backlog |
+| `contextro-release-tester` | Pre-release Contextro MCP regression testing, release gates, and go/block decisions |
 | `dev-contextro-mcp` | Use Contextro MCP for codebase discovery, search, call graphs, git history, memory |
 | `docs-maintainer` | Changelogs, README updates, release notes, publication manifests, doc sync |
 | `fastmcp-server-engineer` | Build or refactor FastMCP servers, tools, resources, middleware, and validation |

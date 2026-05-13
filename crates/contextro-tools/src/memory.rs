@@ -224,7 +224,7 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
             }
         });
     match command {
-        "show" => {
+        "show" | "list" => {
             let bases: Vec<Value> = knowledge
                 .show()
                 .iter()
@@ -325,5 +325,21 @@ fn parse_ttl_arg(s: &str) -> MemoryTtl {
         "week" => MemoryTtl::Week,
         "month" => MemoryTtl::Month,
         _ => MemoryTtl::Permanent,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_knowledge_list_alias_returns_indexed_bases() {
+        let knowledge = KnowledgeStore::new();
+        assert_eq!(knowledge.add("docs", "chunk one\nchunk two"), 1);
+
+        let result = handle_knowledge(&json!({"command":"list"}), &knowledge);
+        assert_eq!(result["total"], 1);
+        assert_eq!(result["knowledge_bases"][0]["name"], "docs");
+        assert_eq!(result["knowledge_bases"][0]["chunks"], 1);
     }
 }

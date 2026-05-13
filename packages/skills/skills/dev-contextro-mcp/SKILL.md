@@ -77,7 +77,7 @@ Index persists. Do not re-index before every call. Use `status()` to check readi
 | Store a durable decision | `remember(content="...", memory_type="decision")` | Persistent memory |
 | Archive pre-compaction context | `compact(content="...")` | Not `remember()` |
 | Recover after compaction | `session_snapshot()` then `recall(query="...", memory_type="archive")` | Search archive |
-| Expand sandboxed large output | `retrieve(ref_id="sx_...")` | Use when `sandbox_ref` is present |
+| Expand sandboxed large output | `retrieve(ref_id="arc_...")` | Use when `sandbox_ref` is present |
 
 ## Parameter Reference
 
@@ -85,12 +85,12 @@ Key parameter names that differ from intuition:
 
 | Tool | Param | Type |
 |---|---|---|
-| `find_symbol` | `name` | string (required) |
+| `find_symbol` | `symbol_name` | string (preferred); `name` / `symbol` aliases also work |
 | `find_callers` | `symbol_name` | string (required) |
 | `find_callees` | `symbol_name` | string (required) |
 | `explain` | `symbol_name` | string (required) |
 | `impact` | `symbol_name` | string (required); optional `max_depth` int |
-| `retrieve` | `ref_id` | string (required, e.g. `"sx_abc123"`) |
+| `retrieve` | `ref_id` | string (required, e.g. `"arc_abc123"`) |
 | `forget` | `memory_id` or `tags` or `memory_type` | at least one required |
 
 ## Response Format
@@ -164,7 +164,7 @@ This is the default orientation path. Do not start with broad file reads.
 - Read `content[0].text` first. Treat it as the primary output.
 - Use `structuredContent` only as a supplement.
 - If `confidence: low` is present, narrow the query or switch to `find_symbol`.
-- If the response includes `sandbox_ref`, call `retrieve(ref_id="sx_...")` before claiming you have the full result set.
+- If the response includes `sandbox_ref`, call `retrieve(ref_id="arc_...")` before claiming you have the full result set.
 - Keep default search limits unless the user explicitly wants exhaustive output.
 - If the user mentions a tight context budget, pass `context_budget` to `search()`.
 

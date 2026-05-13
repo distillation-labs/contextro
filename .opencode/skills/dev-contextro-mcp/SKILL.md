@@ -74,7 +74,7 @@ Index persists. Do not re-index before every call. Use `status()` to check readi
 | Store a durable decision | `remember(content, memory_type="decision")` | Persistent memory |
 | Archive pre-compaction context | `compact(content)` | Not `remember()` |
 | Recover after compaction | `session_snapshot()` then `recall(...)` | Search archive with `memory_type="archive"` |
-| Expand sandboxed large output | `retrieve("sx_...")` | Use when `sandbox_ref` is present |
+| Expand sandboxed large output | `retrieve("arc_...")` | Use when `sandbox_ref` is present |
 
 ## Response Format
 

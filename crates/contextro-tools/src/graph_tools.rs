@@ -7,7 +7,7 @@ use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
 /// Resolve the preferred `symbol_name` plus backward-compatible aliases.
-fn get_symbol_name<'a>(args: &'a Value) -> &'a str {
+fn get_symbol_name(args: &Value) -> &str {
     args.get("symbol_name")
         .or_else(|| args.get("name"))
         .or_else(|| args.get("symbol"))
@@ -275,4 +275,80 @@ fn build_explanation_summary(
         "{} is a {} defined at {}. It currently has {} caller(s) and {} callee(s).{}",
         node.name, node.node_type, location, callers_count, callees_count, doc
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use contextro_core::graph::{
+        RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
+    };
+    use contextro_core::NodeType;
+
+    #[test]
+    fn test_impact_results_are_monotonic_with_depth() {
+        let graph = CodeGraph::new();
+        let file = "/tmp/repo/src/session.py";
+
+        for (id, name, line) in [
+            ("leaf", "BrowserSession", 10_u32),
+            ("mid", "create_browser_session", 20_u32),
+            ("root", "start_app", 30_u32),
+        ] {
+            graph.add_node(UniversalNode {
+                id: id.into(),
+                name: name.into(),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: file.into(),
+                    start_line: line,
+                    end_line: line,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "python".into(),
+                },
+                language: "python".into(),
+                ..Default::default()
+            });
+        }
+
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-mid-leaf".into(),
+            source_id: "mid".into(),
+            target_id: "leaf".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-root-mid".into(),
+            source_id: "root".into(),
+            target_id: "mid".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+
+        let depth_one = handle_impact(&json!({"symbol_name":"BrowserSession","max_depth":1}), &graph, Some("/tmp/repo"));
+        let depth_three = handle_impact(&json!({"symbol_name":"BrowserSession","max_depth":3}), &graph, Some("/tmp/repo"));
+
+        assert_eq!(depth_one["total_impacted"], 1);
+        assert_eq!(depth_three["total_impacted"], 2);
+
+        let shallow = depth_one["impacted"]
+            .as_array()
+            .expect("depth-one impacted list")
+            .iter()
+            .filter_map(|entry| entry["name"].as_str())
+            .collect::<Vec<_>>();
+        let deep = depth_three["impacted"]
+            .as_array()
+            .expect("depth-three impacted list")
+            .iter()
+            .filter_map(|entry| entry["name"].as_str())
+            .collect::<Vec<_>>();
+
+        assert!(deep.len() >= shallow.len());
+        for name in shallow {
+            assert!(deep.contains(&name));
+        }
+    }
 }

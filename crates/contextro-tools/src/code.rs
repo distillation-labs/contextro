@@ -501,7 +501,7 @@ fn strip_base(file: &str, codebase: Option<&str>) -> String {
         .unwrap_or_else(|| file.to_string())
 }
 
-fn get_document_path_arg<'a>(args: &'a Value) -> Option<&'a str> {
+fn get_document_path_arg(args: &Value) -> Option<&str> {
     args.get("path")
         .or_else(|| args.get("file_path"))
         .and_then(|value| value.as_str())
