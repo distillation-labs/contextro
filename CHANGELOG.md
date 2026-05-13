@@ -4,6 +4,27 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-13
+
+### Added
+
+- **Python tree-sitter parsing**: Real AST-based parsing via `tree-sitter-python 0.23`. Extracts `function_definition`, `class_definition`, `decorated_definition`, `call` nodes, and docstrings from the AST. Methods inside classes get correct `parent` context.
+- **Persistent BM25 index**: Tantivy index now stored on disk at `~/.contextro/projects/<name>/bm25_index/` using `MmapDirectory`. Index survives server restarts — no need to re-index every session.
+
+## [1.0.2] - 2026-05-12
+
+### Fixed
+
+- Clippy `double_comparisons` error: `depth <= 0 && depth != 0` → `depth < 0`.
+- Dead code warning: `#[allow(dead_code)]` on `AppState::sandbox` field.
+- `cargo fmt --all` applied to fix all formatting warnings in CI.
+
+## [1.0.1] - 2026-05-12
+
+### Fixed
+
+- All tool responses now return relative file paths — absolute codebase prefix stripped via post-processing in dispatch. Previously `search`, `find_callers`, `find_callees`, `explain`, and `impact` returned absolute paths.
+
 ## [1.0.0] - 2026-05-12
 
 ### Added
