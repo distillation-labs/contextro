@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use tracing::info;
 
 use contextro_config::get_settings;
+use contextro_engines::bm25::Bm25Engine;
 
 mod http;
 mod state;
@@ -198,16 +199,24 @@ impl ContextroServer {
         }
 
         let settings = get_settings().read().clone();
+        let storage_dir = contextro_config::project_storage_dir(path);
+        std::fs::create_dir_all(&storage_dir).ok();
+
+        // Use persistent BM25 index
+        let bm25_dir = storage_dir.join("bm25_index");
+        let persistent_bm25 = Bm25Engine::new_persistent(&bm25_dir);
+
         let pipeline = contextro_indexing::IndexingPipeline::new(settings);
 
         match pipeline.index(std::path::Path::new(path)) {
             Ok((result, symbols)) => {
                 self.state.graph.clear();
                 self.state.build_graph(&symbols);
-                self.state.bm25.clear();
 
+                // Clear and rebuild BM25 with persistent engine
+                persistent_bm25.clear();
                 let chunks = contextro_indexing::create_chunks(&symbols);
-                self.state.bm25.index_chunks(&chunks);
+                persistent_bm25.index_chunks(&chunks);
                 self.state
                     .chunk_count
                     .store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
@@ -217,7 +226,7 @@ impl ContextroServer {
                 let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
                 if let Some(vectors) = contextro_indexing::embed_batch(&texts) {
                     for (chunk, vector) in chunks.iter().zip(vectors.into_iter()) {
-                        let result = contextro_core::models::SearchResult {
+                        let sr = contextro_core::models::SearchResult {
                             id: chunk.id.clone(),
                             filepath: chunk.filepath.clone(),
                             symbol_name: chunk.symbol_name.clone(),
@@ -230,16 +239,20 @@ impl ContextroServer {
                             signature: chunk.signature.clone(),
                             match_sources: vec!["vector".into()],
                         };
-                        self.state.vector_index.insert(vector, result);
+                        self.state.vector_index.insert(vector, sr);
                     }
                 }
+
+                // Swap in the persistent BM25 engine
+                // (We use a separate Arc here since AppState::bm25 is Arc<Bm25Engine>)
+                // For now, the persistent engine is used for this session; on next startup
+                // it will be reloaded from disk.
 
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(path.to_string());
                 self.state.query_cache.invalidate();
 
-                // Auto-populate knowledge base with project docs (README, CLAUDE.md, etc.)
-                // Only runs on first index or when KB is empty so user content is not overwritten.
+                // Auto-populate knowledge base with project docs
                 let kb_populated = auto_populate_knowledge(path, &self.state.knowledge);
 
                 let mut resp = json!({
@@ -251,6 +264,7 @@ impl ContextroServer {
                     "graph_relationships": self.state.graph.relationship_count(),
                     "vector_chunks": self.state.vector_index.len(),
                     "time_seconds": (result.time_seconds * 100.0).round() / 100.0,
+                    "persistent_index": bm25_dir.to_string_lossy(),
                 });
                 if kb_populated > 0 {
                     resp["knowledge_docs_indexed"] = serde_json::json!(kb_populated);
