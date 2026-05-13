@@ -1,6 +1,6 @@
 //! Search execution engine: classify, retrieve, fuse, filter, compact.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use contextro_core::models::SearchResult;
 
@@ -109,6 +109,10 @@ pub fn execute_search(
 
     // Same-file diversity penalty
     apply_diversity_penalty(&mut results);
+
+    // Graph consensus: boost results that are graph-neighbors of other results
+    apply_graph_consensus(&mut results, graph);
+
     results.truncate(limit);
 
     let confidence = calculate_confidence(&results);
@@ -183,6 +187,39 @@ fn apply_diversity_penalty(results: &mut [SearchResult]) {
         if *count > 2 {
             r.score *= 0.7; // Penalize 3rd+ result from same file
         }
+    }
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+
+/// Boost results that are graph-neighbors of other results (consensus signal).
+fn apply_graph_consensus(results: &mut [SearchResult], graph: &CodeGraph) {
+    if results.len() < 2 {
+        return;
+    }
+    let id_set: HashSet<String> = results.iter().map(|r| r.id.clone()).collect();
+    let boosts: Vec<f64> = results
+        .iter()
+        .map(|r| {
+            let mut connections = 0usize;
+            for caller in graph.get_callers(&r.id) {
+                if id_set.contains(&caller.id) {
+                    connections += 1;
+                }
+            }
+            for callee in graph.get_callees(&r.id) {
+                if id_set.contains(&callee.id) {
+                    connections += 1;
+                }
+            }
+            connections as f64 * 0.1
+        })
+        .collect();
+    for (r, b) in results.iter_mut().zip(boosts) {
+        r.score += b;
     }
     results.sort_by(|a, b| {
         b.score

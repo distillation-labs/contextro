@@ -21,6 +21,8 @@ struct GraphInner {
     nodes_by_file: HashMap<String, Vec<String>>,
     // Token-based inverted index for fast fuzzy search
     token_index: HashMap<String, Vec<String>>, // token → [node_ids]
+    // Pre-computed PageRank scores
+    pagerank: HashMap<String, f64>,
 }
 
 impl CodeGraph {
@@ -34,6 +36,7 @@ impl CodeGraph {
                 nodes_by_name: HashMap::new(),
                 nodes_by_file: HashMap::new(),
                 token_index: HashMap::new(),
+                pagerank: HashMap::new(),
             }),
         }
     }
@@ -69,17 +72,20 @@ impl CodeGraph {
         if !inner.nodes.contains_key(&rel.source_id) || !inner.nodes.contains_key(&rel.target_id) {
             return;
         }
-        if rel.relationship_type == RelationshipType::Calls {
-            inner
-                .callers
-                .entry(rel.target_id.clone())
-                .or_default()
-                .push(rel.source_id.clone());
-            inner
-                .callees
-                .entry(rel.source_id.clone())
-                .or_default()
-                .push(rel.target_id.clone());
+        match rel.relationship_type {
+            RelationshipType::Calls | RelationshipType::Implements | RelationshipType::Extends => {
+                inner
+                    .callers
+                    .entry(rel.target_id.clone())
+                    .or_default()
+                    .push(rel.source_id.clone());
+                inner
+                    .callees
+                    .entry(rel.source_id.clone())
+                    .or_default()
+                    .push(rel.target_id.clone());
+            }
+            _ => {}
         }
         inner.relationships.insert(rel.id.clone(), rel);
     }
@@ -210,6 +216,53 @@ impl CodeGraph {
         inner.nodes_by_name.clear();
         inner.nodes_by_file.clear();
         inner.token_index.clear();
+        inner.pagerank.clear();
+    }
+
+    /// Compute PageRank over the call graph. Call after all edges are added.
+    pub fn compute_pagerank(&self) {
+        let mut inner = self.inner.write();
+        let n = inner.nodes.len();
+        if n == 0 {
+            return;
+        }
+        let damping = 0.85;
+        let base = (1.0 - damping) / n as f64;
+        let ids: Vec<String> = inner.nodes.keys().cloned().collect();
+        let mut scores: HashMap<String, f64> =
+            ids.iter().map(|id| (id.clone(), 1.0 / n as f64)).collect();
+
+        for _ in 0..20 {
+            let mut next: HashMap<String, f64> = HashMap::with_capacity(n);
+            for id in &ids {
+                let mut sum = 0.0;
+                if let Some(callers) = inner.callers.get(id) {
+                    for caller_id in callers {
+                        let caller_score = scores.get(caller_id).copied().unwrap_or(0.0);
+                        let out_deg = inner
+                            .callees
+                            .get(caller_id)
+                            .map(|v| v.len())
+                            .unwrap_or(1)
+                            .max(1);
+                        sum += caller_score / out_deg as f64;
+                    }
+                }
+                next.insert(id.clone(), base + damping * sum);
+            }
+            scores = next;
+        }
+        inner.pagerank = scores;
+    }
+
+    /// Get pre-computed PageRank for a node.
+    pub fn get_pagerank(&self, node_id: &str) -> f64 {
+        self.inner
+            .read()
+            .pagerank
+            .get(node_id)
+            .copied()
+            .unwrap_or(0.0)
     }
 
     pub fn remove_file_nodes(&self, file_path: &str) {

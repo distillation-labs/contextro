@@ -225,6 +225,7 @@ impl ContextroServer {
             Ok((result, symbols)) => {
                 self.state.graph.clear();
                 self.state.build_graph(&symbols);
+                self.state.graph.compute_pagerank();
 
                 // Index chunks into the shared BM25 engine
                 self.state.bm25.clear();
