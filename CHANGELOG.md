@@ -4,6 +4,21 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-12
+
+### Added
+
+- **Token budget parameter** (`max_tokens`): Any tool accepts `max_tokens` to cap response size. Server truncates at token boundary. 87% reduction when budget is set.
+- **Actionable errors** (#8): Symbol-not-found errors now include `did_you_mean` suggestions using edit distance matching, plus a `hint` with the correct tool call to try.
+- **Tool tiering** (#10): Set `CTX_TOOL_TIER=core` (10 tools), `standard` (22 tools), or `full` (36 tools, default) to reduce schema token overhead for simpler workflows.
+
+### Changed
+
+- **Tools sorted alphabetically** (#2): `tools/list` returns tools in stable alphabetical order for prompt cache hits (90% cost reduction on cached tokens per Mistral/NVIDIA research).
+- **Null/empty field stripping** (#1): Responses omit null values, empty strings, and empty arrays from nested objects. Top-level keys preserved for API stability.
+- **Concise responses** (#5): All file paths are relative (no absolute paths in responses). Empty metadata fields stripped.
+- **Improved tool descriptions**: Every tool has a concise, actionable description with parameter documentation inline.
+
 ## [0.9.0] - 2026-05-12
 
 ### Changed

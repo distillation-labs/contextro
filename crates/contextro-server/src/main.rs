@@ -96,15 +96,45 @@ impl ContextroServer {
             }
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
-            _ => json!({"error": format!("Unknown tool: {}", name)}),
+            _ => json!({"error": format!("Unknown tool: '{}'. Use introspect() to find the right tool.", name)}),
         };
 
         s.session_tracker.track(name, &format!("{}()", name));
 
+        // ── Response optimization (#1, #5, #7, #9) ──────────────────────────
+        let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+
         if result.get("error").is_some() {
-            CallToolResult::error(vec![Content::text(result.to_string())])
+            // #8: Actionable errors — add fuzzy suggestions for symbol-not-found
+            let err_text = result["error"].as_str().unwrap_or("");
+            let enhanced = if err_text.contains("not found") {
+                if let Some(sym) = err_text.split('\'').nth(1) {
+                    // Try fuzzy graph search first, then edit distance
+                    let mut suggestions = s.graph.find_nodes_by_name(sym, false);
+                    if suggestions.is_empty() {
+                        // Edit distance fallback: find symbols within distance 2
+                        let all = s.graph.find_nodes_by_name("", false);
+                        let sym_lower = sym.to_lowercase();
+                        suggestions = all.into_iter()
+                            .filter(|n| {
+                                let name_lower = n.name.to_lowercase();
+                                edit_distance(&sym_lower, &name_lower) <= 2
+                                    || name_lower.contains(&sym_lower)
+                                    || sym_lower.contains(&name_lower)
+                            })
+                            .collect();
+                    }
+                    if !suggestions.is_empty() {
+                        let sugg: Vec<String> = suggestions.iter().take(3)
+                            .map(|n| format!("{} ({}:{})", n.name, strip_codebase(&n.location.file_path, cb), n.location.start_line))
+                            .collect();
+                        json!({"error": err_text, "did_you_mean": sugg, "hint": format!("Try: find_symbol(name=\"{}\", exact=false)", &sym[..sym.len().min(4)])})
+                    } else { result }
+                } else { result }
+            } else { result };
+            CallToolResult::error(vec![Content::text(format_response(&enhanced, max_tokens))])
         } else {
-            CallToolResult::success(vec![Content::text(result.to_string())])
+            CallToolResult::success(vec![Content::text(format_response(&result, max_tokens))])
         }
     }
 
@@ -292,6 +322,77 @@ impl ContextroServer {
     }
 }
 
+/// #1, #5, #9: Format response — strip nulls/empties from nested objects, apply token budget.
+fn format_response(value: &Value, max_tokens: usize) -> String {
+    // Strip null and empty values from nested objects only (#1)
+    // Keep top-level keys intact so tools always return their documented fields
+    let cleaned = strip_empty_nested(value, true);
+    let output = cleaned.to_string();
+
+    // #9: Token budget — truncate if over budget (1 token ≈ 4 chars)
+    if max_tokens > 0 {
+        let max_chars = max_tokens * 4;
+        if output.len() > max_chars {
+            let truncated = &output[..max_chars];
+            if let Some(pos) = truncated.rfind("},") {
+                return format!("{}}}],\"truncated\":true}}", &output[..pos]);
+            }
+            return format!("{}...[truncated to {} tokens]", &output[..max_chars], max_tokens);
+        }
+    }
+    output
+}
+
+fn strip_empty_nested(value: &Value, is_top_level: bool) -> Value {
+    match value {
+        Value::Object(map) => {
+            let cleaned: serde_json::Map<String, Value> = map.iter()
+                .filter(|(_, v)| is_top_level || !is_empty_value(v))
+                .map(|(k, v)| (k.clone(), strip_empty_nested(v, false)))
+                .collect();
+            Value::Object(cleaned)
+        }
+        Value::Array(arr) => {
+            Value::Array(arr.iter().map(|v| strip_empty_nested(v, false)).collect())
+        }
+        _ => value.clone(),
+    }
+}
+
+fn is_empty_value(v: &Value) -> bool {
+    match v {
+        Value::Null => true,
+        Value::String(s) => s.is_empty(),
+        Value::Array(a) => a.is_empty(),
+        Value::Object(m) => m.is_empty(),
+        _ => false,
+    }
+}
+
+fn strip_codebase(path: &str, codebase: Option<&str>) -> String {
+    codebase
+        .and_then(|b| std::path::Path::new(path).strip_prefix(b).ok())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (m, n) = (a.len(), b.len());
+    if m == 0 { return n; }
+    if n == 0 { return m; }
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr = vec![0; n + 1];
+    for (i, ca) in a.chars().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.chars().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            curr[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(curr[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[n]
+}
+
 impl Default for ContextroServer {
     fn default() -> Self {
         Self::new()
@@ -343,8 +444,31 @@ impl ServerHandler for ContextroServer {
         _request: PaginatedRequestParam,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
+        // #2: Sort alphabetically for prompt cache hits
+        // #10: Tool tiering via CTX_TOOL_TIER env var
+        let mut tools = Self::tool_definitions();
+        tools.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let tier = std::env::var("CTX_TOOL_TIER").unwrap_or_else(|_| "full".to_string());
+        let core_tools: &[&str] = &[
+            "code", "explain", "find_callers", "find_callees", "find_symbol",
+            "health", "impact", "index", "search", "status",
+        ];
+        let standard_tools: &[&str] = &[
+            "analyze", "architecture", "code", "commit_history", "commit_search",
+            "dead_code", "explain", "find_callers", "find_callees", "find_symbol",
+            "focus", "forget", "health", "impact", "index", "introspect",
+            "knowledge", "overview", "recall", "remember", "search", "status",
+        ];
+
+        let filtered = match tier.as_str() {
+            "core" => tools.into_iter().filter(|t| core_tools.contains(&t.name.as_ref())).collect(),
+            "standard" => tools.into_iter().filter(|t| standard_tools.contains(&t.name.as_ref())).collect(),
+            _ => tools, // "full" — all tools
+        };
+
         std::future::ready(Ok(ListToolsResult {
-            tools: Self::tool_definitions(),
+            tools: filtered,
             next_cursor: None,
         }))
     }
