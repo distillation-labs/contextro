@@ -7,15 +7,26 @@ use contextro_core::NodeType;
 use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
-/// Generic method names that appear everywhere and inflate graph metrics.
-/// Filtered out of architecture hub rankings and high-connectivity reports.
+/// Generic/noise names filtered from architecture hub rankings, dead_code, and high-connectivity reports.
+/// Includes Rust stdlib methods, JS/TS test framework globals, and common single-word identifiers
+/// that appear everywhere and inflate graph metrics without conveying architectural meaning.
 const GENERIC_NAMES: &[&str] = &[
+    // Rust stdlib
     "new", "default", "clone", "drop", "fmt", "from", "into", "as_ref", "as_mut",
     "len", "is_empty", "iter", "iter_mut", "get", "get_mut", "set", "push", "pop",
     "insert", "remove", "contains", "clear", "extend", "collect", "map", "filter",
     "unwrap", "unwrap_or", "expect", "ok", "err",
     "to_string", "to_owned", "parse", "deref", "deref_mut",
     "send", "recv", "read", "write", "flush", "close",
+    // JS/TS test framework globals (Jest, Vitest, Mocha, Playwright)
+    "describe", "it", "test", "expect", "beforeEach", "afterEach", "beforeAll", "afterAll",
+    "vi", "jest", "assert", "suite", "bench",
+    // JS/TS language keywords misidentified as symbols
+    "export", "await", "async", "return", "import", "require",
+    // Common single-word JS identifiers that appear in every file
+    "id", "name", "type", "value", "data", "result", "error", "now", "next",
+    "key", "index", "item", "node", "ref", "props", "state", "ctx", "res", "req",
+    "number", "string", "boolean", "object", "array",
 ];
 
 pub fn handle_overview(graph: &CodeGraph, codebase: Option<&str>, total_chunks: usize, vector_chunks: usize) -> Value {
@@ -116,8 +127,30 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
             .unwrap_or_else(|| path.to_string())
     };
 
-    // Find symbols in this file from the graph
     let nodes = graph.find_nodes_by_name("", false);
+
+    // Directory: list top symbols grouped by file
+    if Path::new(&abs_path).is_dir() {
+        let mut by_file: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
+        for n in nodes.iter().filter(|n| n.location.file_path.starts_with(&abs_path)) {
+            let (in_d, out_d) = graph.get_node_degree(&n.id);
+            by_file.entry(strip_base(&n.location.file_path, codebase)).or_default().push(
+                json!({"name": n.name, "type": n.node_type.to_string(), "line": n.location.start_line, "callers": in_d, "callees": out_d})
+            );
+        }
+        let total_symbols: usize = by_file.values().map(|v| v.len()).sum();
+        let files: Vec<Value> = by_file.into_iter()
+            .map(|(file, syms)| json!({"file": file, "symbols": syms}))
+            .collect();
+        return json!({
+            "path": strip_base(&abs_path, codebase),
+            "is_directory": true,
+            "files": files,
+            "total_symbols": total_symbols,
+        });
+    }
+
+    // Single file
     let file_symbols: Vec<Value> = nodes.iter()
         .filter(|n| n.location.file_path == abs_path || n.location.file_path.ends_with(path))
         .map(|n| {
@@ -126,7 +159,6 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
         })
         .collect();
 
-    // Read first few lines for overview
     let preview = std::fs::read_to_string(&abs_path)
         .map(|s| s.lines().take(5).collect::<Vec<_>>().join("\n"))
         .unwrap_or_default();
@@ -151,14 +183,15 @@ pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
         }
         let (in_degree, _) = graph.get_node_degree(&node.id);
         if in_degree == 0 {
-            // Check if it's likely an entry point (main, test_, __init__, etc.)
             let name_lower = node.name.to_lowercase();
             let is_entry = name_lower == "main"
                 || name_lower.starts_with("test_")
                 || name_lower.starts_with("__")
                 || name_lower == "setup"
                 || name_lower == "teardown";
-            if !is_entry {
+            let is_noise = GENERIC_NAMES.contains(&node.name.as_str())
+                || GENERIC_NAMES.contains(&name_lower.as_str());
+            if !is_entry && !is_noise {
                 dead.push(json!({
                     "name": node.name,
                     "file": strip_base(&node.location.file_path, codebase),

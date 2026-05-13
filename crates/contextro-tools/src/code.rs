@@ -214,7 +214,7 @@ fn pattern_search(args: &Value, codebase: Option<&str>) -> Value {
     let mut matches: Vec<Value> = Vec::new();
     let files = collect_files(&target, language);
 
-    for file in files.iter().take(100) {
+    for file in &files {
         let content = match std::fs::read_to_string(file) {
             Ok(c) => c,
             Err(_) => continue,
@@ -278,7 +278,7 @@ fn pattern_rewrite(args: &Value, codebase: Option<&str>) -> Value {
     let mut changes: Vec<Value> = Vec::new();
     let mut total_replacements = 0;
 
-    for file in files.iter().take(50) {
+    for file in &files {
         let content = match std::fs::read_to_string(file) {
             Ok(c) => c,
             Err(_) => continue,
@@ -465,6 +465,7 @@ fn pattern_to_regex(pattern: &str) -> String {
 }
 
 /// Collect files from a path, optionally filtered by language extension.
+/// Uses the `ignore` crate so it respects .gitignore and handles unlimited depth.
 fn collect_files(path: &str, language: Option<&str>) -> Vec<String> {
     let p = Path::new(path);
     if p.is_file() {
@@ -485,40 +486,26 @@ fn collect_files(path: &str, language: Option<&str>) -> Vec<String> {
     });
 
     let mut files = Vec::new();
-    walk_dir(p, &extensions, &mut files, 3);
-    files
-}
-
-fn walk_dir(dir: &Path, extensions: &Option<Vec<&str>>, files: &mut Vec<String>, depth: usize) {
-    if depth == 0 {
-        return;
-    }
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        if name.starts_with('.')
-            || name == "node_modules"
-            || name == "target"
-            || name == "__pycache__"
-        {
+    for entry in ignore::Walk::new(p).flatten() {
+        let ep = entry.path();
+        if !ep.is_file() {
             continue;
         }
-        if path.is_dir() {
-            walk_dir(&path, extensions, files, depth - 1);
-        } else if path.is_file() {
-            if let Some(exts) = extensions {
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if exts.contains(&ext) {
-                        files.push(path.to_string_lossy().to_string());
-                    }
+        if let Some(exts) = &extensions {
+            if let Some(ext) = ep.extension().and_then(|e| e.to_str()) {
+                if exts.contains(&ext) {
+                    files.push(ep.to_string_lossy().to_string());
                 }
-            } else {
-                files.push(path.to_string_lossy().to_string());
+            }
+        } else {
+            // No language filter — include all non-binary files
+            if let Some(ext) = ep.extension().and_then(|e| e.to_str()) {
+                if !["png","jpg","jpeg","gif","svg","ico","woff","woff2","ttf","eot",
+                     "pdf","zip","gz","tar","lock","map","min.js"].contains(&ext) {
+                    files.push(ep.to_string_lossy().to_string());
+                }
             }
         }
     }
+    files
 }

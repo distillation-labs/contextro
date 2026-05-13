@@ -154,19 +154,35 @@ impl KnowledgeStore {
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<(String, String)> {
         let query_lower = query.to_lowercase();
+        // Split into meaningful words (3+ chars) for fallback word matching
+        let words: Vec<&str> = query_lower.split_whitespace()
+            .filter(|w| w.len() >= 3)
+            .collect();
+
         let docs = self.docs.read();
-        let mut results = Vec::new();
+        let mut results: Vec<(String, String, usize)> = Vec::new();
+
         for (name, chunks) in docs.iter() {
             for chunk in chunks {
-                if chunk.to_lowercase().contains(&query_lower) {
-                    results.push((name.clone(), chunk.clone()));
-                    if results.len() >= limit {
-                        return results;
+                let chunk_lower = chunk.to_lowercase();
+                // Exact substring match scores highest
+                if chunk_lower.contains(&query_lower) {
+                    results.push((name.clone(), chunk.clone(), 100));
+                } else if !words.is_empty() {
+                    // Word overlap score
+                    let matched = words.iter().filter(|w| chunk_lower.contains(*w)).count();
+                    if matched > 0 {
+                        results.push((name.clone(), chunk.clone(), matched));
                     }
                 }
             }
         }
-        results
+
+        results.sort_by_key(|r| std::cmp::Reverse(r.2));
+        results.into_iter()
+            .take(limit)
+            .map(|(name, chunk, _)| (name, chunk))
+            .collect()
     }
 
     pub fn show(&self) -> Vec<(String, usize)> {

@@ -4,6 +4,15 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-12
+
+### Fixed
+
+- `pattern_search` and `pattern_rewrite` now use the `ignore` crate walker (respects `.gitignore`, unlimited depth) instead of a hand-rolled 3-level walker — previously missed all files more than 3 directories deep in monorepos.
+- `focus` on a directory now returns all symbols grouped by file instead of returning 0 results.
+- `knowledge/search` now uses word-level scoring as a fallback when exact substring matching fails, so queries like "how is the frontend structured" match relevant indexed content.
+- `architecture` and `dead_code` no longer surface JS/TS test framework globals (`describe`, `test`, `it`, `expect`, `beforeEach`, etc.) or common noise identifiers (`export`, `await`, `id`, `name`, `type`) as architectural hubs or dead code candidates.
+
 ## [0.8.0] - 2026-05-12
 
 ### Fixed
