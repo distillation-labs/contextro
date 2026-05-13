@@ -6,9 +6,10 @@ use std::path::Path;
 use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
-/// Resolve `symbol_name` with a backward-compat fallback to the old `symbol` param name.
+/// Resolve the preferred `symbol_name` plus backward-compatible aliases.
 fn get_symbol_name<'a>(args: &'a Value) -> &'a str {
     args.get("symbol_name")
+        .or_else(|| args.get("name"))
         .or_else(|| args.get("symbol"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
@@ -110,8 +111,9 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
     }
 
     let node = &matches[0];
-    let callers: Vec<String> = graph
-        .get_callers(&node.id)
+    let all_callers = graph.get_callers(&node.id);
+    let all_callees = graph.get_callees(&node.id);
+    let callers: Vec<String> = all_callers
         .iter()
         .take(10)
         .map(|c| {
@@ -123,8 +125,7 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
             )
         })
         .collect();
-    let callees: Vec<String> = graph
-        .get_callees(&node.id)
+    let callees: Vec<String> = all_callees
         .iter()
         .take(10)
         .map(|c| {
@@ -142,6 +143,7 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
             )
         })
         .collect();
+    let summary = build_explanation_summary(node, all_callers.len(), all_callees.len(), codebase);
 
     json!({
         "name": node.name,
@@ -150,6 +152,9 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         "line": node.location.start_line,
         "language": node.language,
         "docstring": node.docstring,
+        "summary": summary,
+        "callers_count": all_callers.len(),
+        "callees_count": all_callees.len(),
         "callers": callers,
         "callees": callees,
     })
@@ -246,4 +251,28 @@ fn resolve_symbol(name: &str, graph: &CodeGraph) -> Vec<contextro_core::Universa
         std::cmp::Reverse(in_d + out_d)
     });
     fuzzy.into_iter().take(5).collect()
+}
+
+fn build_explanation_summary(
+    node: &contextro_core::UniversalNode,
+    callers_count: usize,
+    callees_count: usize,
+    codebase: Option<&str>,
+) -> String {
+    let location = format!(
+        "{}:{}",
+        relativize(&node.location.file_path, codebase),
+        node.location.start_line
+    );
+    let doc = node
+        .docstring
+        .as_deref()
+        .map(str::trim)
+        .filter(|doc| !doc.is_empty())
+        .map(|doc| format!(" {doc}"))
+        .unwrap_or_default();
+    format!(
+        "{} is a {} defined at {}. It currently has {} caller(s) and {} callee(s).{}",
+        node.name, node.node_type, location, callers_count, callees_count, doc
+    )
 }

@@ -1,6 +1,6 @@
 //! Code tool: AST operations dispatch.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use contextro_core::traits::Parser;
 use contextro_engines::graph::CodeGraph;
@@ -15,14 +15,17 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
         .and_then(|v| v.as_str())
         .unwrap_or("");
     match operation {
-        "get_document_symbols" => get_document_symbols(args),
+        "get_document_symbols" => get_document_symbols(args, codebase),
         // v0.4.0 name alias
         "list_symbols" => {
             // If `file_path` or `path` point to a file, use get_document_symbols;
             // otherwise fall through to the directory-based list
-            let has_file = args.get("file_path").and_then(|v| v.as_str()).is_some();
+            let has_file = get_document_path_arg(args)
+                .and_then(|path| resolve_existing_path(path, codebase).ok())
+                .map(|path| path.is_file())
+                .unwrap_or(false);
             if has_file {
-                get_document_symbols(args)
+                get_document_symbols(args, codebase)
             } else {
                 list_symbols(args, graph, codebase)
             }
@@ -39,17 +42,21 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
     }
 }
 
-fn get_document_symbols(args: &Value) -> Value {
-    let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
-    if file_path.is_empty() {
-        return json!({"error": "Missing required parameter: file_path"});
-    }
-    if !Path::new(file_path).exists() {
-        return json!({"error": format!("File not found: {}", file_path)});
+fn get_document_symbols(args: &Value, codebase: Option<&str>) -> Value {
+    let file_path = match get_document_path_arg(args) {
+        Some(path) => path,
+        None => return json!({"error": "Missing required parameter: path"}),
+    };
+    let abs_path = match resolve_existing_path(file_path, codebase) {
+        Ok(path) => path,
+        Err(error) => return error,
+    };
+    if !abs_path.is_file() {
+        return json!({"error": format!("Path is not a file: {}", file_path)});
     }
 
     let parser = TreeSitterParser::new();
-    match parser.parse_file(file_path) {
+    match parser.parse_file(abs_path.to_string_lossy().as_ref()) {
         Ok(parsed) => {
             let symbols: Vec<Value> = parsed
                 .symbols
@@ -76,7 +83,7 @@ fn get_document_symbols(args: &Value) -> Value {
                     sym
                 })
                 .collect();
-            json!({"file": file_path, "symbols": symbols, "total": symbols.len()})
+            json!({"file": strip_base(&abs_path.to_string_lossy(), codebase), "symbols": symbols, "total": symbols.len()})
         }
         Err(e) => json!({"error": format!("Parse failed: {}", e)}),
     }
@@ -86,6 +93,7 @@ fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
     // Accept `symbol_name` (current) or `query` (v0.4.0 alias)
     let name = args
         .get("symbol_name")
+        .or_else(|| args.get("name"))
         .or_else(|| args.get("query"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
@@ -161,20 +169,16 @@ fn list_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Valu
     if path.is_empty() {
         return json!({"error": "Missing required parameter: path"});
     }
-    let base = codebase.unwrap_or(".");
-    let abs_path = if Path::new(path).is_absolute() {
-        path.to_string()
-    } else {
-        format!("{}/{}", base, path)
+    let abs_path = match resolve_existing_path(path, codebase) {
+        Ok(path) => path,
+        Err(error) => return error,
     };
+    let is_dir = abs_path.is_dir();
 
     let all_nodes = graph.find_nodes_by_name("", false);
     let symbols: Vec<Value> = all_nodes
         .iter()
-        .filter(|n| {
-            n.location.file_path == abs_path
-                || n.location.file_path.starts_with(&format!("{}/", abs_path))
-        })
+        .filter(|n| path_matches(&n.location.file_path, &abs_path, is_dir))
         .map(|n| {
             let fp = strip_base(&n.location.file_path, codebase);
             let (callers, callees) = graph.get_node_degree(&n.id);
@@ -189,7 +193,7 @@ fn list_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Valu
         })
         .collect();
 
-    json!({"path": path, "symbols": symbols, "total": symbols.len()})
+    json!({"path": strip_base(&abs_path.to_string_lossy(), codebase), "symbols": symbols, "total": symbols.len()})
 }
 
 /// Pattern search using grep-style matching with structural awareness.
@@ -351,7 +355,10 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     }
     let file_path = args.get("file_path").and_then(|v| v.as_str());
     let pattern = args.get("pattern").and_then(|v| v.as_str());
-    let symbol_name = args.get("symbol_name").and_then(|v| v.as_str());
+    let symbol_name = args
+        .get("symbol_name")
+        .or_else(|| args.get("name"))
+        .and_then(|v| v.as_str());
 
     let mut target_files: Vec<String> = Vec::new();
     let mut affected_symbols: Vec<Value> = Vec::new();
@@ -421,21 +428,34 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         .unwrap_or("")
         .to_lowercase();
     let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let resolved_filter = if path_filter.is_empty() {
+        None
+    } else {
+        match resolve_existing_path(path_filter, codebase) {
+            Ok(path) => Some(path),
+            Err(error) => return error,
+        }
+    };
+    let filter_is_dir = resolved_filter
+        .as_ref()
+        .map(|path| path.is_dir())
+        .unwrap_or(false);
 
     let all_nodes = graph.find_nodes_by_name("", false);
 
     let mut file_map: std::collections::BTreeMap<String, Vec<Value>> =
         std::collections::BTreeMap::new();
     for node in &all_nodes {
-        let rel = strip_base(&node.location.file_path, codebase);
-        // Filter by path prefix ("." means no filter)
-        if !path_filter.is_empty() && path_filter != "." && !rel.starts_with(path_filter) {
-            continue;
+        if let Some(filter_path) = resolved_filter.as_ref() {
+            if !path_matches(&node.location.file_path, filter_path, filter_is_dir) {
+                continue;
+            }
         }
         // Filter by query
         if !query.is_empty() && !node.name.to_lowercase().contains(&query) {
             continue;
         }
+        let rel = strip_base(&node.location.file_path, codebase);
         let (callers, callees) = graph.get_node_degree(&node.id);
         file_map.entry(rel).or_default().push(json!({
             "name": node.name,
@@ -460,7 +480,11 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         .sum();
 
     json!({
-        "path": if path_filter.is_empty() { "." } else { path_filter },
+        "path": if let Some(path) = resolved_filter.as_ref() {
+            json!(strip_base(&path.to_string_lossy(), codebase))
+        } else {
+            json!(".")
+        },
         "query": if query.is_empty() { Value::Null } else { json!(query) },
         "files": files,
         "total_files": files.len(),
@@ -475,6 +499,38 @@ fn strip_base(file: &str, codebase: Option<&str>) -> String {
         .and_then(|b| Path::new(file).strip_prefix(b).ok())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| file.to_string())
+}
+
+fn get_document_path_arg<'a>(args: &'a Value) -> Option<&'a str> {
+    args.get("path")
+        .or_else(|| args.get("file_path"))
+        .and_then(|value| value.as_str())
+        .filter(|path| !path.is_empty())
+}
+
+fn resolve_existing_path(path: &str, codebase: Option<&str>) -> Result<PathBuf, Value> {
+    let abs_path = if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        codebase
+            .map(|base| Path::new(base).join(path))
+            .unwrap_or_else(|| PathBuf::from(path))
+    };
+    if abs_path.exists() {
+        Ok(abs_path.canonicalize().unwrap_or(abs_path))
+    } else {
+        Err(json!({"error": format!("Path not found: {}", path)}))
+    }
+}
+
+fn path_matches(file_path: &str, target_path: &Path, target_is_dir: bool) -> bool {
+    let normalized_file =
+        std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path));
+    if target_is_dir {
+        normalized_file == target_path || normalized_file.starts_with(target_path)
+    } else {
+        normalized_file == target_path
+    }
 }
 
 /// Convert ast-grep-style pattern to regex.
@@ -536,4 +592,78 @@ fn collect_files(path: &str, language: Option<&str>) -> Vec<String> {
         }
     }
     files
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use contextro_core::graph::{UniversalLocation, UniversalNode};
+    use contextro_core::NodeType;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("contextro-code-{unique}-{name}"));
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn test_get_document_symbols_accepts_path_alias() {
+        let dir = temp_dir("symbols");
+        let file = dir.join("main.py");
+        std::fs::write(&file, "def hello():\n    return 1\n").unwrap();
+
+        let result = get_document_symbols(
+            &json!({"path": file.to_string_lossy().to_string()}),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+        assert_eq!(result["total"], 1);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_search_codebase_map_errors_on_missing_path() {
+        let graph = CodeGraph::new();
+        let result = search_codebase_map(&json!({"path":"missing"}), &graph, None);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_search_codebase_map_handles_absolute_path_filter() {
+        let dir = temp_dir("map");
+        let file = dir.join("lib.rs");
+        std::fs::write(&file, "fn alpha() {}\n").unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "alpha".into(),
+            name: "alpha".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 1,
+                end_line: 1,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            ..Default::default()
+        });
+
+        let result = search_codebase_map(
+            &json!({"path": dir.to_string_lossy().to_string()}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+        assert_eq!(result["total_files"], 1);
+        assert_eq!(result["total_symbols"], 1);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

@@ -178,7 +178,7 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
 /// Print the agent bootstrap block.
 pub fn handle_skill_prompt() -> Value {
     json!({
-        "bootstrap": "# Contextro\n\nUse `index(path)` to index a codebase, then:\n- `search(query)` — semantic + keyword hybrid search\n- `find_symbol(name)` — locate definitions\n- `find_callers(symbol_name)` / `find_callees(symbol_name)` — call graph\n- `explain(symbol_name)` — full context\n- `impact(symbol_name)` — blast radius\n- `remember(content)` / `recall(query)` — persistent memory\n- `code(operation, ...)` — AST operations\n",
+        "bootstrap": "# Contextro\n\nUse `index(path)` to index a codebase, then:\n- `search(query)` — semantic + keyword hybrid search\n- `find_symbol(symbol_name)` — locate definitions\n- `find_callers(symbol_name)` / `find_callees(symbol_name)` — call graph\n- `explain(symbol_name)` — symbol summary and context\n- `impact(symbol_name)` — blast radius\n- `remember(content)` / `recall(query)` — persistent memory\n- `code(operation, ...)` — AST operations\n",
     })
 }
 
@@ -189,25 +189,25 @@ pub fn handle_introspect(args: &Value) -> Value {
     let tools: Vec<(&str, &str)> = vec![
         ("index", "Index a codebase. Args: path (required)"),
         ("search", "Semantic + keyword + graph hybrid search. Args: query, limit, mode, language"),
-        ("find_symbol", "Find a symbol definition. Args: name, exact"),
+        ("find_symbol", "Find a symbol definition. Args: symbol_name (preferred), name/symbol aliases, exact"),
         ("find_callers", "Who calls this function? Args: symbol_name"),
         ("find_callees", "What does this function call? Args: symbol_name"),
-        ("explain", "Full symbol explanation. Args: symbol_name, verbosity"),
+        ("explain", "Natural-language symbol summary plus callers/callees/docstring. Args: symbol_name"),
         ("impact", "What breaks if I change this? Args: symbol_name, max_depth"),
-        ("code", "AST operations. Args: operation (get_document_symbols|search_symbols|lookup_symbols|pattern_search|search_codebase_map)"),
-        ("overview", "Project structure summary. No args."),
+        ("code", "AST operations. Args: operation (get_document_symbols|search_symbols|lookup_symbols|pattern_search|search_codebase_map); use path as the preferred file/directory parameter"),
+        ("overview", "Project overview: totals, languages, symbol types, top files/directories. No args."),
         ("architecture", "Layers, entry points, hub symbols. No args."),
         ("analyze", "Code smells and complexity. Args: path (optional)"),
         ("focus", "Low-token context slice. Args: path"),
         ("dead_code", "Entry-point reachability analysis. No args."),
         ("circular_dependencies", "SCC-based circular deps. No args."),
-        ("test_coverage_map", "Static test coverage map. No args."),
+        ("test_coverage_map", "Static heuristic test coverage map (not runtime coverage). No args."),
         ("remember", "Store a note/decision. Args: content, memory_type, tags, ttl"),
         ("recall", "Search memories. Args: query, limit, memory_type, tags"),
         ("forget", "Delete memories. Args: memory_id, tags, memory_type"),
         ("knowledge", "Index/search docs. Args: command (show|add|search|remove|update), name, query, value"),
         ("compact", "Archive session content. Args: content"),
-        ("session_snapshot", "Recover state after compaction. No args."),
+        ("session_snapshot", "Show recent tool calls with arguments. No args."),
         ("restore", "Project re-entry summary. No args."),
         ("retrieve", "Fetch sandboxed output. Args: ref_id"),
         ("commit_search", "Semantic search over git history. Args: query, limit"),

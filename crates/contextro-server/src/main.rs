@@ -124,7 +124,11 @@ impl ContextroServer {
             }
         };
 
-        s.session_tracker.track(name, &format!("{}()", name));
+        s.session_tracker.track(
+            name,
+            &summarize_tool_call(name, &args, cb),
+            Some(sanitize_tool_args(&args, cb)),
+        );
 
         // ── Response optimization (#1, #5, #7, #9) ──────────────────────────
         let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
@@ -170,7 +174,7 @@ impl ContextroServer {
                                 )
                             })
                             .collect();
-                        json!({"error": err_text, "did_you_mean": sugg, "hint": format!("Try: find_symbol(name=\"{}\", exact=false)", &sym[..sym.len().min(4)])})
+                        json!({"error": err_text, "did_you_mean": sugg, "hint": format!("Try: find_symbol(symbol_name=\"{}\", exact=false)", &sym[..sym.len().min(4)])})
                     } else {
                         result
                     }
@@ -321,10 +325,15 @@ impl ContextroServer {
         if !*self.state.indexed.read() {
             return json!({"error": "No codebase indexed. Run 'index' first."});
         }
-        let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let name = args
+            .get("symbol_name")
+            .or_else(|| args.get("name"))
+            .or_else(|| args.get("symbol"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let exact = args.get("exact").and_then(|v| v.as_bool()).unwrap_or(true);
         if name.is_empty() {
-            return json!({"error": "Missing required parameter: name"});
+            return json!({"error": "Missing required parameter: symbol_name"});
         }
 
         let cb = self.state.codebase_path.read().clone();
@@ -346,6 +355,7 @@ impl ContextroServer {
         let name = args
             .get("symbol_name")
             .or_else(|| args.get("name"))
+            .or_else(|| args.get("symbol"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if name.is_empty() {
@@ -467,22 +477,25 @@ impl ContextroServer {
 
         // All schemas use current param names; backward-compat aliases are handled in dispatch.
         let path_schema = mk(
-            r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative path to a directory"}},"required":["path"]}"#,
+            r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file or directory path"}}}"#,
+        );
+        let required_path_schema = mk(
+            r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file or directory path"}},"required":["path"]}"#,
         );
         let name_schema = mk(
-            r#"{"type":"object","properties":{"name":{"type":"string","description":"Symbol name to search for"},"exact":{"type":"boolean","description":"true=exact match, false=fuzzy (default: true)"}},"required":["name"]}"#,
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"exact":{"type":"boolean","description":"true=exact match, false=fuzzy (default: true)"}}}"#,
         );
         let sym_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Name of the function, struct, or class"}},"required":["symbol_name"]}"#,
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"}}}"#,
         );
         let query_schema = mk(
             r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"}},"required":["query"]}"#,
         );
         let impact_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol whose change impact to trace"},"max_depth":{"type":"integer","description":"BFS depth (default: 5)"}},"required":["symbol_name"]}"#,
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"max_depth":{"type":"integer","description":"BFS depth (default: 5)"}}}"#,
         );
         let code_schema = mk(
-            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"file_path":{"type":"string","description":"Absolute path to file (get_document_symbols)"},"symbol_name":{"type":"string","description":"Symbol name (search_symbols, lookup_symbols)"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"path":{"type":"string","description":"Directory path (list_symbols, search_codebase_map)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
+            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
         );
         let mem_schema = mk(
             r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
@@ -506,21 +519,21 @@ impl ContextroServer {
         vec![
             Tool::new("status",  "Show indexing state, graph stats, memory count, uptime", empty.clone()),
             Tool::new("health",  "Health check — returns healthy/unhealthy", empty.clone()),
-            Tool::new("index",   "Index a codebase: builds symbol graph, BM25 index, and vector index. Args: path (required)", path_schema.clone()),
+            Tool::new("index",   "Index a codebase: builds symbol graph, BM25 index, and vector index. Args: path (required)", required_path_schema.clone()),
             Tool::new("search",  "Hybrid/vector/BM25 code search. Args: query (required), limit, mode (hybrid|vector|bm25), language", query_schema),
-            Tool::new("find_symbol",  "Find where a symbol is defined. Args: name (required), exact", name_schema),
-            Tool::new("find_callers", "Who calls this function? Args: symbol_name (required)", sym_schema.clone()),
-            Tool::new("find_callees", "What does this function call? Args: symbol_name (required)", sym_schema.clone()),
-            Tool::new("explain",      "Full symbol explanation: callers, callees, docstring. Args: symbol_name (required)", sym_schema.clone()),
-            Tool::new("impact",       "Transitive blast radius of changing a symbol. Args: symbol_name (required), max_depth", impact_schema),
-            Tool::new("overview",     "High-level project summary: file counts, languages, quality metrics", empty.clone()),
+            Tool::new("find_symbol",  "Find where a symbol is defined. Args: symbol_name (preferred), name/symbol aliases, exact", name_schema),
+            Tool::new("find_callers", "Who calls this function? Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
+            Tool::new("find_callees", "What does this function call? Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
+            Tool::new("explain",      "Natural-language symbol summary plus callers/callees/docstring. Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
+            Tool::new("impact",       "Transitive blast radius of changing a symbol. Args: symbol_name (preferred), name/symbol aliases, max_depth", impact_schema),
+            Tool::new("overview",     "Project overview: totals, languages, symbol types, top files/directories", empty.clone()),
             Tool::new("architecture", "Architectural layers, entry points, hub symbols by connectivity", empty.clone()),
-            Tool::new("analyze",      "Code complexity and hotspots for a directory. Args: path (required)", path_schema.clone()),
-            Tool::new("focus",        "Per-symbol callers/callees for a single file. Args: path (required)", path_schema.clone()),
+            Tool::new("analyze",      "Code complexity and hotspots for a file or directory. Args: path", path_schema.clone()),
+            Tool::new("focus",        "Per-symbol callers/callees for a file or directory. Args: path", path_schema.clone()),
             Tool::new("dead_code",    "Symbols with no callers (unreachable from entry points)", empty.clone()),
             Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
-            Tool::new("test_coverage_map",     "File-level test coverage estimate", empty.clone()),
-            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(file_path), search_symbols(symbol_name), lookup_symbols(symbols:[]), list_symbols(path), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
+            Tool::new("test_coverage_map",     "Static heuristic test coverage estimate (not runtime coverage)", empty.clone()),
+            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path), search_symbols(symbol_name), lookup_symbols(symbols:[]), list_symbols(path), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
             Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
             Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
             Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
@@ -529,13 +542,13 @@ impl ContextroServer {
             Tool::new("knowledge", "Index and search project docs/notes. Args: command (add|search|show|remove), name, query, value", knowledge_schema),
             Tool::new("compact",   "Archive session content and get a ref_id for later retrieval. Args: content (required)",
                 mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Session content to archive"}},"required":["content"]}"#)),
-            Tool::new("session_snapshot", "Show all tool calls in this session — useful after compaction", empty.clone()),
+            Tool::new("session_snapshot", "Show recent tool calls with arguments — useful after compaction", empty.clone()),
             Tool::new("restore",  "Project re-entry summary: graph size, path, recent session activity", empty.clone()),
             Tool::new("retrieve", "Fetch previously archived content by ref_id. Args: ref_id (required)", ref_schema),
             Tool::new("commit_search",  "Semantic search over git commit messages. Args: query (required), limit, author", commit_schema),
             Tool::new("commit_history", "Recent git commits with author and timestamp. Args: limit", hist_schema),
-            Tool::new("repo_add",    "Register an additional repository for multi-repo analysis. Args: path", path_schema.clone()),
-            Tool::new("repo_remove", "Unregister a repository. Args: path", path_schema),
+            Tool::new("repo_add",    "Register an additional repository for multi-repo analysis. Args: path", required_path_schema.clone()),
+            Tool::new("repo_remove", "Unregister a repository. Args: path", required_path_schema),
             Tool::new("repo_status", "Show all registered repositories", empty.clone()),
             Tool::new("audit",        "Code quality audit report with recommendations", empty.clone()),
             Tool::new("docs_bundle",  "Generate Markdown docs bundle. Args: output_dir",
@@ -644,6 +657,79 @@ fn strip_codebase(path: &str, codebase: Option<&str>) -> String {
         .and_then(|b| std::path::Path::new(path).strip_prefix(b).ok())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| path.to_string())
+}
+
+fn summarize_tool_call(name: &str, args: &Value, codebase: Option<&str>) -> String {
+    if name == "compact" {
+        let chars = args
+            .get("content")
+            .and_then(|value| value.as_str())
+            .map(|content| content.len())
+            .unwrap_or(0);
+        return format!("compact(chars={chars})");
+    }
+
+    let sanitized = sanitize_tool_args(args, codebase);
+    let Some(map) = sanitized.as_object() else {
+        return format!("{name}()");
+    };
+    if map.is_empty() {
+        return format!("{name}()");
+    }
+
+    let mut parts: Vec<String> = map
+        .iter()
+        .take(3)
+        .map(|(key, value)| format!("{key}={}", summarize_value(value)))
+        .collect();
+    if map.len() > 3 {
+        parts.push("…".into());
+    }
+    format!("{name}({})", parts.join(", "))
+}
+
+fn sanitize_tool_args(args: &Value, codebase: Option<&str>) -> Value {
+    let stripped = if let Some(base) = codebase {
+        strip_absolute_paths(args.clone(), base)
+    } else {
+        args.clone()
+    };
+    truncate_json_strings(stripped, 160)
+}
+
+fn truncate_json_strings(value: Value, max_len: usize) -> Value {
+    match value {
+        Value::String(mut text) => {
+            if text.len() > max_len {
+                text.truncate(max_len);
+                text.push('…');
+            }
+            Value::String(text)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| truncate_json_strings(item, max_len))
+                .collect(),
+        ),
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key, truncate_json_strings(value, max_len)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+fn summarize_value(value: &Value) -> String {
+    match value {
+        Value::String(text) => format!("{text:?}"),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(boolean) => boolean.to_string(),
+        Value::Null => "null".into(),
+        Value::Array(items) => format!("[{} item(s)]", items.len()),
+        Value::Object(map) => format!("{{{} key(s)}}", map.len()),
+    }
 }
 
 fn edit_distance(a: &str, b: &str) -> usize {

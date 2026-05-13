@@ -17,7 +17,17 @@ pub fn handle_session_snapshot(tracker: &SessionTracker) -> Value {
     let events = tracker.recent_events(20);
     let event_list: Vec<Value> = events
         .iter()
-        .map(|e| json!({"type": e.event_type, "summary": e.summary}))
+        .map(|e| {
+            let mut event = json!({
+                "type": e.event_type,
+                "summary": e.summary,
+                "timestamp": e.timestamp,
+            });
+            if let Some(args) = &e.arguments {
+                event["arguments"] = args.clone();
+            }
+            event
+        })
         .collect();
     json!({"events": event_list, "total": event_list.len()})
 }

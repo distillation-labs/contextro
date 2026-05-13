@@ -1,5 +1,7 @@
 //! Search tool implementation.
 
+use std::collections::{HashMap, HashSet};
+
 use contextro_core::models::SearchResult;
 use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
@@ -37,21 +39,21 @@ pub fn handle_search(
     let mut results = match mode.as_str() {
         "vector" => vector_search(query, limit, vector_index),
         "hybrid" => {
-            let bm25_results = {
+            let core_results = {
                 let options = SearchOptions {
                     query: query.into(),
-                    limit,
+                    limit: limit.saturating_mul(2).min(100),
                     language: language.clone(),
-                    mode: "bm25".into(),
+                    mode: "hybrid".into(),
                 };
                 let fusion = ReciprocalRankFusion::default();
                 execute_search(&options, bm25, graph, cache, &fusion).results
             };
-            let vec_results = vector_search(query, limit, vector_index);
+            let vec_results = vector_search(query, limit.saturating_mul(2).min(100), vector_index);
             if vec_results.is_empty() {
-                bm25_results
+                core_results
             } else {
-                fuse_results(bm25_results, vec_results, limit)
+                fuse_results(core_results, vec_results, limit)
             }
         }
         _ => {
@@ -64,12 +66,6 @@ pub fn handle_search(
             let fusion = ReciprocalRankFusion::default();
             execute_search(&options, bm25, graph, cache, &fusion).results
         }
-    };
-
-    let confidence = if results.is_empty() {
-        0.0_f64
-    } else {
-        results[0].score.min(1.0)
     };
 
     // #2: Import-aware search — boost results from files connected to context_files
@@ -97,6 +93,8 @@ pub fn handle_search(
         });
     }
 
+    let confidence = confidence_label(&results);
+
     let out: Vec<Value> = results
         .iter()
         .map(|r| {
@@ -105,13 +103,14 @@ pub fn handle_search(
                 "file": r.filepath,
                 "line": r.line_start,
                 "type": r.symbol_type,
-                "score": (r.score * 1000.0).round() / 1000.0,
+                "score": (r.score * 10000.0).round() / 10000.0,
             })
         })
         .collect();
 
     json!({
         "query": query,
+        "confidence": confidence,
         "results": out,
     })
 }
@@ -121,64 +120,137 @@ fn vector_search(query: &str, limit: usize, index: &VectorIndex) -> Vec<SearchRe
         return vec![];
     }
     match embed(query) {
-        Some(qv) => {
-            let mut results = index.search(&qv, limit);
-            // Normalize scores relative to the top result so the best match
-            // shows confidence=1.0, making vector and BM25 scores comparable.
-            if let Some(max) = results.first().map(|r| r.score) {
-                if max > 0.0 {
-                    for r in &mut results {
-                        r.score /= max;
-                    }
-                }
-            }
-            results
-        }
+        Some(qv) => index
+            .search(&qv, limit)
+            .into_iter()
+            .filter(|result| result.score.is_finite() && result.score > 0.0)
+            .collect(),
         None => vec![],
     }
 }
 
-/// Interleave BM25 and vector results, dedup by symbol name, keep highest score.
+/// Combine lexical/graph and vector signals without collapsing both tops to 1.0.
 fn fuse_results(
-    bm25: Vec<SearchResult>,
+    lexical: Vec<SearchResult>,
     vector: Vec<SearchResult>,
     limit: usize,
 ) -> Vec<SearchResult> {
-    let mut seen = std::collections::HashSet::new();
-    let mut fused: Vec<SearchResult> = Vec::new();
+    let mut metadata: HashMap<String, SearchResult> = HashMap::new();
+    let mut scores: HashMap<String, f64> = HashMap::new();
+    let mut sources: HashMap<String, HashSet<String>> = HashMap::new();
 
-    // Normalise scores so both lists are in [0,1]
-    let bm25_max = bm25.first().map(|r| r.score).unwrap_or(1.0).max(1e-9);
-    let vec_max = vector.first().map(|r| r.score).unwrap_or(1.0).max(1e-9);
+    for (rank, result) in lexical.into_iter().enumerate() {
+        accumulate_result(&mut metadata, &mut scores, &mut sources, result, rank, 0.70);
+    }
+    for (rank, result) in vector.into_iter().enumerate() {
+        accumulate_result(&mut metadata, &mut scores, &mut sources, result, rank, 0.30);
+    }
 
-    let mut candidates: Vec<SearchResult> = bm25
+    let mut fused: Vec<SearchResult> = scores
         .into_iter()
-        .map(|mut r| {
-            r.score /= bm25_max;
-            r.match_sources = vec!["bm25".into()];
-            r
+        .filter_map(|(id, score)| {
+            let mut result = metadata.remove(&id)?;
+            let mut match_sources: Vec<String> = sources.remove(&id)?.into_iter().collect();
+            match_sources.sort();
+            result.score = score.min(1.0);
+            result.match_sources = match_sources;
+            Some(result)
         })
-        .chain(vector.into_iter().map(|mut r| {
-            r.score /= vec_max;
-            r.match_sources = vec!["vector".into()];
-            r
-        }))
         .collect();
 
-    candidates.sort_by(|a, b| {
+    fused.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+    fused.truncate(limit);
+    fused
+}
 
-    for r in candidates {
-        let key = format!("{}:{}", r.filepath, r.line_start);
-        if seen.insert(key) {
-            fused.push(r);
-            if fused.len() >= limit {
-                break;
-            }
+fn accumulate_result(
+    metadata: &mut HashMap<String, SearchResult>,
+    scores: &mut HashMap<String, f64>,
+    sources: &mut HashMap<String, HashSet<String>>,
+    result: SearchResult,
+    rank: usize,
+    engine_weight: f64,
+) {
+    let id = result.id.clone();
+    let raw_score = result.score.clamp(0.0, 1.0);
+    let rank_score = 1.0 / (rank as f64 + 1.0);
+    let contribution = engine_weight * (raw_score * 0.85 + rank_score * 0.15);
+
+    *scores.entry(id.clone()).or_default() += contribution;
+    metadata.entry(id.clone()).or_insert_with(|| result.clone());
+    let entry_sources = sources.entry(id).or_default();
+    if result.match_sources.is_empty() {
+        entry_sources.insert("unknown".into());
+    } else {
+        entry_sources.extend(result.match_sources.iter().cloned());
+    }
+}
+
+fn confidence_label(results: &[SearchResult]) -> &'static str {
+    let Some(top) = results.first() else {
+        return "low";
+    };
+    let second = results.get(1).map(|r| r.score).unwrap_or(0.0);
+    let gap = top.score - second;
+
+    if top.score >= 0.75 && gap >= 0.15 {
+        "high"
+    } else if top.score >= 0.45 {
+        "medium"
+    } else {
+        "low"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_result(id: &str, score: f64, sources: &[&str]) -> SearchResult {
+        SearchResult {
+            id: id.into(),
+            filepath: format!("{id}.rs"),
+            symbol_name: id.into(),
+            symbol_type: "function".into(),
+            language: "rust".into(),
+            line_start: 1,
+            line_end: 1,
+            score,
+            code: String::new(),
+            signature: String::new(),
+            match_sources: sources.iter().map(|source| (*source).to_string()).collect(),
         }
     }
-    fused
+
+    #[test]
+    fn test_fuse_results_preserves_score_spread() {
+        let fused = fuse_results(
+            vec![make_result("lexical_top", 1.0, &["bm25"])],
+            vec![make_result("vector_top", 0.96, &["vector"])],
+            10,
+        );
+
+        assert_eq!(fused.len(), 2);
+        assert!(fused[0].score < 1.0);
+        assert!(fused[1].score < fused[0].score);
+    }
+
+    #[test]
+    fn test_fuse_results_rewards_cross_engine_agreement() {
+        let fused = fuse_results(
+            vec![
+                make_result("shared", 0.92, &["bm25", "graph"]),
+                make_result("lexical_only", 1.0, &["bm25"]),
+            ],
+            vec![make_result("shared", 0.88, &["vector"])],
+            10,
+        );
+
+        assert_eq!(fused[0].id, "shared");
+        assert!(fused[0].score > fused[1].score);
+    }
 }

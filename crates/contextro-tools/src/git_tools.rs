@@ -1,24 +1,35 @@
 //! Git tools: commit_search, commit_history, repo_add, repo_remove, repo_status.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use contextro_config::get_settings;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Registered repos tracker.
 pub struct RepoRegistry {
     repos: RwLock<HashMap<String, String>>, // path -> name
+    file_path: PathBuf,
 }
 
 impl RepoRegistry {
     pub fn new() -> Self {
+        let storage_dir = get_settings().read().storage_dir.clone();
+        Self::with_path(PathBuf::from(storage_dir).join("repo-registry.json"))
+    }
+
+    pub fn with_path<P: Into<PathBuf>>(file_path: P) -> Self {
+        let file_path = file_path.into();
         Self {
-            repos: RwLock::new(HashMap::new()),
+            repos: RwLock::new(load_repos(&file_path)),
+            file_path,
         }
     }
 
     pub fn add(&self, path: &str, name: Option<&str>) -> bool {
+        let key = normalize_repo_path(path);
         let n = name.unwrap_or_else(|| {
             Path::new(path)
                 .file_name()
@@ -26,20 +37,50 @@ impl RepoRegistry {
                 .to_str()
                 .unwrap_or("repo")
         });
-        self.repos.write().insert(path.to_string(), n.to_string());
+        let mut repos = self.repos.write();
+        repos.insert(key, n.to_string());
+        self.save_locked(&repos);
         true
     }
 
     pub fn remove(&self, path: &str) -> bool {
-        self.repos.write().remove(path).is_some()
+        let key = normalize_repo_path(path);
+        let mut repos = self.repos.write();
+        let removed = repos.remove(&key).is_some() || repos.remove(path).is_some();
+        if removed {
+            self.save_locked(&repos);
+        }
+        removed
     }
 
     pub fn list(&self) -> Vec<(String, String)> {
-        self.repos
+        let mut repos: Vec<(String, String)> = self
+            .repos
             .read()
             .iter()
             .map(|(p, n)| (p.clone(), n.clone()))
-            .collect()
+            .collect();
+        repos.sort_by(|a, b| a.0.cmp(&b.0));
+        repos
+    }
+
+    fn save_locked(&self, repos: &HashMap<String, String>) {
+        if let Some(parent) = self.file_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let tmp_path = self.file_path.with_extension("json.tmp");
+        let payload: Vec<StoredRepo> = repos
+            .iter()
+            .map(|(path, name)| StoredRepo {
+                path: path.clone(),
+                name: name.clone(),
+            })
+            .collect();
+        if let Ok(bytes) = serde_json::to_vec_pretty(&payload) {
+            if std::fs::write(&tmp_path, bytes).is_ok() {
+                let _ = std::fs::rename(&tmp_path, &self.file_path);
+            }
+        }
     }
 }
 
@@ -47,6 +88,12 @@ impl Default for RepoRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredRepo {
+    path: String,
+    name: String,
 }
 
 pub fn handle_commit_history(args: &Value, codebase: Option<&str>) -> Value {
@@ -157,7 +204,7 @@ pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
     }
     let name = args.get("name").and_then(|v| v.as_str());
     registry.add(path, name);
-    json!({"registered": true, "path": path, "hint": "Run index(path) to build the graph and enable search for this repo."})
+    json!({"registered": true, "path": normalize_repo_path(path), "hint": "Run index(path) to build the graph and enable search for this repo."})
 }
 
 pub fn handle_repo_remove(args: &Value, registry: &RepoRegistry) -> Value {
@@ -179,6 +226,26 @@ pub fn handle_repo_status(registry: &RepoRegistry) -> Value {
         })
         .collect();
     json!({"repos": repos, "total": repos.len()})
+}
+
+fn normalize_repo_path(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| PathBuf::from(path))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn load_repos(path: &Path) -> HashMap<String, String> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Vec<StoredRepo>>(&bytes).ok())
+        .map(|repos| {
+            repos
+                .into_iter()
+                .map(|repo| (repo.path, repo.name))
+                .collect::<HashMap<_, _>>()
+        })
+        .unwrap_or_default()
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -204,4 +271,36 @@ fn token_overlap_score(query_tokens: &[String], doc_tokens: &[String]) -> f64 {
         })
         .count();
     matches as f64 / query_tokens.len() as f64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("contextro-repos-{unique}-{name}"))
+    }
+
+    #[test]
+    fn test_repo_registry_persists_to_disk() {
+        let path = temp_file("repos.json");
+        let repo_dir = std::env::temp_dir().join("contextro-repo-registry-test");
+        let _ = std::fs::create_dir_all(&repo_dir);
+
+        let registry = RepoRegistry::with_path(&path);
+        assert!(registry.add(repo_dir.to_string_lossy().as_ref(), Some("repo")));
+
+        let reloaded = RepoRegistry::with_path(&path);
+        let repos = reloaded.list();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].1, "repo");
+
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
 }

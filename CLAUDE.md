@@ -87,6 +87,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets
 cargo run -p contextro-server --bin contextro
 claude mcp add contextro -- contextro
+./scripts/release-candidate.sh --install-claude
 ```
 
 ## Key Decisions
@@ -104,6 +105,7 @@ claude mcp add contextro -- contextro
 3. `status` and `health` work without an indexed codebase; most other tools require `index` first
 4. HTTP mode requires `CTX_TRANSPORT=http` and serves `/health` and `/mcp`
 5. Python is a supported indexed language, not an installation prerequisite
+6. Use `./scripts/release-candidate.sh` before publishing so the local release binary is tested through a real MCP client with persistent storage
 
 ## Embedding Models
 

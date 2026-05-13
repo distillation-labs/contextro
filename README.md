@@ -52,6 +52,8 @@ npm install -g contextro
 
 Single binary. No runtime dependencies. No setup.
 
+Maintainers should validate a local release candidate before publishing. See `docs/RELEASE_CANDIDATE_TESTING.md`.
+
 ---
 
 ## Connect to Your Agent

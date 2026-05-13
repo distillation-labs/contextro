@@ -16,6 +16,16 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 36 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.1] - 2026-05-13
+
+### Fixed
+
+- **stdio state now survives restarts** — the compaction archive, session tracker, and multi-repo registry now persist under `CTX_STORAGE_DIR`, so `compact`/`retrieve`, `session_snapshot`, and `repo_status` no longer lose state between stdio invocations.
+- **Path-taking tools now fail explicitly** — `analyze`, `focus`, `get_document_symbols`, `list_symbols`, and `search_codebase_map` now validate and canonicalize paths instead of returning empty success-shaped payloads for invalid or differently-spelled paths.
+- **Search ranking is honest again** — hybrid fusion no longer collapses unrelated top hits to the same score, confidence is computed after final reranking, and invalid vector scores are filtered out before results reach the user.
+- **Graph and analysis outputs are more trustworthy** — `overview` now returns a real project summary, `explain` reports full caller/callee counts, `dead_code` skips pytest fixtures, and `test_coverage_map` is clearly labeled as a static heuristic instead of runtime coverage.
+- **Canonical tool parameters are accepted consistently** — symbol-taking tools now accept the preferred `symbol_name` aliases, file-taking tools accept `path`, and the MCP schemas/descriptions were updated so clients see the correct contracts.
+
 ## [1.1.0] - 2026-05-13
 
 ### Added

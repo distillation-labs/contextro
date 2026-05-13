@@ -1,7 +1,7 @@
 //! Analysis tools: overview, architecture, analyze, focus, dead_code, circular_dependencies, test_coverage_map.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use contextro_core::NodeType;
 use contextro_engines::graph::CodeGraph;
@@ -108,14 +108,59 @@ pub fn handle_overview(
     total_chunks: usize,
     vector_chunks: usize,
 ) -> Value {
-    let node_count = graph.node_count();
+    let nodes = graph.find_nodes_by_name("", false);
+    let node_count = nodes.len();
     let rel_count = graph.relationship_count();
+    let mut file_counts: HashMap<String, usize> = HashMap::new();
+    let mut language_counts: HashMap<String, usize> = HashMap::new();
+    let mut type_counts: HashMap<String, usize> = HashMap::new();
+    let mut directory_counts: HashMap<String, usize> = HashMap::new();
+
+    for node in &nodes {
+        *file_counts
+            .entry(node.location.file_path.clone())
+            .or_default() += 1;
+        *language_counts.entry(node.language.clone()).or_default() += 1;
+        *type_counts.entry(node.node_type.to_string()).or_default() += 1;
+
+        let directory = Path::new(&node.location.file_path)
+            .parent()
+            .map(|parent| parent.to_string_lossy().to_string())
+            .unwrap_or_else(|| ".".into());
+        *directory_counts.entry(directory).or_default() += 1;
+    }
+
+    let languages = sort_counts(language_counts)
+        .into_iter()
+        .map(|(language, count)| json!({"language": language, "symbols": count}))
+        .collect::<Vec<_>>();
+    let symbol_types = sort_counts(type_counts)
+        .into_iter()
+        .map(|(symbol_type, count)| json!({"type": symbol_type, "count": count}))
+        .collect::<Vec<_>>();
+    let total_files = file_counts.len();
+    let top_files = sort_counts(file_counts)
+        .into_iter()
+        .take(10)
+        .map(|(file, count)| json!({"file": strip_base(&file, codebase), "symbols": count}))
+        .collect::<Vec<_>>();
+    let top_directories = sort_counts(directory_counts)
+        .into_iter()
+        .take(10)
+        .map(|(directory, count)| json!({"path": strip_base(&directory, codebase), "symbols": count}))
+        .collect::<Vec<_>>();
+
     json!({
         "codebase_path": codebase,
         "total_symbols": node_count,
         "total_relationships": rel_count,
         "total_chunks": total_chunks,
         "vector_chunks": vector_chunks,
+        "total_files": total_files,
+        "languages": languages,
+        "symbol_types": symbol_types,
+        "top_files_by_symbols": top_files,
+        "top_directories": top_directories,
     })
 }
 
@@ -152,16 +197,14 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
     let nodes: Vec<_> = if path_filter.is_empty() {
         all_nodes
     } else {
-        let abs_filter = if std::path::Path::new(path_filter).is_absolute() {
-            path_filter.to_string()
-        } else {
-            codebase
-                .map(|b| format!("{}/{}", b, path_filter))
-                .unwrap_or_else(|| path_filter.to_string())
+        let abs_filter = match resolve_existing_path(path_filter, codebase) {
+            Ok(path) => path,
+            Err(error) => return error,
         };
+        let is_dir = abs_filter.is_dir();
         all_nodes
             .into_iter()
-            .filter(|n| n.location.file_path.starts_with(&abs_filter))
+            .filter(|n| path_matches(&n.location.file_path, &abs_filter, is_dir))
             .collect()
     };
 
@@ -190,7 +233,7 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         .collect();
     large_files.sort_by_key(|v| std::cmp::Reverse(v["symbols"].as_u64().unwrap_or(0)));
 
-    json!({"high_connectivity_symbols": complex_fns, "large_files": large_files, "total_symbols": nodes.len()})
+    json!({"path": if path_filter.is_empty() { Value::Null } else { json!(path_filter) }, "high_connectivity_symbols": complex_fns, "large_files": large_files, "total_symbols": nodes.len()})
 }
 
 /// Low-token context slice for a single file.
@@ -200,23 +243,20 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
         return json!({"error": "Missing required parameter: path"});
     }
 
-    let abs_path = if Path::new(path).is_absolute() {
-        path.to_string()
-    } else {
-        codebase
-            .map(|b| format!("{}/{}", b, path))
-            .unwrap_or_else(|| path.to_string())
+    let abs_path = match resolve_existing_path(path, codebase) {
+        Ok(path) => path,
+        Err(error) => return error,
     };
 
     let nodes = graph.find_nodes_by_name("", false);
 
     // Directory: list top symbols grouped by file
-    if Path::new(&abs_path).is_dir() {
+    if abs_path.is_dir() {
         let mut by_file: std::collections::BTreeMap<String, Vec<Value>> =
             std::collections::BTreeMap::new();
         for n in nodes
             .iter()
-            .filter(|n| n.location.file_path.starts_with(&abs_path))
+            .filter(|n| path_matches(&n.location.file_path, &abs_path, true))
         {
             let (in_d, out_d) = graph.get_node_degree(&n.id);
             by_file.entry(strip_base(&n.location.file_path, codebase)).or_default().push(
@@ -229,7 +269,7 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
             .map(|(file, syms)| json!({"file": file, "symbols": syms}))
             .collect();
         return json!({
-            "path": strip_base(&abs_path, codebase),
+            "path": strip_base(&abs_path.to_string_lossy(), codebase),
             "is_directory": true,
             "files": files,
             "total_symbols": total_symbols,
@@ -238,7 +278,7 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
 
     // Single file
     let file_symbols: Vec<Value> = nodes.iter()
-        .filter(|n| n.location.file_path == abs_path || n.location.file_path.ends_with(path))
+        .filter(|n| n.location.file_path == abs_path.to_string_lossy())
         .map(|n| {
             let (in_d, out_d) = graph.get_node_degree(&n.id);
             json!({"name": n.name, "type": n.node_type.to_string(), "line": n.location.start_line, "callers": in_d, "callees": out_d})
@@ -250,7 +290,7 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
         .unwrap_or_default();
 
     json!({
-        "file": strip_base(&abs_path, codebase),
+        "file": strip_base(&abs_path.to_string_lossy(), codebase),
         "symbols": file_symbols,
         "total_symbols": file_symbols.len(),
         "preview": preview,
@@ -261,6 +301,7 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
 pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
     let mut dead: Vec<Value> = Vec::new();
+    let mut file_cache: HashMap<String, Option<String>> = HashMap::new();
 
     for node in &nodes {
         // Skip classes and variables — focus on functions/methods
@@ -277,7 +318,7 @@ pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
                 || name_lower == "teardown";
             let is_noise = GENERIC_NAMES.contains(&node.name.as_str())
                 || GENERIC_NAMES.contains(&name_lower.as_str());
-            if !is_entry && !is_noise {
+            if !is_entry && !is_noise && !is_pytest_fixture(node, &mut file_cache) {
                 dead.push(json!({
                     "name": node.name,
                     "file": strip_base(&node.location.file_path, codebase),
@@ -459,11 +500,14 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
     };
 
     json!({
+        "coverage_type": "static_heuristic",
         "coverage_percent": (coverage_pct * 10.0).round() / 10.0,
+        "static_coverage_percent": (coverage_pct * 10.0).round() / 10.0,
         "covered_files": covered.len(),
         "uncovered_files": uncovered.len(),
         "test_files": test_files.len() + inline_tested.len(),
         "uncovered": uncovered.into_iter().take(20).collect::<Vec<_>>(),
+        "note": "Static heuristic based on test file naming and inline test blocks. This is not runtime or line coverage.",
     })
 }
 
@@ -505,6 +549,73 @@ fn strip_base(file: &str, codebase: Option<&str>) -> String {
         .and_then(|b| Path::new(file).strip_prefix(b).ok())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| file.to_string())
+}
+
+fn sort_counts(counts: HashMap<String, usize>) -> Vec<(String, usize)> {
+    let mut pairs: Vec<(String, usize)> = counts.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    pairs
+}
+
+fn resolve_existing_path(path: &str, codebase: Option<&str>) -> Result<PathBuf, Value> {
+    let abs_path = if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        codebase
+            .map(|base| Path::new(base).join(path))
+            .unwrap_or_else(|| PathBuf::from(path))
+    };
+    if abs_path.exists() {
+        Ok(abs_path.canonicalize().unwrap_or(abs_path))
+    } else {
+        Err(json!({"error": format!("Path not found: {}", path)}))
+    }
+}
+
+fn path_matches(file_path: &str, target_path: &Path, target_is_dir: bool) -> bool {
+    let normalized_file =
+        std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path));
+    if target_is_dir {
+        normalized_file == target_path || normalized_file.starts_with(target_path)
+    } else {
+        normalized_file == target_path
+    }
+}
+
+fn is_pytest_fixture(
+    node: &contextro_core::UniversalNode,
+    file_cache: &mut HashMap<String, Option<String>>,
+) -> bool {
+    if node.language != "python" {
+        return false;
+    }
+
+    let file_name = Path::new(&node.location.file_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if file_name == "conftest.py" {
+        return true;
+    }
+
+    let content = match file_cache
+        .entry(node.location.file_path.clone())
+        .or_insert_with(|| std::fs::read_to_string(&node.location.file_path).ok())
+    {
+        Some(content) => content,
+        None => return false,
+    };
+
+    let lines: Vec<&str> = content.lines().collect();
+    let start = node.location.start_line.saturating_sub(4) as usize;
+    let end = node.location.start_line.saturating_sub(1) as usize;
+    lines.get(start..end).unwrap_or(&[]).iter().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("@pytest.fixture")
+            || trimmed.starts_with("@pytest_asyncio.fixture")
+            || trimmed.starts_with("@fixture")
+            || trimmed.starts_with("@pytest.yield_fixture")
+    })
 }
 
 /// Simple iterative Tarjan's SCC.
@@ -578,4 +689,69 @@ fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec
     }
 
     ctx.result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use contextro_core::graph::{UniversalLocation, UniversalNode};
+    use contextro_engines::graph::CodeGraph;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("contextro-analysis-{unique}-{name}"));
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn test_focus_returns_error_for_missing_path() {
+        let graph = CodeGraph::new();
+        let result = handle_focus(&json!({"path":"missing/file.rs"}), &graph, None);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_analyze_returns_error_for_missing_path() {
+        let graph = CodeGraph::new();
+        let result = handle_analyze(&json!({"path":"missing/dir"}), &graph, None);
+        assert!(result.get("error").is_some());
+    }
+
+    #[test]
+    fn test_dead_code_skips_pytest_fixture_functions() {
+        let dir = temp_dir("fixtures");
+        let file = dir.join("conftest.py");
+        std::fs::write(
+            &file,
+            "@pytest.fixture\nasync def browser():\n    return object()\n",
+        )
+        .unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "fixture".into(),
+            name: "browser".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 2,
+                end_line: 3,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let result = handle_dead_code(&graph, Some(dir.to_string_lossy().as_ref()));
+        assert_eq!(result["total"], 0);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
