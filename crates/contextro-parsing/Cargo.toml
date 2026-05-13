@@ -12,5 +12,7 @@ publish = false
 [dependencies]
 contextro-core = { workspace = true }
 tree-sitter = { workspace = true }
+tree-sitter-typescript = { workspace = true }
+tree-sitter-javascript = { workspace = true }
 rayon = { workspace = true }
 tracing = { workspace = true }

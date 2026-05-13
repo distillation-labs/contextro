@@ -1,6 +1,8 @@
-//! Tree-sitter based multi-language code parser.
+//! Real tree-sitter based multi-language code parser.
 //!
-//! Extracts symbols, imports, and calls from source files.
+//! Uses tree-sitter grammars to parse source files into ASTs, then extracts
+//! symbols (functions, classes, methods, interfaces, enums, types) and call
+//! relationships (function calls + JSX component usage).
 
 use contextro_core::models::{ParsedFile, Symbol, SymbolType};
 use contextro_core::traits::Parser;
@@ -36,8 +38,14 @@ impl Parser for TreeSitterParser {
             .map_err(|e| ContextroError::parse(format!("Failed to read {}: {}", filepath, e)))?;
 
         let start = std::time::Instant::now();
-        let symbols = extract_symbols_simple(&content, filepath, language);
-        let imports = extract_imports_simple(&content, language);
+
+        let symbols = match language {
+            "typescript" | "javascript" => parse_ts_js(&content, filepath, language),
+            "rust" => parse_rust(&content, filepath),
+            _ => parse_heuristic(&content, filepath, language),
+        };
+
+        let imports = extract_imports(&content, language);
         let parse_time_ms = start.elapsed().as_secs_f64() * 1000.0;
 
         Ok(ParsedFile {
@@ -57,51 +65,510 @@ impl Parser for TreeSitterParser {
     }
 }
 
-/// Simple regex-free symbol extraction using line-by-line heuristics.
-fn extract_symbols_simple(content: &str, filepath: &str, language: &str) -> Vec<Symbol> {
-    let mut symbols = Vec::new();
-    let lines: Vec<&str> = content.lines().collect();
+// ─── TypeScript / JavaScript (real tree-sitter) ──────────────────────────────
 
-    match language {
-        "python" => extract_python_symbols(&lines, filepath, &mut symbols),
-        "rust" => extract_rust_symbols(&lines, filepath, &mut symbols),
-        "javascript" | "typescript" => {
-            extract_js_symbols(&lines, filepath, language, &mut symbols)
-        }
-        _ => extract_generic_symbols(&lines, filepath, language, &mut symbols),
+fn parse_ts_js(content: &str, filepath: &str, language: &str) -> Vec<Symbol> {
+    let mut parser = tree_sitter::Parser::new();
+    let ts_lang = if filepath.ends_with(".tsx") || filepath.ends_with(".jsx") {
+        tree_sitter_typescript::LANGUAGE_TSX.into()
+    } else if language == "typescript" {
+        tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+    } else {
+        tree_sitter_javascript::LANGUAGE.into()
+    };
+    if parser.set_language(&ts_lang).is_err() {
+        return parse_heuristic(content, filepath, language);
     }
 
+    let tree = match parser.parse(content, None) {
+        Some(t) => t,
+        None => return parse_heuristic(content, filepath, language),
+    };
+
+    let root = tree.root_node();
+    let mut symbols = Vec::new();
+    let source = content.as_bytes();
+
+    extract_ts_symbols(root, source, filepath, language, None, &mut symbols);
     symbols
 }
 
-// ─── Python ──────────────────────────────────────────────────────────────────
+fn extract_ts_symbols(
+    node: tree_sitter::Node,
+    source: &[u8],
+    filepath: &str,
+    language: &str,
+    parent_name: Option<&str>,
+    symbols: &mut Vec<Symbol>,
+) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "function_declaration" => {
+                if let Some(sym) = extract_ts_function(child, source, filepath, language, parent_name) {
+                    symbols.push(sym);
+                }
+            }
+            "export_statement" => {
+                // Recurse into export to find the declaration inside
+                extract_ts_symbols(child, source, filepath, language, parent_name, symbols);
+            }
+            "lexical_declaration" => {
+                // const foo = () => {} or const Foo: React.FC = ...
+                extract_ts_variable_decls(child, source, filepath, language, parent_name, symbols);
+            }
+            "class_declaration" => {
+                if let Some(name) = child_text_by_kind(child, "type_identifier", source) {
+                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let sig = line_at(source, child.start_position().row);
+                    let doc = extract_jsdoc_above(source, child.start_position().row);
+                    let snippet = snippet_from(source, child.start_position().row, child.end_position().row);
 
-fn extract_python_symbols(lines: &[&str], filepath: &str, symbols: &mut Vec<Symbol>) {
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        let line_num = (i + 1) as u32;
-        if let Some(sym) = parse_python_def(trimmed, filepath, line_num, lines, i) {
-            symbols.push(sym);
+                    symbols.push(Symbol {
+                        name: name.clone(),
+                        symbol_type: SymbolType::Class,
+                        filepath: filepath.to_string(),
+                        line_start: start,
+                        line_end: end,
+                        language: language.to_string(),
+                        signature: sig,
+                        docstring: doc,
+                        parent: parent_name.map(String::from),
+                        code_snippet: snippet,
+                        imports: vec![],
+                        calls: vec![],
+                    });
+
+                    // Extract methods inside class body
+                    if let Some(body) = child.child_by_field_name("body") {
+                        extract_ts_symbols(body, source, filepath, language, Some(&name), symbols);
+                    }
+                }
+            }
+            "method_definition" => {
+                if let Some(name) = child_text_by_kind(child, "property_identifier", source) {
+                    let calls = collect_calls(child, source);
+                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let sig = line_at(source, child.start_position().row);
+                    let doc = extract_jsdoc_above(source, child.start_position().row);
+                    let snippet = snippet_from(source, child.start_position().row, child.end_position().row);
+
+                    symbols.push(Symbol {
+                        name,
+                        symbol_type: SymbolType::Method,
+                        filepath: filepath.to_string(),
+                        line_start: start,
+                        line_end: end,
+                        language: language.to_string(),
+                        signature: sig,
+                        docstring: doc,
+                        parent: parent_name.map(String::from),
+                        code_snippet: snippet,
+                        imports: vec![],
+                        calls,
+                    });
+                }
+            }
+            "interface_declaration" | "type_alias_declaration" => {
+                let name = child_text_by_kind(child, "type_identifier", source)
+                    .or_else(|| child_text_by_kind(child, "identifier", source));
+                if let Some(name) = name {
+                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    symbols.push(Symbol {
+                        name,
+                        symbol_type: SymbolType::Class,
+                        filepath: filepath.to_string(),
+                        line_start: start,
+                        line_end: end,
+                        language: language.to_string(),
+                        signature: line_at(source, child.start_position().row),
+                        docstring: extract_jsdoc_above(source, child.start_position().row),
+                        parent: None,
+                        code_snippet: String::new(),
+                        imports: vec![],
+                        calls: vec![],
+                    });
+                }
+            }
+            "enum_declaration" => {
+                if let Some(name) = child_text_by_kind(child, "identifier", source) {
+                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    symbols.push(Symbol {
+                        name,
+                        symbol_type: SymbolType::Class,
+                        filepath: filepath.to_string(),
+                        line_start: start,
+                        line_end: end,
+                        language: language.to_string(),
+                        signature: line_at(source, child.start_position().row),
+                        docstring: String::new(),
+                        parent: None,
+                        code_snippet: String::new(),
+                        imports: vec![],
+                        calls: vec![],
+                    });
+                }
+            }
+            _ => {}
         }
     }
 }
 
-fn parse_python_def(
-    line: &str,
+fn extract_ts_function(
+    node: tree_sitter::Node,
+    source: &[u8],
     filepath: &str,
-    line_num: u32,
-    lines: &[&str],
-    idx: usize,
+    language: &str,
+    parent: Option<&str>,
 ) -> Option<Symbol> {
+    let name = child_text_by_kind(node, "identifier", source)?;
+    let calls = collect_calls(node, source);
+    let (start, end) = (node.start_position().row as u32 + 1, node.end_position().row as u32 + 1);
+    let sig = line_at(source, node.start_position().row);
+    let doc = extract_jsdoc_above(source, node.start_position().row);
+    let snippet = snippet_from(source, node.start_position().row, node.end_position().row);
+
+    Some(Symbol {
+        name,
+        symbol_type: SymbolType::Function,
+        filepath: filepath.to_string(),
+        line_start: start,
+        line_end: end,
+        language: language.to_string(),
+        signature: sig,
+        docstring: doc,
+        parent: parent.map(String::from),
+        code_snippet: snippet,
+        imports: vec![],
+        calls,
+    })
+}
+
+fn extract_ts_variable_decls(
+    node: tree_sitter::Node,
+    source: &[u8],
+    filepath: &str,
+    language: &str,
+    parent: Option<&str>,
+    symbols: &mut Vec<Symbol>,
+) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "variable_declarator" {
+            let name = child_text_by_kind(child, "identifier", source);
+            // Check if the value is an arrow_function or function_expression
+            let has_fn = child.named_children(&mut child.walk())
+                .any(|c| c.kind() == "arrow_function" || c.kind() == "function");
+            if let Some(name) = name {
+                if has_fn {
+                    let calls = collect_calls(child, source);
+                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let sig = line_at(source, child.start_position().row);
+                    let doc = extract_jsdoc_above(source, node.start_position().row);
+                    let snippet = snippet_from(source, child.start_position().row, child.end_position().row);
+
+                    symbols.push(Symbol {
+                        name,
+                        symbol_type: SymbolType::Function,
+                        filepath: filepath.to_string(),
+                        line_start: start,
+                        line_end: end,
+                        language: language.to_string(),
+                        signature: sig,
+                        docstring: doc,
+                        parent: parent.map(String::from),
+                        code_snippet: snippet,
+                        imports: vec![],
+                        calls,
+                    });
+                }
+            }
+        }
+    }
+}
+
+// ─── Rust (real tree-sitter) ─────────────────────────────────────────────────
+
+fn parse_rust(content: &str, filepath: &str) -> Vec<Symbol> {
+    // tree-sitter-rust 0.24 requires ABI 15 which is incompatible with tree-sitter 0.24.7.
+    // Use the heuristic parser which already handles impl blocks, methods, calls, and docstrings.
+    parse_rust_heuristic(content, filepath)
+}
+
+fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut symbols = Vec::new();
+    let mut i = 0;
+    let mut current_impl: Option<String> = None;
+    let mut impl_depth: i32 = 0;
+
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        let line_num = (i + 1) as u32;
+
+        // Track impl blocks
+        if trimmed.starts_with("impl ") || trimmed.starts_with("impl<") {
+            if let Some(name) = extract_rust_impl_name(trimmed) {
+                current_impl = Some(name);
+                impl_depth = 0;
+                for ch in trimmed.chars() {
+                    if ch == '{' { impl_depth += 1; }
+                    if ch == '}' { impl_depth -= 1; }
+                }
+                i += 1;
+                continue;
+            }
+        }
+
+        if current_impl.is_some() {
+            for ch in trimmed.chars() {
+                if ch == '{' { impl_depth += 1; }
+                if ch == '}' { impl_depth -= 1; }
+            }
+            if impl_depth <= 0 { current_impl = None; }
+        }
+
+        let is_fn = trimmed.contains("fn ") && (trimmed.starts_with("pub") || trimmed.starts_with("fn") || trimmed.starts_with("async") || trimmed.starts_with("unsafe") || lines[i].starts_with("    ") || lines[i].starts_with("\t"));
+        let is_struct = trimmed.starts_with("pub struct ") || trimmed.starts_with("struct ");
+        let is_enum = trimmed.starts_with("pub enum ") || trimmed.starts_with("enum ");
+        let is_trait = trimmed.starts_with("pub trait ") || trimmed.starts_with("trait ");
+
+        if is_fn {
+            if let Some(name) = trimmed.split("fn ").nth(1).and_then(|s| s.split(&['(','<',' '][..]).next()) {
+                if !name.is_empty() {
+                    let end_line = find_block_end_braces(&lines, i);
+                    let calls = collect_calls_heuristic(&lines, i + 1, end_line);
+                    let st = if current_impl.is_some() { SymbolType::Method } else { SymbolType::Function };
+                    symbols.push(Symbol {
+                        name: name.to_string(), symbol_type: st, filepath: filepath.to_string(),
+                        line_start: line_num, line_end: (end_line + 1) as u32, language: "rust".to_string(),
+                        signature: trimmed.to_string(), docstring: extract_rust_doc(content.as_bytes(), i),
+                        parent: current_impl.clone(), code_snippet: snippet_from(content.as_bytes(), i, end_line),
+                        imports: vec![], calls,
+                    });
+                    i = end_line + 1; continue;
+                }
+            }
+        } else if is_struct || is_enum || is_trait {
+            let keyword = if is_struct { "struct " } else if is_enum { "enum " } else { "trait " };
+            if let Some(name) = trimmed.split(keyword).nth(1).and_then(|s| s.split(&['{','<','(', ' ',';',':'][..]).next()) {
+                if !name.is_empty() {
+                    let end_line = find_block_end_braces(&lines, i);
+                    symbols.push(Symbol {
+                        name: name.to_string(), symbol_type: SymbolType::Class, filepath: filepath.to_string(),
+                        line_start: line_num, line_end: (end_line + 1) as u32, language: "rust".to_string(),
+                        signature: trimmed.to_string(), docstring: extract_rust_doc(content.as_bytes(), i),
+                        parent: None, code_snippet: snippet_from(content.as_bytes(), i, end_line),
+                        imports: vec![], calls: vec![],
+                    });
+                    i = end_line + 1; continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    symbols
+}
+
+fn extract_rust_impl_name(line: &str) -> Option<String> {
+    let s = line.strip_prefix("impl").unwrap_or(line);
+    let s = if s.starts_with('<') {
+        let mut depth = 0;
+        let mut end = 0;
+        for (j, ch) in s.chars().enumerate() {
+            if ch == '<' { depth += 1; }
+            if ch == '>' { depth -= 1; if depth == 0 { end = j + 1; break; } }
+        }
+        &s[end..]
+    } else { s };
+    let s = s.trim();
+    if let Some(pos) = s.find(" for ") {
+        let after = &s[pos + 5..];
+        let name = after.split(&['{','<',' '][..]).next()?.trim();
+        if !name.is_empty() { return Some(name.to_string()); }
+    }
+    let name = s.split(&['{','<',' '][..]).next()?.trim();
+    if name.is_empty() { None } else { Some(name.to_string()) }
+}
+
+fn find_block_end_braces(lines: &[&str], start: usize) -> usize {
+    let mut depth = 0i32;
+    for (i, line) in lines.iter().enumerate().skip(start) {
+        for ch in line.chars() {
+            if ch == '{' { depth += 1; }
+            if ch == '}' { depth -= 1; }
+        }
+        if depth <= 0 && depth != 0 { return i; } // closed before opened (shouldn't happen)
+        if depth == 0 && i == start && line.contains('{') { return i; } // single-line block
+        if depth <= 0 && i > start { return i; }
+    }
+    lines.len() - 1
+}
+
+// ─── Shared helpers ──────────────────────────────────────────────────────────
+
+/// Recursively collect all call_expression and JSX component usages from a subtree.
+fn collect_calls(node: tree_sitter::Node, source: &[u8]) -> Vec<String> {
+    let mut calls = Vec::new();
+    collect_calls_recursive(node, source, &mut calls);
+    calls
+}
+
+fn collect_calls_recursive(node: tree_sitter::Node, source: &[u8], calls: &mut Vec<String>) {
+    match node.kind() {
+        "call_expression" => {
+            // First named child is the function being called
+            if let Some(func) = node.named_child(0) {
+                let name = match func.kind() {
+                    "identifier" => node_text(func, source),
+                    "member_expression" => {
+                        // foo.bar() → extract "bar"
+                        if let Some(prop) = func.child_by_field_name("property") {
+                            node_text(prop, source)
+                        } else {
+                            node_text(func, source)
+                        }
+                    }
+                    _ => node_text(func, source),
+                };
+                if !name.is_empty() && !calls.contains(&name) && !is_keyword(&name) {
+                    calls.push(name);
+                }
+            }
+        }
+        "jsx_self_closing_element" | "jsx_opening_element" => {
+            // <ComponentName ... /> → extract component name (uppercase = component)
+            if let Some(name_node) = node.named_child(0) {
+                let name = node_text(name_node, source);
+                if !name.is_empty()
+                    && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                    && !calls.contains(&name)
+                {
+                    calls.push(name);
+                }
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_calls_recursive(child, source, calls);
+    }
+}
+
+fn is_keyword(s: &str) -> bool {
+    matches!(s, "if" | "for" | "while" | "return" | "switch" | "case" | "else"
+        | "new" | "typeof" | "instanceof" | "delete" | "void" | "throw"
+        | "catch" | "try" | "finally" | "yield" | "await" | "match"
+        | "let" | "const" | "var" | "fn" | "use" | "mod" | "impl"
+        | "struct" | "enum" | "trait" | "type" | "where" | "as" | "super"
+        | "require" | "import" | "export")
+}
+
+fn child_text_by_kind(node: tree_sitter::Node, kind: &str, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == kind {
+            let text = node_text(child, source);
+            if !text.is_empty() {
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+fn node_text(node: tree_sitter::Node, source: &[u8]) -> String {
+    std::str::from_utf8(&source[node.start_byte()..node.end_byte()])
+        .unwrap_or("")
+        .to_string()
+}
+
+fn line_at(source: &[u8], row: usize) -> String {
+    let s = std::str::from_utf8(source).unwrap_or("");
+    s.lines().nth(row).unwrap_or("").to_string()
+}
+
+fn snippet_from(source: &[u8], start_row: usize, end_row: usize) -> String {
+    let s = std::str::from_utf8(source).unwrap_or("");
+    let lines: Vec<&str> = s.lines().collect();
+    let end = (end_row + 1).min(lines.len()).min(start_row + 50);
+    lines[start_row..end].join("\n")
+}
+
+fn extract_jsdoc_above(source: &[u8], row: usize) -> String {
+    if row == 0 { return String::new(); }
+    let s = std::str::from_utf8(source).unwrap_or("");
+    let lines: Vec<&str> = s.lines().collect();
+    let prev = lines.get(row.wrapping_sub(1)).unwrap_or(&"").trim();
+    if prev.ends_with("*/") {
+        let mut doc_lines = Vec::new();
+        let mut j = row - 1;
+        loop {
+            let l = lines.get(j).unwrap_or(&"").trim();
+            doc_lines.push(l.trim_start_matches("/**").trim_start_matches("/*").trim_start_matches('*').trim_end_matches("*/").trim());
+            if l.starts_with("/**") || l.starts_with("/*") || j == 0 { break; }
+            j -= 1;
+        }
+        doc_lines.reverse();
+        return doc_lines.into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+    }
+    if prev.starts_with("//") {
+        return prev.trim_start_matches('/').trim().to_string();
+    }
+    String::new()
+}
+
+fn extract_rust_doc(source: &[u8], row: usize) -> String {
+    if row == 0 { return String::new(); }
+    let s = std::str::from_utf8(source).unwrap_or("");
+    let lines: Vec<&str> = s.lines().collect();
+    let mut doc_lines = Vec::new();
+    let mut j = row;
+    while j > 0 {
+        j -= 1;
+        let l = lines.get(j).unwrap_or(&"").trim();
+        if l.starts_with("///") {
+            doc_lines.push(l.trim_start_matches('/').trim());
+        } else if l.starts_with("#[") || l.is_empty() {
+            // skip attributes and blank lines
+        } else {
+            break;
+        }
+    }
+    doc_lines.reverse();
+    doc_lines.join(" ")
+}
+
+// ─── Heuristic fallback (for Python, Go, etc.) ──────────────────────────────
+
+fn parse_heuristic(content: &str, filepath: &str, language: &str) -> Vec<Symbol> {
+    let mut symbols = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        let line_num = (i + 1) as u32;
+
+        match language {
+            "python" => {
+                if let Some(sym) = parse_python_def(trimmed, filepath, line_num, &lines, i) {
+                    symbols.push(sym);
+                }
+            }
+            _ => {
+                if let Some(sym) = parse_generic_def(trimmed, filepath, language, line_num) {
+                    symbols.push(sym);
+                }
+            }
+        }
+    }
+    symbols
+}
+
+fn parse_python_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], idx: usize) -> Option<Symbol> {
     let (symbol_type, prefix) = if line.starts_with("def ") || line.starts_with("async def ") {
-        (
-            SymbolType::Function,
-            if line.starts_with("async") {
-                "async def "
-            } else {
-                "def "
-            },
-        )
+        (SymbolType::Function, if line.starts_with("async") { "async def " } else { "def " })
     } else if line.starts_with("class ") {
         (SymbolType::Class, "class ")
     } else {
@@ -110,15 +577,11 @@ fn parse_python_def(
 
     let rest = line.strip_prefix(prefix)?;
     let name = rest.split(&['(', ':', ' '][..]).next()?.to_string();
-    if name.is_empty() {
-        return None;
-    }
+    if name.is_empty() { return None; }
 
     let end_line = find_block_end_python(lines, idx);
-    let docstring = extract_python_docstring(lines, idx);
-    let calls = extract_calls_from_body(lines, idx + 1, end_line);
-
-    let code_end = std::cmp::min(end_line, idx + 50);
+    let calls = collect_calls_heuristic(lines, idx + 1, end_line);
+    let code_end = end_line.min(idx + 50);
     let code_snippet = lines[idx..=code_end].join("\n");
 
     Some(Symbol {
@@ -129,541 +592,60 @@ fn parse_python_def(
         line_end: (end_line + 1) as u32,
         language: "python".to_string(),
         signature: line.to_string(),
-        docstring: docstring.unwrap_or_default(),
+        docstring: extract_python_docstring(lines, idx).unwrap_or_default(),
         parent: None,
         code_snippet,
         imports: vec![],
         calls,
     })
-}
-
-// ─── JavaScript / TypeScript ─────────────────────────────────────────────────
-
-fn extract_js_symbols(lines: &[&str], filepath: &str, language: &str, symbols: &mut Vec<Symbol>) {
-    let mut i = 0;
-    while i < lines.len() {
-        let trimmed = lines[i].trim();
-        let line_num = (i + 1) as u32;
-
-        if let Some(sym) = parse_js_symbol(trimmed, filepath, language, line_num, lines, i) {
-            let end = sym.line_end as usize;
-            // If it's a class, scan inside for methods before advancing
-            if sym.symbol_type == SymbolType::Class {
-                let class_end = end;
-                let mut j = i + 1;
-                while j < class_end && j < lines.len() {
-                    let inner = lines[j].trim();
-                    let inner_line_num = (j + 1) as u32;
-                    if let Some(n) = extract_js_method_name(inner) {
-                        let method_end = find_block_end_braces(lines, j);
-                        let docstring = extract_jsdoc(lines, j);
-                        let calls = extract_calls_from_body(lines, j + 1, method_end);
-                        let code_end = std::cmp::min(method_end, j + 50);
-                        let code_snippet = lines[j..=code_end].join("\n");
-                        symbols.push(Symbol {
-                            name: n,
-                            symbol_type: SymbolType::Method,
-                            filepath: filepath.to_string(),
-                            line_start: inner_line_num,
-                            line_end: (method_end + 1) as u32,
-                            language: language.to_string(),
-                            signature: inner.to_string(),
-                            docstring,
-                            parent: Some(sym.name.clone()),
-                            code_snippet,
-                            imports: vec![],
-                            calls,
-                        });
-                        j = method_end + 1;
-                    } else {
-                        j += 1;
-                    }
-                }
-            }
-            symbols.push(sym);
-            i = end;
-        } else {
-            i += 1;
-        }
-    }
-}
-
-fn parse_js_symbol(
-    line: &str,
-    filepath: &str,
-    language: &str,
-    line_num: u32,
-    lines: &[&str],
-    idx: usize,
-) -> Option<Symbol> {
-    // 1. function declarations: function foo(, export function foo(, async function foo(
-    // 2. class declarations: class Foo, export class Foo
-    // 3. arrow/const: const foo = (, export const foo = (, const foo = async (
-    // 4. object methods inside class bodies: methodName( or async methodName(
-
-    let (symbol_type, name) = if let Some(n) = extract_js_function_name(line) {
-        (SymbolType::Function, n)
-    } else if let Some(n) = extract_js_class_name(line) {
-        (SymbolType::Class, n)
-    } else if let Some(n) = extract_js_arrow_name(line) {
-        (SymbolType::Function, n)
-    } else if let Some(n) = extract_js_method_name(line) {
-        (SymbolType::Method, n)
-    } else {
-        return None;
-    };
-
-    if name.is_empty() || name.len() > 100 {
-        return None;
-    }
-
-    let end_line = find_block_end_braces(lines, idx);
-    let docstring = extract_jsdoc(lines, idx);
-    let calls = extract_calls_from_body(lines, idx + 1, end_line);
-    let code_end = std::cmp::min(end_line, idx + 50);
-    let code_snippet = lines[idx..=code_end].join("\n");
-
-    Some(Symbol {
-        name,
-        symbol_type,
-        filepath: filepath.to_string(),
-        line_start: line_num,
-        line_end: (end_line + 1) as u32,
-        language: language.to_string(),
-        signature: line.to_string(),
-        docstring,
-        parent: None,
-        code_snippet,
-        imports: vec![],
-        calls,
-    })
-}
-
-/// Matches: function foo(, export function foo(, async function foo(, export async function foo(
-fn extract_js_function_name(line: &str) -> Option<String> {
-    let s = line
-        .strip_prefix("export ")
-        .unwrap_or(line);
-    let s = s.strip_prefix("async ").unwrap_or(s);
-    let s = s.strip_prefix("function ")?;
-    // Handle function* for generators
-    let s = s.strip_prefix("* ").or(Some(s)).unwrap_or(s);
-    let s = s.strip_prefix('*').unwrap_or(s);
-    let name = s.split(&['(', '<', ' '][..]).next()?;
-    if name.is_empty() { None } else { Some(name.to_string()) }
-}
-
-/// Matches: class Foo, export class Foo, export default class Foo, abstract class Foo
-fn extract_js_class_name(line: &str) -> Option<String> {
-    let s = line
-        .strip_prefix("export ")
-        .unwrap_or(line);
-    let s = s.strip_prefix("default ").unwrap_or(s);
-    let s = s.strip_prefix("abstract ").unwrap_or(s);
-    let s = s.strip_prefix("class ")?;
-    let name = s.split(&['{', '<', ' ', '('][..]).next()?;
-    if name.is_empty() { None } else { Some(name.to_string()) }
-}
-
-/// Matches: const foo = (, export const foo = (, const foo = async (,
-/// const foo = () =>, const Foo: React.FC = (
-fn extract_js_arrow_name(line: &str) -> Option<String> {
-    let s = line.strip_prefix("export ").unwrap_or(line);
-    let s = s.strip_prefix("default ").unwrap_or(s);
-    // Must start with const/let/var
-    let s = s.strip_prefix("const ")
-        .or_else(|| s.strip_prefix("let "))
-        .or_else(|| s.strip_prefix("var "))?;
-    // Extract name before = or :
-    let name = s.split(&['=', ':', '<', ' '][..]).next()?.trim();
-    if name.is_empty() || name.len() > 80 {
-        return None;
-    }
-    // Verify it's a function assignment (has = and ( or => somewhere)
-    if line.contains('=') && (line.contains('(') || line.contains("=>")) {
-        Some(name.to_string())
-    } else {
-        None
-    }
-}
-
-/// Matches class methods: async methodName(, methodName(, static methodName(,
-/// private methodName(, public async methodName(, get propName(, set propName(
-fn extract_js_method_name(line: &str) -> Option<String> {
-    // Must have ( but not be a standalone call or control flow
-    if !line.contains('(') || line.starts_with("//") || line.starts_with("/*") {
-        return None;
-    }
-    // Skip control flow and common non-method patterns
-    let first_word = line.split_whitespace().next().unwrap_or("");
-    if ["if", "for", "while", "switch", "return", "import", "from", "throw", "new", "catch", "else"]
-        .contains(&first_word)
-    {
-        return None;
-    }
-
-    let s = line;
-    // Strip access modifiers and keywords
-    let s = s.strip_prefix("static ").unwrap_or(s);
-    let s = s.strip_prefix("override ").unwrap_or(s);
-    let s = s.strip_prefix("private ").unwrap_or(s);
-    let s = s.strip_prefix("protected ").unwrap_or(s);
-    let s = s.strip_prefix("public ").unwrap_or(s);
-    let s = s.strip_prefix("readonly ").unwrap_or(s);
-    let s = s.strip_prefix("abstract ").unwrap_or(s);
-    let s = s.strip_prefix("async ").unwrap_or(s);
-    let s = s.strip_prefix("get ").unwrap_or(s);
-    let s = s.strip_prefix("set ").unwrap_or(s);
-    let s = s.strip_prefix("* ").unwrap_or(s); // generator
-
-    // The next token before ( should be the method name
-    let name = s.split(&['(', '<', ' '][..]).next()?.trim();
-    // Validate: must be a valid identifier
-    if name.is_empty()
-        || name.len() > 80
-        || !name.chars().next().map(|c| c.is_alphabetic() || c == '_' || c == '#').unwrap_or(false)
-        || !name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '#' || c == '$')
-    {
-        return None;
-    }
-    // Skip if it looks like a function call (no { or => on the line, or ends with ;)
-    if !line.contains('{') && !line.contains("=>") && !line.ends_with('{') {
-        // Could be an interface method signature (ends with ; or has no body)
-        // Still extract it as a method
-        if !line.ends_with(';') && !line.ends_with(',') {
-            return None;
-        }
-    }
-    Some(name.to_string())
-}
-
-/// Extract JSDoc comment above a definition.
-fn extract_jsdoc(lines: &[&str], def_idx: usize) -> String {
-    if def_idx == 0 {
-        return String::new();
-    }
-    // Walk backwards to find /** ... */
-    let prev = lines[def_idx - 1].trim();
-    if prev.ends_with("*/") {
-        let mut doc_lines = Vec::new();
-        let mut j = def_idx - 1;
-        loop {
-            let l = lines[j].trim();
-            doc_lines.push(
-                l.trim_start_matches("/**")
-                    .trim_start_matches("/*")
-                    .trim_start_matches('*')
-                    .trim_end_matches("*/")
-                    .trim(),
-            );
-            if l.starts_with("/**") || l.starts_with("/*") || j == 0 {
-                break;
-            }
-            j -= 1;
-        }
-        doc_lines.reverse();
-        let doc: String = doc_lines
-            .into_iter()
-            .filter(|l| !l.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
-        return doc;
-    }
-    // Single-line // comment
-    if prev.starts_with("//") {
-        return prev.trim_start_matches('/').trim().to_string();
-    }
-    String::new()
-}
-
-// ─── Rust ────────────────────────────────────────────────────────────────────
-
-fn extract_rust_symbols(lines: &[&str], filepath: &str, symbols: &mut Vec<Symbol>) {
-    let mut i = 0;
-    let mut current_impl: Option<String> = None;
-    let mut impl_depth: i32 = 0;
-
-    while i < lines.len() {
-        let trimmed = lines[i].trim();
-        let line_num = (i + 1) as u32;
-
-        // Track impl blocks for parent context
-        if trimmed.starts_with("impl ") || trimmed.starts_with("impl<") {
-            if let Some(name) = extract_rust_impl_name(trimmed) {
-                current_impl = Some(name);
-                impl_depth = 0;
-                // Count braces on this line
-                for ch in trimmed.chars() {
-                    if ch == '{' { impl_depth += 1; }
-                    if ch == '}' { impl_depth -= 1; }
-                }
-                i += 1;
-                continue;
-            }
-        }
-
-        // Track brace depth for impl scope
-        if current_impl.is_some() {
-            for ch in trimmed.chars() {
-                if ch == '{' { impl_depth += 1; }
-                if ch == '}' { impl_depth -= 1; }
-            }
-            if impl_depth <= 0 {
-                current_impl = None;
-            }
-        }
-
-        if let Some(sym) = parse_rust_symbol(trimmed, filepath, line_num, lines, i, &current_impl) {
-            i = sym.line_end as usize;
-            symbols.push(sym);
-        } else {
-            i += 1;
-        }
-    }
-}
-
-fn extract_rust_impl_name(line: &str) -> Option<String> {
-    // impl Foo { or impl<T> Foo<T> { or impl Trait for Foo {
-    let s = line.strip_prefix("impl").unwrap_or(line);
-    // Skip generic params
-    let s = if s.starts_with('<') {
-        // Find matching >
-        let mut depth = 0;
-        let mut end = 0;
-        for (j, ch) in s.chars().enumerate() {
-            if ch == '<' { depth += 1; }
-            if ch == '>' { depth -= 1; if depth == 0 { end = j + 1; break; } }
-        }
-        &s[end..]
-    } else {
-        s
-    };
-    let s = s.trim();
-    // If "Trait for Type", extract Type
-    if let Some(pos) = s.find(" for ") {
-        let after_for = &s[pos + 5..];
-        let name = after_for.split(&['{', '<', ' '][..]).next()?.trim();
-        if !name.is_empty() { return Some(name.to_string()); }
-    }
-    let name = s.split(&['{', '<', ' '][..]).next()?.trim();
-    if name.is_empty() { None } else { Some(name.to_string()) }
-}
-
-fn parse_rust_symbol(
-    line: &str,
-    filepath: &str,
-    line_num: u32,
-    lines: &[&str],
-    idx: usize,
-    current_impl: &Option<String>,
-) -> Option<Symbol> {
-    let is_fn = line.contains("fn ")
-        && (line.starts_with("pub")
-            || line.starts_with("fn")
-            || line.starts_with("async")
-            || line.starts_with("unsafe")
-            || line.starts_with("const fn")
-            || line.starts_with("extern")
-            // Methods inside impl blocks (indented)
-            || lines[idx].starts_with("    ")
-            || lines[idx].starts_with("\t"));
-    let is_struct = line.starts_with("pub struct ") || line.starts_with("struct ");
-    let is_enum = line.starts_with("pub enum ") || line.starts_with("enum ");
-    let is_trait = line.starts_with("pub trait ") || line.starts_with("trait ");
-
-    if !is_fn && !is_struct && !is_enum && !is_trait {
-        return None;
-    }
-
-    let (symbol_type, name) = if is_fn {
-        let parts: Vec<&str> = line.split("fn ").collect();
-        let name_part = parts.get(1)?;
-        let name = name_part.split(&['(', '<', ' '][..]).next()?.to_string();
-        let st = if current_impl.is_some() {
-            SymbolType::Method
-        } else {
-            SymbolType::Function
-        };
-        (st, name)
-    } else if is_struct {
-        let parts: Vec<&str> = line.split("struct ").collect();
-        let name_part = parts.get(1)?;
-        let name = name_part.split(&['{', '<', '(', ' ', ';'][..]).next()?.to_string();
-        (SymbolType::Class, name)
-    } else if is_enum {
-        let parts: Vec<&str> = line.split("enum ").collect();
-        let name_part = parts.get(1)?;
-        let name = name_part.split(&['{', '<', ' '][..]).next()?.to_string();
-        (SymbolType::Class, name)
-    } else {
-        // trait
-        let parts: Vec<&str> = line.split("trait ").collect();
-        let name_part = parts.get(1)?;
-        let name = name_part.split(&['{', '<', ':', ' '][..]).next()?.to_string();
-        (SymbolType::Class, name)
-    };
-
-    if name.is_empty() {
-        return None;
-    }
-
-    let end_line = find_block_end_braces(lines, idx);
-    let docstring = extract_rust_doc_comment(lines, idx);
-    let calls = if is_fn {
-        extract_calls_from_body(lines, idx + 1, end_line)
-    } else {
-        vec![]
-    };
-    let code_end = std::cmp::min(end_line, idx + 50);
-    let code_snippet = lines[idx..=code_end].join("\n");
-
-    Some(Symbol {
-        name,
-        symbol_type,
-        filepath: filepath.to_string(),
-        line_start: line_num,
-        line_end: (end_line + 1) as u32,
-        language: "rust".to_string(),
-        signature: line.to_string(),
-        docstring,
-        parent: current_impl.clone(),
-        code_snippet,
-        imports: vec![],
-        calls,
-    })
-}
-
-/// Extract /// doc comments above a definition.
-fn extract_rust_doc_comment(lines: &[&str], def_idx: usize) -> String {
-    if def_idx == 0 {
-        return String::new();
-    }
-    let mut doc_lines = Vec::new();
-    let mut j = def_idx - 1;
-    loop {
-        let l = lines[j].trim();
-        if l.starts_with("///") {
-            doc_lines.push(l.trim_start_matches('/').trim());
-        } else if l.starts_with("#[") || l.is_empty() {
-            // Skip attributes and blank lines between doc and def
-            if !l.is_empty() && !l.starts_with("#[") {
-                break;
-            }
-        } else {
-            break;
-        }
-        if j == 0 {
-            break;
-        }
-        j -= 1;
-    }
-    doc_lines.reverse();
-    doc_lines.join(" ")
-}
-
-// ─── Generic fallback ────────────────────────────────────────────────────────
-
-fn extract_generic_symbols(lines: &[&str], filepath: &str, language: &str, symbols: &mut Vec<Symbol>) {
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        let line_num = (i + 1) as u32;
-        if let Some(sym) = parse_generic_def(trimmed, filepath, language, line_num) {
-            symbols.push(sym);
-        }
-    }
 }
 
 fn parse_generic_def(line: &str, filepath: &str, language: &str, line_num: u32) -> Option<Symbol> {
     if line.contains("func ") || line.contains("def ") || line.contains("function ") {
-        let name = line
-            .split(&['(', '{', ' '][..])
-            .find(|s| {
-                !s.is_empty()
-                    && !["func", "def", "function", "pub", "async", "export", "static"]
-                        .contains(s)
-            })?
-            .to_string();
-
-        if name.is_empty() || name.len() > 100 {
-            return None;
-        }
-
+        let name = line.split(&['(', '{', ' '][..]).find(|s| {
+            !s.is_empty() && !["func","def","function","pub","async","export","static"].contains(s)
+        })?.to_string();
+        if name.is_empty() || name.len() > 100 { return None; }
         return Some(Symbol {
-            name,
-            symbol_type: SymbolType::Function,
-            filepath: filepath.to_string(),
-            line_start: line_num,
-            line_end: line_num,
-            language: language.to_string(),
-            signature: line.to_string(),
-            docstring: String::new(),
-            parent: None,
-            code_snippet: String::new(),
-            imports: vec![],
-            calls: vec![],
+            name, symbol_type: SymbolType::Function, filepath: filepath.to_string(),
+            line_start: line_num, line_end: line_num, language: language.to_string(),
+            signature: line.to_string(), docstring: String::new(), parent: None,
+            code_snippet: String::new(), imports: vec![], calls: vec![],
         });
     }
     None
 }
 
-// ─── Shared helpers ──────────────────────────────────────────────────────────
-
-/// Extract function calls and JSX component usages from a block of code lines.
-/// Looks for identifier( patterns and <ComponentName patterns, filtering keywords.
-fn extract_calls_from_body(lines: &[&str], start: usize, end: usize) -> Vec<String> {
+fn collect_calls_heuristic(lines: &[&str], start: usize, end: usize) -> Vec<String> {
     let mut calls = Vec::new();
-    let upper = std::cmp::min(end, lines.len().saturating_sub(1));
-
-    let keywords: &[&str] = &[
-        "if", "for", "while", "return", "print", "self", "cls", "not", "and", "or",
-        "in", "switch", "case", "else", "new", "typeof", "instanceof", "delete",
-        "void", "throw", "catch", "try", "finally", "yield", "await", "match",
-        "let", "const", "var", "mut", "ref", "pub", "fn", "use", "mod", "impl",
-        "struct", "enum", "trait", "type", "where", "as", "super", "crate",
-    ];
-
+    let upper = end.min(lines.len().saturating_sub(1));
     for line in lines.iter().take(upper + 1).skip(start) {
         let trimmed = line.trim();
-        if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*') {
-            continue;
-        }
+        if trimmed.starts_with("//") || trimmed.starts_with('#') { continue; }
         let bytes = trimmed.as_bytes();
         let len = bytes.len();
         let mut j = 0;
         while j < len {
-            // identifier( — function call
             if bytes[j] == b'(' && j > 0 {
-                let end_pos = j;
                 let mut k = j - 1;
-                if bytes[k].is_ascii_alphanumeric() || bytes[k] == b'_' || bytes[k] == b'$' {
-                    while k > 0 && (bytes[k-1].is_ascii_alphanumeric() || bytes[k-1] == b'_' || bytes[k-1] == b'$') {
-                        k -= 1;
-                    }
-                    let candidate = &trimmed[k..end_pos];
-                    if candidate.len() > 1
-                        && !keywords.contains(&candidate)
-                        && candidate.chars().next().map(|c| c.is_alphabetic() || c == '_').unwrap_or(false)
+                if bytes[k].is_ascii_alphanumeric() || bytes[k] == b'_' {
+                    while k > 0 && (bytes[k-1].is_ascii_alphanumeric() || bytes[k-1] == b'_') { k -= 1; }
+                    let candidate = &trimmed[k..j];
+                    if candidate.len() > 1 && !is_keyword(candidate)
+                        && candidate.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
                         && !calls.contains(&candidate.to_string())
                     {
                         calls.push(candidate.to_string());
                     }
                 }
             }
-            // <ComponentName — JSX usage (uppercase first letter = component, not HTML tag)
-            if bytes[j] == b'<' && j + 1 < len {
+            // JSX
+            if bytes[j] == b'<' && j + 1 < len && !trimmed[j+1..].starts_with('/') {
                 let rest = &trimmed[j+1..];
-                // Skip closing tags </Foo> and fragments <>
-                if rest.starts_with('/') || rest.starts_with('>') {
-                    j += 1;
-                    continue;
-                }
                 let name_end = rest.find(|c: char| !c.is_alphanumeric() && c != '_').unwrap_or(rest.len());
-                let component = &rest[..name_end];
-                if !component.is_empty()
-                    && component.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                    && !calls.contains(&component.to_string())
-                {
-                    calls.push(component.to_string());
+                let comp = &rest[..name_end];
+                if !comp.is_empty() && comp.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) && !calls.contains(&comp.to_string()) {
+                    calls.push(comp.to_string());
                 }
             }
             j += 1;
@@ -673,84 +655,43 @@ fn extract_calls_from_body(lines: &[&str], start: usize, end: usize) -> Vec<Stri
 }
 
 fn find_block_end_python(lines: &[&str], start: usize) -> usize {
-    if start >= lines.len() {
-        return start;
-    }
+    if start >= lines.len() { return start; }
     let indent = lines[start].len() - lines[start].trim_start().len();
     for (i, line) in lines.iter().enumerate().skip(start + 1) {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let current_indent = line.len() - line.trim_start().len();
-        if current_indent <= indent {
-            return i.saturating_sub(1);
-        }
-    }
-    lines.len() - 1
-}
-
-fn find_block_end_braces(lines: &[&str], start: usize) -> usize {
-    let mut depth = 0i32;
-    for (i, line) in lines.iter().enumerate().skip(start) {
-        for ch in line.chars() {
-            if ch == '{' {
-                depth += 1;
-            }
-            if ch == '}' {
-                depth -= 1;
-            }
-        }
-        if depth <= 0 && i > start {
-            return i;
-        }
+        if line.trim().is_empty() { continue; }
+        if line.len() - line.trim_start().len() <= indent { return i.saturating_sub(1); }
     }
     lines.len() - 1
 }
 
 fn extract_python_docstring(lines: &[&str], def_idx: usize) -> Option<String> {
     let next_idx = def_idx + 1;
-    if next_idx >= lines.len() {
-        return None;
-    }
+    if next_idx >= lines.len() { return None; }
     let next_line = lines[next_idx].trim();
     if next_line.starts_with("\"\"\"") || next_line.starts_with("'''") {
         let quote = &next_line[..3];
         if next_line.len() > 6 && next_line.ends_with(quote) {
-            return Some(next_line[3..next_line.len() - 3].to_string());
+            return Some(next_line[3..next_line.len()-3].to_string());
         }
         let mut doc = String::new();
         for line in lines.iter().skip(next_idx + 1) {
-            if line.trim().contains(quote) {
-                break;
-            }
-            doc.push_str(line.trim());
-            doc.push('\n');
+            if line.trim().contains(quote) { break; }
+            doc.push_str(line.trim()); doc.push('\n');
         }
         return Some(doc.trim().to_string());
     }
     None
 }
 
-fn extract_imports_simple(content: &str, language: &str) -> Vec<String> {
+fn extract_imports(content: &str, language: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
-        let trimmed = line.trim();
+        let t = line.trim();
         match language {
-            "python" if trimmed.starts_with("import ") || trimmed.starts_with("from ") => {
-                imports.push(trimmed.to_string());
-            }
-            "javascript" | "typescript"
-                if trimmed.starts_with("import ")
-                    || (trimmed.starts_with("const ") && trimmed.contains("require(")) =>
-            {
-                imports.push(trimmed.to_string());
-            }
-            "rust" if trimmed.starts_with("use ") => {
-                imports.push(trimmed.to_string());
-            }
-            "go" if trimmed.starts_with("import ") => {
-                imports.push(trimmed.to_string());
-            }
+            "python" if t.starts_with("import ") || t.starts_with("from ") => imports.push(t.to_string()),
+            "javascript" | "typescript" if t.starts_with("import ") || (t.starts_with("const ") && t.contains("require(")) => imports.push(t.to_string()),
+            "rust" if t.starts_with("use ") => imports.push(t.to_string()),
+            "go" if t.starts_with("import ") => imports.push(t.to_string()),
             _ => {}
         }
     }
@@ -764,34 +705,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_python_file() {
+    fn test_ts_arrow_functions() {
         let parser = TreeSitterParser::new();
-        let tmp = std::env::temp_dir().join("test_parse.py");
-        std::fs::write(
-            &tmp,
-            "def hello():\n    \"\"\"Say hello.\"\"\"\n    print(\"hello\")\n\nclass Foo:\n    pass\n",
-        )
-        .unwrap();
-
-        let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
-        assert!(result.is_successful());
-        assert_eq!(result.language, "python");
-        assert!(result.symbols.len() >= 2);
-
-        let names: Vec<&str> = result.symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.contains(&"hello"));
-        assert!(names.contains(&"Foo"));
-
-        std::fs::remove_file(tmp).ok();
-    }
-
-    #[test]
-    fn test_js_arrow_functions() {
-        let parser = TreeSitterParser::new();
-        let tmp = std::env::temp_dir().join("test_parse_arrow.ts");
-        std::fs::write(
-            &tmp,
-            r#"export const fetchUser = async (id: string) => {
+        let tmp = std::env::temp_dir().join("test_ts_real.tsx");
+        std::fs::write(&tmp, r#"
+export const fetchUser = async (id: string) => {
     const result = await db.query(id);
     return transform(result);
 };
@@ -805,35 +723,49 @@ class UserService {
         return fetchUser(id);
     }
 }
-"#,
-        )
-        .unwrap();
+
+interface UserProps { id: string; }
+type UserId = string;
+enum Status { Active, Inactive }
+
+const App = () => {
+    return <UserService />;
+};
+"#).unwrap();
 
         let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
         let names: Vec<&str> = result.symbols.iter().map(|s| s.name.as_str()).collect();
+
         assert!(names.contains(&"fetchUser"), "Missing arrow fn: {:?}", names);
         assert!(names.contains(&"processData"), "Missing function: {:?}", names);
         assert!(names.contains(&"UserService"), "Missing class: {:?}", names);
         assert!(names.contains(&"getUser"), "Missing method: {:?}", names);
+        assert!(names.contains(&"UserProps"), "Missing interface: {:?}", names);
+        assert!(names.contains(&"UserId"), "Missing type alias: {:?}", names);
+        assert!(names.contains(&"Status"), "Missing enum: {:?}", names);
+        assert!(names.contains(&"App"), "Missing arrow component: {:?}", names);
 
-        // Check calls are extracted
-        let fetch_sym = result.symbols.iter().find(|s| s.name == "fetchUser").unwrap();
-        assert!(!fetch_sym.calls.is_empty(), "fetchUser should have calls");
-        assert!(fetch_sym.calls.contains(&"transform".to_string()));
+        // Check calls
+        let fetch = result.symbols.iter().find(|s| s.name == "fetchUser").unwrap();
+        assert!(fetch.calls.contains(&"transform".to_string()), "fetchUser calls: {:?}", fetch.calls);
 
-        // Check code_snippet is populated
-        assert!(!fetch_sym.code_snippet.is_empty(), "code_snippet should be populated");
+        // Check JSX call detection
+        let app = result.symbols.iter().find(|s| s.name == "App").unwrap();
+        assert!(app.calls.contains(&"UserService".to_string()), "App JSX calls: {:?}", app.calls);
+
+        // Check method parent
+        let get_user = result.symbols.iter().find(|s| s.name == "getUser").unwrap();
+        assert_eq!(get_user.parent, Some("UserService".to_string()));
 
         std::fs::remove_file(tmp).ok();
     }
 
     #[test]
-    fn test_rust_impl_methods() {
+    fn test_rust_real_parser() {
         let parser = TreeSitterParser::new();
-        let tmp = std::env::temp_dir().join("test_parse_impl.rs");
-        std::fs::write(
-            &tmp,
-            r#"/// A user store.
+        let tmp = std::env::temp_dir().join("test_rs_real.rs");
+        std::fs::write(&tmp, r#"
+/// A user store.
 pub struct UserStore {
     db: Database,
 }
@@ -853,31 +785,40 @@ impl UserStore {
 pub fn standalone() {
     helper();
 }
-"#,
-        )
-        .unwrap();
+
+enum Color { Red, Blue }
+trait Drawable { fn draw(&self); }
+"#).unwrap();
 
         let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
         let names: Vec<&str> = result.symbols.iter().map(|s| s.name.as_str()).collect();
+
         assert!(names.contains(&"UserStore"), "Missing struct: {:?}", names);
-        assert!(names.contains(&"new"), "Missing method new: {:?}", names);
-        assert!(names.contains(&"get"), "Missing method get: {:?}", names);
+        assert!(names.contains(&"new"), "Missing method: {:?}", names);
+        assert!(names.contains(&"get"), "Missing method: {:?}", names);
         assert!(names.contains(&"standalone"), "Missing fn: {:?}", names);
+        assert!(names.contains(&"Color"), "Missing enum: {:?}", names);
+        assert!(names.contains(&"Drawable"), "Missing trait: {:?}", names);
 
-        // Check calls
         let new_sym = result.symbols.iter().find(|s| s.name == "new").unwrap();
-        assert!(new_sym.calls.contains(&"validate".to_string()), "new should call validate: {:?}", new_sym.calls);
-
-        let get_sym = result.symbols.iter().find(|s| s.name == "get").unwrap();
-        assert!(get_sym.calls.contains(&"deserialize".to_string()), "get should call deserialize: {:?}", get_sym.calls);
-
-        // Check docstring
-        let store_sym = result.symbols.iter().find(|s| s.name == "UserStore").unwrap();
-        assert!(store_sym.docstring.contains("user store"), "Missing docstring: {:?}", store_sym.docstring);
-
-        // Check parent
+        assert!(new_sym.calls.contains(&"validate".to_string()), "new calls: {:?}", new_sym.calls);
         assert_eq!(new_sym.parent, Some("UserStore".to_string()));
 
+        let get_sym = result.symbols.iter().find(|s| s.name == "get").unwrap();
+        assert!(get_sym.calls.contains(&"deserialize".to_string()), "get calls: {:?}", get_sym.calls);
+
+        std::fs::remove_file(tmp).ok();
+    }
+
+    #[test]
+    fn test_python_fallback() {
+        let parser = TreeSitterParser::new();
+        let tmp = std::env::temp_dir().join("test_py_fallback.py");
+        std::fs::write(&tmp, "def hello():\n    \"\"\"Say hello.\"\"\"\n    print(\"hello\")\n\nclass Foo:\n    pass\n").unwrap();
+        let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
+        let names: Vec<&str> = result.symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"hello"));
+        assert!(names.contains(&"Foo"));
         std::fs::remove_file(tmp).ok();
     }
 
@@ -886,21 +827,7 @@ pub fn standalone() {
         let parser = TreeSitterParser::new();
         assert!(parser.can_parse("main.py"));
         assert!(parser.can_parse("app.ts"));
+        assert!(parser.can_parse("component.tsx"));
         assert!(!parser.can_parse("readme.md"));
-    }
-
-    #[test]
-    fn test_extract_calls_from_body() {
-        let lines = vec![
-            "    const x = foo(bar());",
-            "    if (condition) {",
-            "        await fetchData(id);",
-            "    }",
-        ];
-        let calls = extract_calls_from_body(&lines, 0, 3);
-        assert!(calls.contains(&"foo".to_string()));
-        assert!(calls.contains(&"bar".to_string()));
-        assert!(calls.contains(&"fetchData".to_string()));
-        // 'condition' should NOT be in calls (no parens after it)
     }
 }

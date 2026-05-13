@@ -4,6 +4,16 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-12
+
+### Changed
+
+- **Real tree-sitter parsing for TypeScript and JavaScript.** The parser now uses `tree-sitter-typescript` and `tree-sitter-javascript` grammars to build a proper AST, extracting symbols from `function_declaration`, `arrow_function`, `class_declaration`, `method_definition`, `interface_declaration`, `type_alias_declaration`, and `enum_declaration` nodes. Call relationships are extracted from `call_expression` and JSX component usage (`jsx_self_closing_element`, `jsx_opening_element`) nodes in the AST.
+- Rust parsing uses an improved heuristic with impl block tracking, docstring extraction, and call detection (tree-sitter-rust ABI incompatibility prevents using the grammar directly with tree-sitter 0.24).
+- Python and other languages continue to use the heuristic parser as a fallback.
+- Symbol count is more precise (19,942 vs 26,068 on platform repo) — no longer extracts keywords and noise as symbols.
+- Graph edges are more accurate (21,080 vs 51,264) — only real `call_expression` AST nodes, not heuristic `identifier(` pattern matching.
+
 ## [0.8.2] - 2026-05-12
 
 ### Fixed
