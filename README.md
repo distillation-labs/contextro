@@ -14,15 +14,33 @@ Without Contextro, your agent reads 5–10 full files to find one function. With
 
 ```
 Without:  grep "auth" → read auth.py → read middleware.py → read utils.py → ...
-With:     search("authentication flow") → exact result in <1ms
+With:     search("authentication flow") → exact result in <0.1ms
 ```
 
 | Task | Without Contextro | With Contextro | Savings |
 |---|---|---|---|
-| Find a function | Read 5 files (~5000 tokens) | `search()` (~116 tokens) | **43x** |
-| Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~6 tokens) | **500x** |
-| Understand a class | Read file + grep (~2000 tokens) | `explain()` (~43 tokens) | **47x** |
-| Check what breaks | Manual audit (~8000 tokens) | `impact()` (~300 tokens) | **27x** |
+| Find a function | Read 5 files (~1000 tokens) | `search()` (~94 tokens) | **11x** |
+| Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~50 tokens) | **60x** |
+| Understand a class | Read file + grep (~2000 tokens) | `explain()` (~170 tokens) | **12x** |
+| Check what breaks | Manual audit (~8000 tokens) | `impact()` (~108 tokens) | **74x** |
+
+### Benchmark (1,000-task study on a production TypeScript monorepo)
+
+| Metric | Baseline (git grep + file reads) | Contextro | Improvement |
+|---|---|---|---|
+| Success rate | 99.5% | **100%** | +0.5% |
+| Total tokens | 941,748 | **93,819** | **90% reduction** |
+| Median latency | 199.8ms | **0.081ms** | **2,466x faster** |
+| Tool calls per task | 3.2 | **1.0** | 68% fewer |
+| Files read | 1,961 | **0** | Eliminated |
+
+### What powers it
+
+- **Real tree-sitter parsing** — TypeScript, JavaScript, Python parsed via tree-sitter AST (not regex heuristics)
+- **BM25 + vector hybrid search** — Tantivy full-text with potion-code-16M embeddings
+- **PageRank-weighted call graph** — importance propagates transitively through the graph
+- **Graph consensus boosting** — architecturally-related results surface together
+- **Persistent index** — survives server restarts, stored at `~/.contextro/projects/`
 
 ---
 
@@ -212,6 +230,12 @@ All settings via `CTX_` environment variables:
 | `CTX_HTTP_HOST` | `0.0.0.0` | HTTP bind address |
 | `CTX_HTTP_PORT` | `8000` | HTTP port |
 | `CTX_LOG_LEVEL` | `INFO` | Logging level |
+| `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model for vector search |
+| `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (36) |
+| `CTX_NO_UPDATE_CHECK` | unset | Set to `1` to disable update checks |
+| `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model for vector search |
+| `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (36) |
+| `CTX_NO_UPDATE_CHECK` | unset | Set to `1` to disable update checks |
 
 ---
 
