@@ -118,8 +118,8 @@ impl Bm25Engine {
             &self.index,
             vec![self.f_text, self.f_symbol_name, self.f_signature],
         );
-        query_parser.set_field_boost(self.f_symbol_name, 3.0);
-        query_parser.set_field_boost(self.f_signature, 2.0);
+        query_parser.set_field_boost(self.f_symbol_name, 5.0);
+        query_parser.set_field_boost(self.f_signature, 3.0);
 
         let parsed = match query_parser.parse_query(query) {
             Ok(q) => q,
