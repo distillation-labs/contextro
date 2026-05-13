@@ -106,6 +106,10 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
 pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
     let base = codebase.unwrap_or(".");
+    let output_dir = args
+        .get("output_dir")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".contextro-sidecars");
     let target = if path == "." || path.is_empty() {
         base.to_string()
     } else if Path::new(path).is_absolute() {
@@ -113,6 +117,14 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
     } else {
         format!("{}/{}", base, path)
     };
+
+    // Resolve output directory
+    let out_base = if Path::new(output_dir).is_absolute() {
+        output_dir.to_string()
+    } else {
+        format!("{}/{}", base, output_dir)
+    };
+    std::fs::create_dir_all(&out_base).ok();
 
     let nodes = graph.find_nodes_by_name("", false);
     let mut files_written = 0;
@@ -129,7 +141,18 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
     }
 
     for (file_path, syms) in &by_file {
-        let sidecar_path = format!("{}.graph.md", file_path);
+        // Write to output directory with relative path structure
+        let rel = Path::new(file_path)
+            .strip_prefix(base)
+            .unwrap_or(Path::new(file_path));
+        let sidecar_name = format!("{}.graph.md", rel.to_string_lossy());
+        let sidecar_path = format!("{}/{}", out_base, sidecar_name);
+
+        // Create parent directories
+        if let Some(parent) = Path::new(&sidecar_path).parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
         let mut content = format!(
             "# {}\n\n## Symbols\n\n",
             Path::new(file_path)
@@ -149,7 +172,7 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
         }
     }
 
-    json!({"status": "exported", "sidecars": files_written, "path": path})
+    json!({"status": "exported", "sidecars": files_written, "path": path, "output_dir": out_base})
 }
 
 /// Print the agent bootstrap block.
