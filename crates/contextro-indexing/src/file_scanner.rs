@@ -158,3 +158,24 @@ mod tests {
         fs::remove_dir_all(tmp).ok();
     }
 }
+
+/// Save file hashes to disk for incremental re-indexing.
+pub fn save_hashes(hashes: &[(PathBuf, String)], storage_dir: &std::path::Path) {
+    let map: std::collections::HashMap<&str, &str> = hashes
+        .iter()
+        .map(|(p, h)| (p.to_str().unwrap_or(""), h.as_str()))
+        .collect();
+    let path = storage_dir.join("file_hashes.json");
+    if let Ok(json) = serde_json::to_string(&map) {
+        std::fs::write(path, json).ok();
+    }
+}
+
+/// Load previously stored file hashes from disk.
+pub fn load_hashes(storage_dir: &std::path::Path) -> std::collections::HashMap<String, String> {
+    let path = storage_dir.join("file_hashes.json");
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}

@@ -34,7 +34,7 @@ pub fn handle_search(
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    let results = match mode.as_str() {
+    let mut results = match mode.as_str() {
         "vector" => vector_search(query, limit, vector_index),
         "hybrid" => {
             let bm25_results = {
@@ -71,6 +71,31 @@ pub fn handle_search(
     } else {
         results[0].score.min(1.0)
     };
+
+    // #2: Import-aware search — boost results from files connected to context_files
+    let context_files: Vec<&str> = match args.get("context_files") {
+        Some(Value::Array(arr)) => arr.iter().filter_map(|v| v.as_str()).collect(),
+        Some(Value::String(s)) => s.split(',').map(|s| s.trim()).collect(),
+        _ => vec![],
+    };
+    if !context_files.is_empty() {
+        for r in &mut results {
+            // Boost results whose filepath shares a directory with any context file
+            for cf in &context_files {
+                if let Some(dir) = std::path::Path::new(cf).parent() {
+                    if r.filepath.starts_with(&dir.to_string_lossy().to_string()) {
+                        r.score *= 1.3; // 30% boost for same-directory results
+                        break;
+                    }
+                }
+            }
+        }
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
 
     let out: Vec<Value> = results
         .iter()

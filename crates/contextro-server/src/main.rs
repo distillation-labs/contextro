@@ -118,6 +118,7 @@ impl ContextroServer {
             }
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
+            "refactor_check" => self.handle_refactor_check(&args),
             _ => {
                 json!({"error": format!("Unknown tool: '{}'. Use introspect() to find the right tool.", name)})
             }
@@ -219,7 +220,16 @@ impl ContextroServer {
         let storage_dir = contextro_config::project_storage_dir(path);
         std::fs::create_dir_all(&storage_dir).ok();
 
-        let pipeline = contextro_indexing::IndexingPipeline::new(settings);
+        let pipeline = contextro_indexing::IndexingPipeline::new(settings.clone());
+
+        // #1: Incremental re-indexing — check if files changed since last index
+        let files = contextro_indexing::discover_files(std::path::Path::new(path), &settings);
+        let current_hashes = contextro_indexing::hash_files(&files);
+        let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
+        let (added, modified, deleted) =
+            contextro_indexing::diff_file_states(&current_hashes, &stored_hashes);
+        let changed_count = added.len() + modified.len() + deleted.len();
+        let is_incremental = !stored_hashes.is_empty() && changed_count < files.len() / 2;
 
         match pipeline.index(std::path::Path::new(path)) {
             Ok((result, symbols)) => {
@@ -230,6 +240,9 @@ impl ContextroServer {
                 // Index chunks into the shared BM25 engine
                 self.state.bm25.clear();
                 let chunks = contextro_indexing::create_chunks(&symbols);
+
+                // Save hashes for next incremental run
+                contextro_indexing::save_hashes(&current_hashes, &storage_dir);
                 self.state.bm25.index_chunks(&chunks);
                 self.state
                     .chunk_count
@@ -275,6 +288,14 @@ impl ContextroServer {
                     "vector_chunks": self.state.vector_index.len(),
                     "time_seconds": (result.time_seconds * 100.0).round() / 100.0,
                 });
+                if is_incremental {
+                    resp["incremental"] = json!({
+                        "files_added": added.len(),
+                        "files_modified": modified.len(),
+                        "files_deleted": deleted.len(),
+                        "files_unchanged": files.len() - changed_count,
+                    });
+                }
                 if kb_populated > 0 {
                     resp["knowledge_docs_indexed"] = serde_json::json!(kb_populated);
                 }
@@ -306,6 +327,124 @@ impl ContextroServer {
         }).collect();
 
         json!({"total": symbols.len(), "symbols": symbols})
+    }
+
+    /// #6: Composite tool — find_symbol + callers + impact + explain in one call.
+    fn handle_refactor_check(&self, args: &Value) -> Value {
+        let name = args
+            .get("symbol_name")
+            .or_else(|| args.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if name.is_empty() {
+            return json!({"error": "Missing required parameter: symbol_name"});
+        }
+        let cb = self.state.codebase_path.read().clone();
+        let codebase = cb.as_deref();
+        let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+
+        let graph = &self.state.graph;
+        let matches = graph.find_nodes_by_name(name, true);
+        if matches.is_empty() {
+            let fuzzy = graph.find_nodes_by_name(name, false);
+            if !fuzzy.is_empty() {
+                let sugg: Vec<String> = fuzzy.iter().take(3).map(|n| n.name.clone()).collect();
+                return json!({"error": format!("Symbol '{}' not found.", name), "did_you_mean": sugg});
+            }
+            return json!({"error": format!("Symbol '{}' not found.", name)});
+        }
+
+        let node = &matches[0];
+        let fp = strip_codebase(&node.location.file_path, codebase);
+        let (in_d, out_d) = graph.get_node_degree(&node.id);
+
+        // Callers
+        let callers: Vec<Value> = graph
+            .get_callers(&node.id)
+            .iter()
+            .take(10)
+            .map(|c| {
+                json!({
+                    "name": c.name,
+                    "file": strip_codebase(&c.location.file_path, codebase),
+                    "line": c.location.start_line,
+                })
+            })
+            .collect();
+
+        // Callees
+        let callees: Vec<Value> = graph
+            .get_callees(&node.id)
+            .iter()
+            .take(10)
+            .map(|c| {
+                json!({
+                    "name": c.name,
+                    "file": strip_codebase(&c.location.file_path, codebase),
+                    "line": c.location.start_line,
+                })
+            })
+            .collect();
+
+        // Transitive impact (BFS)
+        let mut impacted: Vec<Value> = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        visited.insert(node.id.clone());
+        for caller in graph.get_callers(&node.id) {
+            if visited.insert(caller.id.clone()) {
+                queue.push_back((caller, 1usize));
+            }
+        }
+        while let Some((n, depth)) = queue.pop_front() {
+            if depth > max_depth {
+                break;
+            }
+            impacted.push(json!({
+                "name": n.name,
+                "file": strip_codebase(&n.location.file_path, codebase),
+                "line": n.location.start_line,
+                "depth": depth,
+            }));
+            if impacted.len() >= 20 {
+                break;
+            }
+            for caller in graph.get_callers(&n.id) {
+                if visited.insert(caller.id.clone()) {
+                    queue.push_back((caller, depth + 1));
+                }
+            }
+        }
+
+        let risk = if in_d > 10 {
+            "high"
+        } else if in_d > 3 {
+            "medium"
+        } else {
+            "low"
+        };
+
+        json!({
+            "symbol": name,
+            "file": fp,
+            "line": node.location.start_line,
+            "type": node.node_type.to_string(),
+            "docstring": node.docstring,
+            "callers": callers,
+            "callees": callees,
+            "callers_count": in_d,
+            "callees_count": out_d,
+            "impacted": impacted,
+            "impacted_count": impacted.len(),
+            "risk": risk,
+            "suggestion": if in_d > 10 {
+                format!("{} callers — consider adding a deprecation alias or adapter.", in_d)
+            } else if in_d > 0 {
+                format!("{} callers — update all call sites after refactoring.", in_d)
+            } else {
+                "No callers — safe to change signature freely.".to_string()
+            },
+        })
     }
 
     fn tool_definitions() -> Vec<Tool> {
@@ -394,31 +533,42 @@ impl ContextroServer {
             Tool::new("skill_prompt", "Return the agent bootstrap block for use in system prompts", empty.clone()),
             Tool::new("introspect",   "Find the right Contextro tool for a task. Args: query",
                 mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"}}}"#)),
+            Tool::new("refactor_check", "Pre-refactor analysis: definition + callers + callees + transitive impact + risk in one call. Args: symbol_name (required), max_depth",
+                mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol to analyze before refactoring"},"max_depth":{"type":"integer","description":"BFS depth for impact (default: 3)"}},"required":["symbol_name"]}"#)),
         ]
     }
 }
 
-/// #1, #5, #9: Format response — strip nulls/empties from nested objects, apply token budget.
+/// #1, #4, #5, #9: Format response — strip nulls, auto-truncate large responses, apply token budget.
 fn format_response(value: &Value, max_tokens: usize) -> String {
-    // Strip null and empty values from nested objects only (#1)
-    // Keep top-level keys intact so tools always return their documented fields
     let cleaned = strip_empty_nested(value, true);
     let output = cleaned.to_string();
 
-    // #9: Token budget — truncate if over budget (1 token ≈ 4 chars)
-    if max_tokens > 0 {
-        let max_chars = max_tokens * 4;
-        if output.len() > max_chars {
-            let truncated = &output[..max_chars];
-            if let Some(pos) = truncated.rfind("},") {
-                return format!("{}}}],\"truncated\":true}}", &output[..pos]);
-            }
+    // #4: Smart max_tokens default — auto-truncate at 8000 chars (~2000 tokens) if no explicit budget
+    let effective_budget = if max_tokens > 0 {
+        max_tokens * 4
+    } else if output.len() > 8000 {
+        8000 // ~2000 tokens default cap
+    } else {
+        0 // no truncation needed
+    };
+
+    if effective_budget > 0 && output.len() > effective_budget {
+        // Find last complete JSON object boundary before limit
+        let truncated = &output[..effective_budget];
+        if let Some(pos) = truncated.rfind("},") {
+            let budget_tokens = effective_budget / 4;
             return format!(
-                "{}...[truncated to {} tokens]",
-                &output[..max_chars],
-                max_tokens
+                "{}}}],\"truncated\":true,\"hint\":\"Response truncated to ~{} tokens. Use max_tokens for a different budget, or narrow your query.\"}}",
+                &output[..pos], budget_tokens
             );
         }
+        let budget_tokens = effective_budget / 4;
+        return format!(
+            "{}...[truncated to ~{} tokens. Narrow your query or set max_tokens.]",
+            &output[..effective_budget],
+            budget_tokens
+        );
     }
     output
 }
