@@ -323,7 +323,7 @@ impl ContextroServer {
 
         let symbols: Vec<Value> = matches.iter().take(20).map(|node| {
             let fp = cb.as_ref().map(|b| std::path::Path::new(&node.location.file_path).strip_prefix(b).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| node.location.file_path.clone())).unwrap_or_else(|| node.location.file_path.clone());
-            json!({"name": node.name, "type": node.node_type.to_string(), "file": fp, "line": node.location.start_line, "language": node.language})
+            json!({"name": node.name, "type": node.node_type.to_string(), "file": fp, "line": node.location.start_line})
         }).collect();
 
         json!({"total": symbols.len(), "symbols": symbols})

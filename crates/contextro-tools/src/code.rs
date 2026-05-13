@@ -55,13 +55,25 @@ fn get_document_symbols(args: &Value) -> Value {
                 .symbols
                 .iter()
                 .map(|s| {
-                    json!({
+                    let mut sym = json!({
                         "name": s.name,
                         "type": s.symbol_type.to_string(),
                         "line": s.line_start,
-                        "end_line": s.line_end,
-                        "signature": s.signature,
-                    })
+                    });
+                    // Only include end_line if multi-line
+                    if s.line_end > s.line_start + 1 {
+                        sym["end_line"] = json!(s.line_end);
+                    }
+                    // Truncate long signatures to save tokens
+                    let sig = if s.signature.len() > 60 {
+                        format!("{}…", &s.signature[..57])
+                    } else {
+                        s.signature.clone()
+                    };
+                    if !sig.is_empty() {
+                        sym["signature"] = json!(sig);
+                    }
+                    sym
                 })
                 .collect();
             json!({"file": file_path, "symbols": symbols, "total": symbols.len()})

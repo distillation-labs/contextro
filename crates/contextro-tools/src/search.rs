@@ -106,15 +106,12 @@ pub fn handle_search(
                 "line": r.line_start,
                 "type": r.symbol_type,
                 "score": (r.score * 1000.0).round() / 1000.0,
-                "match": r.match_sources.join("+"),
             })
         })
         .collect();
 
     json!({
         "query": query,
-        "confidence": (confidence * 1000.0).round() / 1000.0,
-        "total": out.len(),
         "results": out,
     })
 }
