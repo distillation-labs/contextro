@@ -4,6 +4,18 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+### Known Limitations
+
+- **Incremental re-indexing not yet implemented** — the file scanner computes xxHash3 content hashes but the pipeline always does a full rebuild. Partial updates (only re-parsing changed files) are planned for the next release.
+- **Call graph is name-based, not scope-based** — if two symbols share the same name in different files, calls are attributed to whichever was indexed first. Import-aware resolution is planned.
+- **JSX props not tracked as call edges** — `<DataGrid />` is detected as a call to `DataGrid`, but `onClick={handleClick}` is not detected as a call to `handleClick`.
+- **`circular_dependencies` only works for Rust** — scans `use crate::`/`use super::` imports. TypeScript/JavaScript import cycles are not yet detected.
+- **`dead_code` is static heuristic** — reports symbols with zero callers in the parsed AST. Anything called via reflection, dynamic import, or JSX props will incorrectly appear as dead.
+- **`test_coverage_map` is filename-based** — matches source files to test files by naming convention (e.g. `foo.ts` ↔ `foo.test.ts`). Does not measure actual line/branch coverage.
+- **tree-sitter-rust ABI incompatible** — `tree-sitter-rust 0.24` requires ABI version 15, incompatible with `tree-sitter 0.24.7` (ABI 14). Rust uses an improved heuristic parser instead.
+- **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
+- **Tool consolidation deferred** — 36 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
+
 ## [1.1.0] - 2026-05-13
 
 ### Added
