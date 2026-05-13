@@ -105,7 +105,9 @@ fn extract_ts_symbols(
     for child in node.named_children(&mut cursor) {
         match child.kind() {
             "function_declaration" => {
-                if let Some(sym) = extract_ts_function(child, source, filepath, language, parent_name) {
+                if let Some(sym) =
+                    extract_ts_function(child, source, filepath, language, parent_name)
+                {
                     symbols.push(sym);
                 }
             }
@@ -119,10 +121,14 @@ fn extract_ts_symbols(
             }
             "class_declaration" => {
                 if let Some(name) = child_text_by_kind(child, "type_identifier", source) {
-                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let (start, end) = (
+                        child.start_position().row as u32 + 1,
+                        child.end_position().row as u32 + 1,
+                    );
                     let sig = line_at(source, child.start_position().row);
                     let doc = extract_jsdoc_above(source, child.start_position().row);
-                    let snippet = snippet_from(source, child.start_position().row, child.end_position().row);
+                    let snippet =
+                        snippet_from(source, child.start_position().row, child.end_position().row);
 
                     symbols.push(Symbol {
                         name: name.clone(),
@@ -148,10 +154,14 @@ fn extract_ts_symbols(
             "method_definition" => {
                 if let Some(name) = child_text_by_kind(child, "property_identifier", source) {
                     let calls = collect_calls(child, source);
-                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let (start, end) = (
+                        child.start_position().row as u32 + 1,
+                        child.end_position().row as u32 + 1,
+                    );
                     let sig = line_at(source, child.start_position().row);
                     let doc = extract_jsdoc_above(source, child.start_position().row);
-                    let snippet = snippet_from(source, child.start_position().row, child.end_position().row);
+                    let snippet =
+                        snippet_from(source, child.start_position().row, child.end_position().row);
 
                     symbols.push(Symbol {
                         name,
@@ -173,7 +183,10 @@ fn extract_ts_symbols(
                 let name = child_text_by_kind(child, "type_identifier", source)
                     .or_else(|| child_text_by_kind(child, "identifier", source));
                 if let Some(name) = name {
-                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let (start, end) = (
+                        child.start_position().row as u32 + 1,
+                        child.end_position().row as u32 + 1,
+                    );
                     symbols.push(Symbol {
                         name,
                         symbol_type: SymbolType::Class,
@@ -192,7 +205,10 @@ fn extract_ts_symbols(
             }
             "enum_declaration" => {
                 if let Some(name) = child_text_by_kind(child, "identifier", source) {
-                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let (start, end) = (
+                        child.start_position().row as u32 + 1,
+                        child.end_position().row as u32 + 1,
+                    );
                     symbols.push(Symbol {
                         name,
                         symbol_type: SymbolType::Class,
@@ -223,7 +239,10 @@ fn extract_ts_function(
 ) -> Option<Symbol> {
     let name = child_text_by_kind(node, "identifier", source)?;
     let calls = collect_calls(node, source);
-    let (start, end) = (node.start_position().row as u32 + 1, node.end_position().row as u32 + 1);
+    let (start, end) = (
+        node.start_position().row as u32 + 1,
+        node.end_position().row as u32 + 1,
+    );
     let sig = line_at(source, node.start_position().row);
     let doc = extract_jsdoc_above(source, node.start_position().row);
     let snippet = snippet_from(source, node.start_position().row, node.end_position().row);
@@ -257,15 +276,20 @@ fn extract_ts_variable_decls(
         if child.kind() == "variable_declarator" {
             let name = child_text_by_kind(child, "identifier", source);
             // Check if the value is an arrow_function or function_expression
-            let has_fn = child.named_children(&mut child.walk())
+            let has_fn = child
+                .named_children(&mut child.walk())
                 .any(|c| c.kind() == "arrow_function" || c.kind() == "function");
             if let Some(name) = name {
                 if has_fn {
                     let calls = collect_calls(child, source);
-                    let (start, end) = (child.start_position().row as u32 + 1, child.end_position().row as u32 + 1);
+                    let (start, end) = (
+                        child.start_position().row as u32 + 1,
+                        child.end_position().row as u32 + 1,
+                    );
                     let sig = line_at(source, child.start_position().row);
                     let doc = extract_jsdoc_above(source, node.start_position().row);
-                    let snippet = snippet_from(source, child.start_position().row, child.end_position().row);
+                    let snippet =
+                        snippet_from(source, child.start_position().row, child.end_position().row);
 
                     symbols.push(Symbol {
                         name,
@@ -312,8 +336,12 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
                 current_impl = Some(name);
                 impl_depth = 0;
                 for ch in trimmed.chars() {
-                    if ch == '{' { impl_depth += 1; }
-                    if ch == '}' { impl_depth -= 1; }
+                    if ch == '{' {
+                        impl_depth += 1;
+                    }
+                    if ch == '}' {
+                        impl_depth -= 1;
+                    }
                 }
                 i += 1;
                 continue;
@@ -322,46 +350,92 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
 
         if current_impl.is_some() {
             for ch in trimmed.chars() {
-                if ch == '{' { impl_depth += 1; }
-                if ch == '}' { impl_depth -= 1; }
+                if ch == '{' {
+                    impl_depth += 1;
+                }
+                if ch == '}' {
+                    impl_depth -= 1;
+                }
             }
-            if impl_depth <= 0 { current_impl = None; }
+            if impl_depth <= 0 {
+                current_impl = None;
+            }
         }
 
-        let is_fn = trimmed.contains("fn ") && (trimmed.starts_with("pub") || trimmed.starts_with("fn") || trimmed.starts_with("async") || trimmed.starts_with("unsafe") || lines[i].starts_with("    ") || lines[i].starts_with("\t"));
+        let is_fn = trimmed.contains("fn ")
+            && (trimmed.starts_with("pub")
+                || trimmed.starts_with("fn")
+                || trimmed.starts_with("async")
+                || trimmed.starts_with("unsafe")
+                || lines[i].starts_with("    ")
+                || lines[i].starts_with("\t"));
         let is_struct = trimmed.starts_with("pub struct ") || trimmed.starts_with("struct ");
         let is_enum = trimmed.starts_with("pub enum ") || trimmed.starts_with("enum ");
         let is_trait = trimmed.starts_with("pub trait ") || trimmed.starts_with("trait ");
 
         if is_fn {
-            if let Some(name) = trimmed.split("fn ").nth(1).and_then(|s| s.split(&['(','<',' '][..]).next()) {
+            if let Some(name) = trimmed
+                .split("fn ")
+                .nth(1)
+                .and_then(|s| s.split(&['(', '<', ' '][..]).next())
+            {
                 if !name.is_empty() {
                     let end_line = find_block_end_braces(&lines, i);
                     let calls = collect_calls_heuristic(&lines, i + 1, end_line);
-                    let st = if current_impl.is_some() { SymbolType::Method } else { SymbolType::Function };
+                    let st = if current_impl.is_some() {
+                        SymbolType::Method
+                    } else {
+                        SymbolType::Function
+                    };
                     symbols.push(Symbol {
-                        name: name.to_string(), symbol_type: st, filepath: filepath.to_string(),
-                        line_start: line_num, line_end: (end_line + 1) as u32, language: "rust".to_string(),
-                        signature: trimmed.to_string(), docstring: extract_rust_doc(content.as_bytes(), i),
-                        parent: current_impl.clone(), code_snippet: snippet_from(content.as_bytes(), i, end_line),
-                        imports: vec![], calls,
+                        name: name.to_string(),
+                        symbol_type: st,
+                        filepath: filepath.to_string(),
+                        line_start: line_num,
+                        line_end: (end_line + 1) as u32,
+                        language: "rust".to_string(),
+                        signature: trimmed.to_string(),
+                        docstring: extract_rust_doc(content.as_bytes(), i),
+                        parent: current_impl.clone(),
+                        code_snippet: snippet_from(content.as_bytes(), i, end_line),
+                        imports: vec![],
+                        calls,
                     });
-                    i = end_line + 1; continue;
+                    i = end_line + 1;
+                    continue;
                 }
             }
         } else if is_struct || is_enum || is_trait {
-            let keyword = if is_struct { "struct " } else if is_enum { "enum " } else { "trait " };
-            if let Some(name) = trimmed.split(keyword).nth(1).and_then(|s| s.split(&['{','<','(', ' ',';',':'][..]).next()) {
+            let keyword = if is_struct {
+                "struct "
+            } else if is_enum {
+                "enum "
+            } else {
+                "trait "
+            };
+            if let Some(name) = trimmed
+                .split(keyword)
+                .nth(1)
+                .and_then(|s| s.split(&['{', '<', '(', ' ', ';', ':'][..]).next())
+            {
                 if !name.is_empty() {
                     let end_line = find_block_end_braces(&lines, i);
                     symbols.push(Symbol {
-                        name: name.to_string(), symbol_type: SymbolType::Class, filepath: filepath.to_string(),
-                        line_start: line_num, line_end: (end_line + 1) as u32, language: "rust".to_string(),
-                        signature: trimmed.to_string(), docstring: extract_rust_doc(content.as_bytes(), i),
-                        parent: None, code_snippet: snippet_from(content.as_bytes(), i, end_line),
-                        imports: vec![], calls: vec![],
+                        name: name.to_string(),
+                        symbol_type: SymbolType::Class,
+                        filepath: filepath.to_string(),
+                        line_start: line_num,
+                        line_end: (end_line + 1) as u32,
+                        language: "rust".to_string(),
+                        signature: trimmed.to_string(),
+                        docstring: extract_rust_doc(content.as_bytes(), i),
+                        parent: None,
+                        code_snippet: snippet_from(content.as_bytes(), i, end_line),
+                        imports: vec![],
+                        calls: vec![],
                     });
-                    i = end_line + 1; continue;
+                    i = end_line + 1;
+                    continue;
                 }
             }
         }
@@ -376,31 +450,57 @@ fn extract_rust_impl_name(line: &str) -> Option<String> {
         let mut depth = 0;
         let mut end = 0;
         for (j, ch) in s.chars().enumerate() {
-            if ch == '<' { depth += 1; }
-            if ch == '>' { depth -= 1; if depth == 0 { end = j + 1; break; } }
+            if ch == '<' {
+                depth += 1;
+            }
+            if ch == '>' {
+                depth -= 1;
+                if depth == 0 {
+                    end = j + 1;
+                    break;
+                }
+            }
         }
         &s[end..]
-    } else { s };
+    } else {
+        s
+    };
     let s = s.trim();
     if let Some(pos) = s.find(" for ") {
         let after = &s[pos + 5..];
-        let name = after.split(&['{','<',' '][..]).next()?.trim();
-        if !name.is_empty() { return Some(name.to_string()); }
+        let name = after.split(&['{', '<', ' '][..]).next()?.trim();
+        if !name.is_empty() {
+            return Some(name.to_string());
+        }
     }
-    let name = s.split(&['{','<',' '][..]).next()?.trim();
-    if name.is_empty() { None } else { Some(name.to_string()) }
+    let name = s.split(&['{', '<', ' '][..]).next()?.trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }
 
 fn find_block_end_braces(lines: &[&str], start: usize) -> usize {
     let mut depth = 0i32;
     for (i, line) in lines.iter().enumerate().skip(start) {
         for ch in line.chars() {
-            if ch == '{' { depth += 1; }
-            if ch == '}' { depth -= 1; }
+            if ch == '{' {
+                depth += 1;
+            }
+            if ch == '}' {
+                depth -= 1;
+            }
         }
-        if depth <= 0 && depth != 0 { return i; } // closed before opened (shouldn't happen)
-        if depth == 0 && i == start && line.contains('{') { return i; } // single-line block
-        if depth <= 0 && i > start { return i; }
+        if depth < 0 {
+            return i;
+        } // closed before opened (shouldn't happen)
+        if depth == 0 && i == start && line.contains('{') {
+            return i;
+        } // single-line block
+        if depth <= 0 && i > start {
+            return i;
+        }
     }
     lines.len() - 1
 }
@@ -441,7 +541,11 @@ fn collect_calls_recursive(node: tree_sitter::Node, source: &[u8], calls: &mut V
             if let Some(name_node) = node.named_child(0) {
                 let name = node_text(name_node, source);
                 if !name.is_empty()
-                    && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                    && name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
                     && !calls.contains(&name)
                 {
                     calls.push(name);
@@ -457,12 +561,44 @@ fn collect_calls_recursive(node: tree_sitter::Node, source: &[u8], calls: &mut V
 }
 
 fn is_keyword(s: &str) -> bool {
-    matches!(s, "if" | "for" | "while" | "return" | "switch" | "case" | "else"
-        | "new" | "typeof" | "instanceof" | "delete" | "void" | "throw"
-        | "catch" | "try" | "finally" | "yield" | "await" | "match"
-        | "let" | "const" | "var" | "fn" | "use" | "mod" | "impl"
-        | "struct" | "enum" | "trait" | "type" | "where" | "as" | "super"
-        | "require" | "import" | "export")
+    matches!(
+        s,
+        "if" | "for"
+            | "while"
+            | "return"
+            | "switch"
+            | "case"
+            | "else"
+            | "new"
+            | "typeof"
+            | "instanceof"
+            | "delete"
+            | "void"
+            | "throw"
+            | "catch"
+            | "try"
+            | "finally"
+            | "yield"
+            | "await"
+            | "match"
+            | "let"
+            | "const"
+            | "var"
+            | "fn"
+            | "use"
+            | "mod"
+            | "impl"
+            | "struct"
+            | "enum"
+            | "trait"
+            | "type"
+            | "where"
+            | "as"
+            | "super"
+            | "require"
+            | "import"
+            | "export"
+    )
 }
 
 fn child_text_by_kind(node: tree_sitter::Node, kind: &str, source: &[u8]) -> Option<String> {
@@ -497,7 +633,9 @@ fn snippet_from(source: &[u8], start_row: usize, end_row: usize) -> String {
 }
 
 fn extract_jsdoc_above(source: &[u8], row: usize) -> String {
-    if row == 0 { return String::new(); }
+    if row == 0 {
+        return String::new();
+    }
     let s = std::str::from_utf8(source).unwrap_or("");
     let lines: Vec<&str> = s.lines().collect();
     let prev = lines.get(row.wrapping_sub(1)).unwrap_or(&"").trim();
@@ -506,12 +644,24 @@ fn extract_jsdoc_above(source: &[u8], row: usize) -> String {
         let mut j = row - 1;
         loop {
             let l = lines.get(j).unwrap_or(&"").trim();
-            doc_lines.push(l.trim_start_matches("/**").trim_start_matches("/*").trim_start_matches('*').trim_end_matches("*/").trim());
-            if l.starts_with("/**") || l.starts_with("/*") || j == 0 { break; }
+            doc_lines.push(
+                l.trim_start_matches("/**")
+                    .trim_start_matches("/*")
+                    .trim_start_matches('*')
+                    .trim_end_matches("*/")
+                    .trim(),
+            );
+            if l.starts_with("/**") || l.starts_with("/*") || j == 0 {
+                break;
+            }
             j -= 1;
         }
         doc_lines.reverse();
-        return doc_lines.into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        return doc_lines
+            .into_iter()
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
     }
     if prev.starts_with("//") {
         return prev.trim_start_matches('/').trim().to_string();
@@ -520,7 +670,9 @@ fn extract_jsdoc_above(source: &[u8], row: usize) -> String {
 }
 
 fn extract_rust_doc(source: &[u8], row: usize) -> String {
-    if row == 0 { return String::new(); }
+    if row == 0 {
+        return String::new();
+    }
     let s = std::str::from_utf8(source).unwrap_or("");
     let lines: Vec<&str> = s.lines().collect();
     let mut doc_lines = Vec::new();
@@ -566,9 +718,22 @@ fn parse_heuristic(content: &str, filepath: &str, language: &str) -> Vec<Symbol>
     symbols
 }
 
-fn parse_python_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], idx: usize) -> Option<Symbol> {
+fn parse_python_def(
+    line: &str,
+    filepath: &str,
+    line_num: u32,
+    lines: &[&str],
+    idx: usize,
+) -> Option<Symbol> {
     let (symbol_type, prefix) = if line.starts_with("def ") || line.starts_with("async def ") {
-        (SymbolType::Function, if line.starts_with("async") { "async def " } else { "def " })
+        (
+            SymbolType::Function,
+            if line.starts_with("async") {
+                "async def "
+            } else {
+                "def "
+            },
+        )
     } else if line.starts_with("class ") {
         (SymbolType::Class, "class ")
     } else {
@@ -577,7 +742,9 @@ fn parse_python_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], i
 
     let rest = line.strip_prefix(prefix)?;
     let name = rest.split(&['(', ':', ' '][..]).next()?.to_string();
-    if name.is_empty() { return None; }
+    if name.is_empty() {
+        return None;
+    }
 
     let end_line = find_block_end_python(lines, idx);
     let calls = collect_calls_heuristic(lines, idx + 1, end_line);
@@ -602,15 +769,32 @@ fn parse_python_def(line: &str, filepath: &str, line_num: u32, lines: &[&str], i
 
 fn parse_generic_def(line: &str, filepath: &str, language: &str, line_num: u32) -> Option<Symbol> {
     if line.contains("func ") || line.contains("def ") || line.contains("function ") {
-        let name = line.split(&['(', '{', ' '][..]).find(|s| {
-            !s.is_empty() && !["func","def","function","pub","async","export","static"].contains(s)
-        })?.to_string();
-        if name.is_empty() || name.len() > 100 { return None; }
+        let name = line
+            .split(&['(', '{', ' '][..])
+            .find(|s| {
+                !s.is_empty()
+                    && ![
+                        "func", "def", "function", "pub", "async", "export", "static",
+                    ]
+                    .contains(s)
+            })?
+            .to_string();
+        if name.is_empty() || name.len() > 100 {
+            return None;
+        }
         return Some(Symbol {
-            name, symbol_type: SymbolType::Function, filepath: filepath.to_string(),
-            line_start: line_num, line_end: line_num, language: language.to_string(),
-            signature: line.to_string(), docstring: String::new(), parent: None,
-            code_snippet: String::new(), imports: vec![], calls: vec![],
+            name,
+            symbol_type: SymbolType::Function,
+            filepath: filepath.to_string(),
+            line_start: line_num,
+            line_end: line_num,
+            language: language.to_string(),
+            signature: line.to_string(),
+            docstring: String::new(),
+            parent: None,
+            code_snippet: String::new(),
+            imports: vec![],
+            calls: vec![],
         });
     }
     None
@@ -621,7 +805,9 @@ fn collect_calls_heuristic(lines: &[&str], start: usize, end: usize) -> Vec<Stri
     let upper = end.min(lines.len().saturating_sub(1));
     for line in lines.iter().take(upper + 1).skip(start) {
         let trimmed = line.trim();
-        if trimmed.starts_with("//") || trimmed.starts_with('#') { continue; }
+        if trimmed.starts_with("//") || trimmed.starts_with('#') {
+            continue;
+        }
         let bytes = trimmed.as_bytes();
         let len = bytes.len();
         let mut j = 0;
@@ -629,10 +815,17 @@ fn collect_calls_heuristic(lines: &[&str], start: usize, end: usize) -> Vec<Stri
             if bytes[j] == b'(' && j > 0 {
                 let mut k = j - 1;
                 if bytes[k].is_ascii_alphanumeric() || bytes[k] == b'_' {
-                    while k > 0 && (bytes[k-1].is_ascii_alphanumeric() || bytes[k-1] == b'_') { k -= 1; }
+                    while k > 0 && (bytes[k - 1].is_ascii_alphanumeric() || bytes[k - 1] == b'_') {
+                        k -= 1;
+                    }
                     let candidate = &trimmed[k..j];
-                    if candidate.len() > 1 && !is_keyword(candidate)
-                        && candidate.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+                    if candidate.len() > 1
+                        && !is_keyword(candidate)
+                        && candidate
+                            .chars()
+                            .next()
+                            .map(|c| c.is_alphabetic())
+                            .unwrap_or(false)
                         && !calls.contains(&candidate.to_string())
                     {
                         calls.push(candidate.to_string());
@@ -640,11 +833,20 @@ fn collect_calls_heuristic(lines: &[&str], start: usize, end: usize) -> Vec<Stri
                 }
             }
             // JSX
-            if bytes[j] == b'<' && j + 1 < len && !trimmed[j+1..].starts_with('/') {
-                let rest = &trimmed[j+1..];
-                let name_end = rest.find(|c: char| !c.is_alphanumeric() && c != '_').unwrap_or(rest.len());
+            if bytes[j] == b'<' && j + 1 < len && !trimmed[j + 1..].starts_with('/') {
+                let rest = &trimmed[j + 1..];
+                let name_end = rest
+                    .find(|c: char| !c.is_alphanumeric() && c != '_')
+                    .unwrap_or(rest.len());
                 let comp = &rest[..name_end];
-                if !comp.is_empty() && comp.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) && !calls.contains(&comp.to_string()) {
+                if !comp.is_empty()
+                    && comp
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                    && !calls.contains(&comp.to_string())
+                {
                     calls.push(comp.to_string());
                 }
             }
@@ -655,28 +857,39 @@ fn collect_calls_heuristic(lines: &[&str], start: usize, end: usize) -> Vec<Stri
 }
 
 fn find_block_end_python(lines: &[&str], start: usize) -> usize {
-    if start >= lines.len() { return start; }
+    if start >= lines.len() {
+        return start;
+    }
     let indent = lines[start].len() - lines[start].trim_start().len();
     for (i, line) in lines.iter().enumerate().skip(start + 1) {
-        if line.trim().is_empty() { continue; }
-        if line.len() - line.trim_start().len() <= indent { return i.saturating_sub(1); }
+        if line.trim().is_empty() {
+            continue;
+        }
+        if line.len() - line.trim_start().len() <= indent {
+            return i.saturating_sub(1);
+        }
     }
     lines.len() - 1
 }
 
 fn extract_python_docstring(lines: &[&str], def_idx: usize) -> Option<String> {
     let next_idx = def_idx + 1;
-    if next_idx >= lines.len() { return None; }
+    if next_idx >= lines.len() {
+        return None;
+    }
     let next_line = lines[next_idx].trim();
     if next_line.starts_with("\"\"\"") || next_line.starts_with("'''") {
         let quote = &next_line[..3];
         if next_line.len() > 6 && next_line.ends_with(quote) {
-            return Some(next_line[3..next_line.len()-3].to_string());
+            return Some(next_line[3..next_line.len() - 3].to_string());
         }
         let mut doc = String::new();
         for line in lines.iter().skip(next_idx + 1) {
-            if line.trim().contains(quote) { break; }
-            doc.push_str(line.trim()); doc.push('\n');
+            if line.trim().contains(quote) {
+                break;
+            }
+            doc.push_str(line.trim());
+            doc.push('\n');
         }
         return Some(doc.trim().to_string());
     }
@@ -688,8 +901,15 @@ fn extract_imports(content: &str, language: &str) -> Vec<String> {
     for line in content.lines() {
         let t = line.trim();
         match language {
-            "python" if t.starts_with("import ") || t.starts_with("from ") => imports.push(t.to_string()),
-            "javascript" | "typescript" if t.starts_with("import ") || (t.starts_with("const ") && t.contains("require(")) => imports.push(t.to_string()),
+            "python" if t.starts_with("import ") || t.starts_with("from ") => {
+                imports.push(t.to_string())
+            }
+            "javascript" | "typescript"
+                if t.starts_with("import ")
+                    || (t.starts_with("const ") && t.contains("require(")) =>
+            {
+                imports.push(t.to_string())
+            }
             "rust" if t.starts_with("use ") => imports.push(t.to_string()),
             "go" if t.starts_with("import ") => imports.push(t.to_string()),
             _ => {}
@@ -708,7 +928,9 @@ mod tests {
     fn test_ts_arrow_functions() {
         let parser = TreeSitterParser::new();
         let tmp = std::env::temp_dir().join("test_ts_real.tsx");
-        std::fs::write(&tmp, r#"
+        std::fs::write(
+            &tmp,
+            r#"
 export const fetchUser = async (id: string) => {
     const result = await db.query(id);
     return transform(result);
@@ -731,27 +953,57 @@ enum Status { Active, Inactive }
 const App = () => {
     return <UserService />;
 };
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
         let names: Vec<&str> = result.symbols.iter().map(|s| s.name.as_str()).collect();
 
-        assert!(names.contains(&"fetchUser"), "Missing arrow fn: {:?}", names);
-        assert!(names.contains(&"processData"), "Missing function: {:?}", names);
+        assert!(
+            names.contains(&"fetchUser"),
+            "Missing arrow fn: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"processData"),
+            "Missing function: {:?}",
+            names
+        );
         assert!(names.contains(&"UserService"), "Missing class: {:?}", names);
         assert!(names.contains(&"getUser"), "Missing method: {:?}", names);
-        assert!(names.contains(&"UserProps"), "Missing interface: {:?}", names);
+        assert!(
+            names.contains(&"UserProps"),
+            "Missing interface: {:?}",
+            names
+        );
         assert!(names.contains(&"UserId"), "Missing type alias: {:?}", names);
         assert!(names.contains(&"Status"), "Missing enum: {:?}", names);
-        assert!(names.contains(&"App"), "Missing arrow component: {:?}", names);
+        assert!(
+            names.contains(&"App"),
+            "Missing arrow component: {:?}",
+            names
+        );
 
         // Check calls
-        let fetch = result.symbols.iter().find(|s| s.name == "fetchUser").unwrap();
-        assert!(fetch.calls.contains(&"transform".to_string()), "fetchUser calls: {:?}", fetch.calls);
+        let fetch = result
+            .symbols
+            .iter()
+            .find(|s| s.name == "fetchUser")
+            .unwrap();
+        assert!(
+            fetch.calls.contains(&"transform".to_string()),
+            "fetchUser calls: {:?}",
+            fetch.calls
+        );
 
         // Check JSX call detection
         let app = result.symbols.iter().find(|s| s.name == "App").unwrap();
-        assert!(app.calls.contains(&"UserService".to_string()), "App JSX calls: {:?}", app.calls);
+        assert!(
+            app.calls.contains(&"UserService".to_string()),
+            "App JSX calls: {:?}",
+            app.calls
+        );
 
         // Check method parent
         let get_user = result.symbols.iter().find(|s| s.name == "getUser").unwrap();
@@ -764,7 +1016,9 @@ const App = () => {
     fn test_rust_real_parser() {
         let parser = TreeSitterParser::new();
         let tmp = std::env::temp_dir().join("test_rs_real.rs");
-        std::fs::write(&tmp, r#"
+        std::fs::write(
+            &tmp,
+            r#"
 /// A user store.
 pub struct UserStore {
     db: Database,
@@ -788,7 +1042,9 @@ pub fn standalone() {
 
 enum Color { Red, Blue }
 trait Drawable { fn draw(&self); }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
         let names: Vec<&str> = result.symbols.iter().map(|s| s.name.as_str()).collect();
@@ -801,11 +1057,19 @@ trait Drawable { fn draw(&self); }
         assert!(names.contains(&"Drawable"), "Missing trait: {:?}", names);
 
         let new_sym = result.symbols.iter().find(|s| s.name == "new").unwrap();
-        assert!(new_sym.calls.contains(&"validate".to_string()), "new calls: {:?}", new_sym.calls);
+        assert!(
+            new_sym.calls.contains(&"validate".to_string()),
+            "new calls: {:?}",
+            new_sym.calls
+        );
         assert_eq!(new_sym.parent, Some("UserStore".to_string()));
 
         let get_sym = result.symbols.iter().find(|s| s.name == "get").unwrap();
-        assert!(get_sym.calls.contains(&"deserialize".to_string()), "get calls: {:?}", get_sym.calls);
+        assert!(
+            get_sym.calls.contains(&"deserialize".to_string()),
+            "get calls: {:?}",
+            get_sym.calls
+        );
 
         std::fs::remove_file(tmp).ok();
     }

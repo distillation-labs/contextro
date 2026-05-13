@@ -90,7 +90,8 @@ pub fn handle_tags(store: &MemoryStore) -> Value {
 
 pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     // Accept `memory_id` (current) or first element of `ids` array (v0.4.0 alias)
-    let id_owned: Option<String> = args.get("memory_id")
+    let id_owned: Option<String> = args
+        .get("memory_id")
         .and_then(|v| v.as_str())
         .map(String::from)
         .or_else(|| match args.get("ids") {
@@ -106,7 +107,11 @@ pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
                 .filter_map(|v| v.as_str())
                 .collect::<Vec<_>>()
                 .join(",");
-            if joined.is_empty() { None } else { Some(joined) }
+            if joined.is_empty() {
+                None
+            } else {
+                Some(joined)
+            }
         }
         Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
         _ => None,
@@ -155,7 +160,8 @@ impl KnowledgeStore {
     pub fn search(&self, query: &str, limit: usize) -> Vec<(String, String)> {
         let query_lower = query.to_lowercase();
         // Split into meaningful words (3+ chars) for fallback word matching
-        let words: Vec<&str> = query_lower.split_whitespace()
+        let words: Vec<&str> = query_lower
+            .split_whitespace()
             .filter(|w| w.len() >= 3)
             .collect();
 
@@ -179,7 +185,8 @@ impl KnowledgeStore {
         }
 
         results.sort_by_key(|r| std::cmp::Reverse(r.2));
-        results.into_iter()
+        results
+            .into_iter()
             .take(limit)
             .map(|(name, chunk, _)| (name, chunk))
             .collect()
@@ -206,9 +213,16 @@ impl Default for KnowledgeStore {
 
 pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
     // If `query` is provided without `command`, default to search (backward compat)
-    let command = args.get("command").and_then(|v| v.as_str()).unwrap_or_else(|| {
-        if args.get("query").and_then(|v| v.as_str()).is_some() { "search" } else { "" }
-    });
+    let command = args
+        .get("command")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| {
+            if args.get("query").and_then(|v| v.as_str()).is_some() {
+                "search"
+            } else {
+                ""
+            }
+        });
     match command {
         "show" => {
             let bases: Vec<Value> = knowledge

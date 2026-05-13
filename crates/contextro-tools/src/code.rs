@@ -9,7 +9,8 @@ use serde_json::{json, Value};
 
 pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     // Accept both `operation` (current) and `action` (v0.4.0 name) for backward compat
-    let operation = args.get("operation")
+    let operation = args
+        .get("operation")
         .or_else(|| args.get("action"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
@@ -32,7 +33,9 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
         "pattern_rewrite" => pattern_rewrite(args, codebase),
         "edit_plan" => edit_plan(args, graph, codebase),
         "search_codebase_map" => search_codebase_map(args, graph, codebase),
-        _ => json!({"error": format!("Unknown code operation: '{}'. Valid operations: get_document_symbols, search_symbols, lookup_symbols, list_symbols, pattern_search, pattern_rewrite, edit_plan, search_codebase_map", operation)}),
+        _ => {
+            json!({"error": format!("Unknown code operation: '{}'. Valid operations: get_document_symbols, search_symbols, lookup_symbols, list_symbols, pattern_search, pattern_rewrite, edit_plan, search_codebase_map", operation)})
+        }
     }
 }
 
@@ -69,7 +72,8 @@ fn get_document_symbols(args: &Value) -> Value {
 
 fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     // Accept `symbol_name` (current) or `query` (v0.4.0 alias)
-    let name = args.get("symbol_name")
+    let name = args
+        .get("symbol_name")
         .or_else(|| args.get("query"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
@@ -399,12 +403,17 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
 /// Return a symbol-level map of the codebase grouped by file.
 /// Accepts an optional `query` to filter by symbol name and an optional `path` prefix.
 fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+    let query = args
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_lowercase();
     let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
 
     let all_nodes = graph.find_nodes_by_name("", false);
 
-    let mut file_map: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
+    let mut file_map: std::collections::BTreeMap<String, Vec<Value>> =
+        std::collections::BTreeMap::new();
     for node in &all_nodes {
         let rel = strip_base(&node.location.file_path, codebase);
         // Filter by path prefix ("." means no filter)
@@ -433,7 +442,10 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         })
         .collect();
 
-    let total_symbols: usize = files.iter().map(|f| f["total"].as_u64().unwrap_or(0) as usize).sum();
+    let total_symbols: usize = files
+        .iter()
+        .map(|f| f["total"].as_u64().unwrap_or(0) as usize)
+        .sum();
 
     json!({
         "path": if path_filter.is_empty() { "." } else { path_filter },
@@ -500,8 +512,12 @@ fn collect_files(path: &str, language: Option<&str>) -> Vec<String> {
         } else {
             // No language filter — include all non-binary files
             if let Some(ext) = ep.extension().and_then(|e| e.to_str()) {
-                if !["png","jpg","jpeg","gif","svg","ico","woff","woff2","ttf","eot",
-                     "pdf","zip","gz","tar","lock","map","min.js"].contains(&ext) {
+                if ![
+                    "png", "jpg", "jpeg", "gif", "svg", "ico", "woff", "woff2", "ttf", "eot",
+                    "pdf", "zip", "gz", "tar", "lock", "map", "min.js",
+                ]
+                .contains(&ext)
+                {
                     files.push(ep.to_string_lossy().to_string());
                 }
             }

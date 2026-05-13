@@ -12,24 +12,102 @@ use serde_json::{json, Value};
 /// that appear everywhere and inflate graph metrics without conveying architectural meaning.
 const GENERIC_NAMES: &[&str] = &[
     // Rust stdlib
-    "new", "default", "clone", "drop", "fmt", "from", "into", "as_ref", "as_mut",
-    "len", "is_empty", "iter", "iter_mut", "get", "get_mut", "set", "push", "pop",
-    "insert", "remove", "contains", "clear", "extend", "collect", "map", "filter",
-    "unwrap", "unwrap_or", "expect", "ok", "err",
-    "to_string", "to_owned", "parse", "deref", "deref_mut",
-    "send", "recv", "read", "write", "flush", "close",
+    "new",
+    "default",
+    "clone",
+    "drop",
+    "fmt",
+    "from",
+    "into",
+    "as_ref",
+    "as_mut",
+    "len",
+    "is_empty",
+    "iter",
+    "iter_mut",
+    "get",
+    "get_mut",
+    "set",
+    "push",
+    "pop",
+    "insert",
+    "remove",
+    "contains",
+    "clear",
+    "extend",
+    "collect",
+    "map",
+    "filter",
+    "unwrap",
+    "unwrap_or",
+    "expect",
+    "ok",
+    "err",
+    "to_string",
+    "to_owned",
+    "parse",
+    "deref",
+    "deref_mut",
+    "send",
+    "recv",
+    "read",
+    "write",
+    "flush",
+    "close",
     // JS/TS test framework globals (Jest, Vitest, Mocha, Playwright)
-    "describe", "it", "test", "expect", "beforeEach", "afterEach", "beforeAll", "afterAll",
-    "vi", "jest", "assert", "suite", "bench",
+    "describe",
+    "it",
+    "test",
+    "expect",
+    "beforeEach",
+    "afterEach",
+    "beforeAll",
+    "afterAll",
+    "vi",
+    "jest",
+    "assert",
+    "suite",
+    "bench",
     // JS/TS language keywords misidentified as symbols
-    "export", "await", "async", "return", "import", "require",
+    "export",
+    "await",
+    "async",
+    "return",
+    "import",
+    "require",
     // Common single-word JS identifiers that appear in every file
-    "id", "name", "type", "value", "data", "result", "error", "now", "next",
-    "key", "index", "item", "node", "ref", "props", "state", "ctx", "res", "req",
-    "number", "string", "boolean", "object", "array",
+    "id",
+    "name",
+    "type",
+    "value",
+    "data",
+    "result",
+    "error",
+    "now",
+    "next",
+    "key",
+    "index",
+    "item",
+    "node",
+    "ref",
+    "props",
+    "state",
+    "ctx",
+    "res",
+    "req",
+    "number",
+    "string",
+    "boolean",
+    "object",
+    "array",
 ];
 
-pub fn handle_overview(graph: &CodeGraph, codebase: Option<&str>, total_chunks: usize, vector_chunks: usize) -> Value {
+pub fn handle_overview(
+    graph: &CodeGraph,
+    codebase: Option<&str>,
+    total_chunks: usize,
+    vector_chunks: usize,
+) -> Value {
     let node_count = graph.node_count();
     let rel_count = graph.relationship_count();
     json!({
@@ -77,10 +155,12 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         let abs_filter = if std::path::Path::new(path_filter).is_absolute() {
             path_filter.to_string()
         } else {
-            codebase.map(|b| format!("{}/{}", b, path_filter))
+            codebase
+                .map(|b| format!("{}/{}", b, path_filter))
                 .unwrap_or_else(|| path_filter.to_string())
         };
-        all_nodes.into_iter()
+        all_nodes
+            .into_iter()
             .filter(|n| n.location.file_path.starts_with(&abs_filter))
             .collect()
     };
@@ -132,15 +212,20 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
 
     // Directory: list top symbols grouped by file
     if Path::new(&abs_path).is_dir() {
-        let mut by_file: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
-        for n in nodes.iter().filter(|n| n.location.file_path.starts_with(&abs_path)) {
+        let mut by_file: std::collections::BTreeMap<String, Vec<Value>> =
+            std::collections::BTreeMap::new();
+        for n in nodes
+            .iter()
+            .filter(|n| n.location.file_path.starts_with(&abs_path))
+        {
             let (in_d, out_d) = graph.get_node_degree(&n.id);
             by_file.entry(strip_base(&n.location.file_path, codebase)).or_default().push(
                 json!({"name": n.name, "type": n.node_type.to_string(), "line": n.location.start_line, "callers": in_d, "callees": out_d})
             );
         }
         let total_symbols: usize = by_file.values().map(|v| v.len()).sum();
-        let files: Vec<Value> = by_file.into_iter()
+        let files: Vec<Value> = by_file
+            .into_iter()
             .map(|(file, syms)| json!({"file": file, "symbols": syms}))
             .collect();
         return json!({
@@ -252,7 +337,9 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
 
             // Find a file in the indexed set that matches this module name
             if let Some(dep_file) = all_files.iter().find(|f| {
-                let stem = Path::new(f).file_stem().map(|s| s.to_string_lossy().to_string());
+                let stem = Path::new(f)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string());
                 stem.as_deref() == Some(segment) && f.as_str() != file_path.as_str()
             }) {
                 file_deps
@@ -313,12 +400,13 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
     for src in &source_files {
         let src_stem = file_stem_stripped(src);
 
-        let has_test = inline_tested.contains(src) || test_files.iter().any(|t| {
-            let t_stem = file_stem_stripped(t);
-            t_stem == src_stem
-                || t_stem == format!("test_{}", src_stem)
-                || t_stem == format!("{}_test", src_stem)
-        });
+        let has_test = inline_tested.contains(src)
+            || test_files.iter().any(|t| {
+                let t_stem = file_stem_stripped(t);
+                t_stem == src_stem
+                    || t_stem == format!("test_{}", src_stem)
+                    || t_stem == format!("{}_test", src_stem)
+            });
 
         if has_test {
             covered.push(strip_base(src, codebase));
@@ -348,8 +436,12 @@ fn file_stem_stripped(fp: &str) -> String {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    if let Some(s) = stem.strip_suffix(".test") { return s.to_string(); }
-    if let Some(s) = stem.strip_suffix(".spec") { return s.to_string(); }
+    if let Some(s) = stem.strip_suffix(".test") {
+        return s.to_string();
+    }
+    if let Some(s) = stem.strip_suffix(".spec") {
+        return s.to_string();
+    }
     stem
 }
 

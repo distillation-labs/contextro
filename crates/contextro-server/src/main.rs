@@ -38,9 +38,13 @@ impl ContextroServer {
             "status" => self.handle_status(),
             "health" => self.handle_health(),
             "index" => self.handle_index(&args),
-            "search" => {
-                contextro_tools::search::handle_search(&args, &s.bm25, &s.graph, &s.query_cache, &s.vector_index)
-            }
+            "search" => contextro_tools::search::handle_search(
+                &args,
+                &s.bm25,
+                &s.graph,
+                &s.query_cache,
+                &s.vector_index,
+            ),
             "find_symbol" => self.handle_find_symbol(&args),
             "find_callers" => {
                 contextro_tools::graph_tools::handle_find_callers(&args, &s.graph, cb)
@@ -96,7 +100,9 @@ impl ContextroServer {
             }
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
-            _ => json!({"error": format!("Unknown tool: '{}'. Use introspect() to find the right tool.", name)}),
+            _ => {
+                json!({"error": format!("Unknown tool: '{}'. Use introspect() to find the right tool.", name)})
+            }
         };
 
         s.session_tracker.track(name, &format!("{}()", name));
@@ -122,7 +128,8 @@ impl ContextroServer {
                         // Edit distance fallback: find symbols within distance 2
                         let all = s.graph.find_nodes_by_name("", false);
                         let sym_lower = sym.to_lowercase();
-                        suggestions = all.into_iter()
+                        suggestions = all
+                            .into_iter()
                             .filter(|n| {
                                 let name_lower = n.name.to_lowercase();
                                 edit_distance(&sym_lower, &name_lower) <= 2
@@ -132,13 +139,28 @@ impl ContextroServer {
                             .collect();
                     }
                     if !suggestions.is_empty() {
-                        let sugg: Vec<String> = suggestions.iter().take(3)
-                            .map(|n| format!("{} ({}:{})", n.name, strip_codebase(&n.location.file_path, cb), n.location.start_line))
+                        let sugg: Vec<String> = suggestions
+                            .iter()
+                            .take(3)
+                            .map(|n| {
+                                format!(
+                                    "{} ({}:{})",
+                                    n.name,
+                                    strip_codebase(&n.location.file_path, cb),
+                                    n.location.start_line
+                                )
+                            })
                             .collect();
                         json!({"error": err_text, "did_you_mean": sugg, "hint": format!("Try: find_symbol(name=\"{}\", exact=false)", &sym[..sym.len().min(4)])})
-                    } else { result }
-                } else { result }
-            } else { result };
+                    } else {
+                        result
+                    }
+                } else {
+                    result
+                }
+            } else {
+                result
+            };
             CallToolResult::error(vec![Content::text(format_response(&enhanced, max_tokens))])
         } else {
             CallToolResult::success(vec![Content::text(format_response(&result, max_tokens))])
@@ -270,18 +292,42 @@ impl ContextroServer {
         };
 
         // All schemas use current param names; backward-compat aliases are handled in dispatch.
-        let path_schema = mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative path to a directory"}},"required":["path"]}"#);
-        let name_schema = mk(r#"{"type":"object","properties":{"name":{"type":"string","description":"Symbol name to search for"},"exact":{"type":"boolean","description":"true=exact match, false=fuzzy (default: true)"}},"required":["name"]}"#);
-        let sym_schema  = mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Name of the function, struct, or class"}},"required":["symbol_name"]}"#);
-        let query_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"}},"required":["query"]}"#);
-        let impact_schema = mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol whose change impact to trace"},"max_depth":{"type":"integer","description":"BFS depth (default: 5)"}},"required":["symbol_name"]}"#);
-        let code_schema = mk(r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"file_path":{"type":"string","description":"Absolute path to file (get_document_symbols)"},"symbol_name":{"type":"string","description":"Symbol name (search_symbols, lookup_symbols)"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"path":{"type":"string","description":"Directory path (list_symbols, search_codebase_map)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#);
-        let mem_schema = mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#);
-        let recall_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"What to search for in memories"},"limit":{"type":"integer","description":"Max results (default: 5)"},"memory_type":{"type":"string","description":"Filter by type: note, decision, …"},"tags":{"type":"string","description":"Filter by tag"}},"required":["query"]}"#);
-        let knowledge_schema = mk(r#"{"type":"object","properties":{"command":{"type":"string","description":"add | search | show | remove | update (omit to auto-detect from query)"},"name":{"type":"string","description":"Knowledge base name (add, remove, update)"},"query":{"type":"string","description":"Search query (search); also triggers search when command is omitted"},"value":{"type":"string","description":"Content or file/directory path to index (add)"},"limit":{"type":"integer","description":"Max results (search, default: 5)"}}}"#);
-        let ref_schema = mk(r#"{"type":"object","properties":{"ref_id":{"type":"string","description":"Reference ID returned by compact"}},"required":["ref_id"]}"#);
-        let commit_schema = mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Keywords or description to search commit messages"},"limit":{"type":"integer","description":"Max results"},"author":{"type":"string","description":"Filter by author name"}},"required":["query"]}"#);
-        let hist_schema = mk(r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Number of commits to return (default: 20)"}}}"#);
+        let path_schema = mk(
+            r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative path to a directory"}},"required":["path"]}"#,
+        );
+        let name_schema = mk(
+            r#"{"type":"object","properties":{"name":{"type":"string","description":"Symbol name to search for"},"exact":{"type":"boolean","description":"true=exact match, false=fuzzy (default: true)"}},"required":["name"]}"#,
+        );
+        let sym_schema = mk(
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Name of the function, struct, or class"}},"required":["symbol_name"]}"#,
+        );
+        let query_schema = mk(
+            r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"}},"required":["query"]}"#,
+        );
+        let impact_schema = mk(
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol whose change impact to trace"},"max_depth":{"type":"integer","description":"BFS depth (default: 5)"}},"required":["symbol_name"]}"#,
+        );
+        let code_schema = mk(
+            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"file_path":{"type":"string","description":"Absolute path to file (get_document_symbols)"},"symbol_name":{"type":"string","description":"Symbol name (search_symbols, lookup_symbols)"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"path":{"type":"string","description":"Directory path (list_symbols, search_codebase_map)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
+        );
+        let mem_schema = mk(
+            r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
+        );
+        let recall_schema = mk(
+            r#"{"type":"object","properties":{"query":{"type":"string","description":"What to search for in memories"},"limit":{"type":"integer","description":"Max results (default: 5)"},"memory_type":{"type":"string","description":"Filter by type: note, decision, …"},"tags":{"type":"string","description":"Filter by tag"}},"required":["query"]}"#,
+        );
+        let knowledge_schema = mk(
+            r#"{"type":"object","properties":{"command":{"type":"string","description":"add | search | show | remove | update (omit to auto-detect from query)"},"name":{"type":"string","description":"Knowledge base name (add, remove, update)"},"query":{"type":"string","description":"Search query (search); also triggers search when command is omitted"},"value":{"type":"string","description":"Content or file/directory path to index (add)"},"limit":{"type":"integer","description":"Max results (search, default: 5)"}}}"#,
+        );
+        let ref_schema = mk(
+            r#"{"type":"object","properties":{"ref_id":{"type":"string","description":"Reference ID returned by compact"}},"required":["ref_id"]}"#,
+        );
+        let commit_schema = mk(
+            r#"{"type":"object","properties":{"query":{"type":"string","description":"Keywords or description to search commit messages"},"limit":{"type":"integer","description":"Max results"},"author":{"type":"string","description":"Filter by author name"}},"required":["query"]}"#,
+        );
+        let hist_schema = mk(
+            r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Number of commits to return (default: 20)"}}}"#,
+        );
 
         vec![
             Tool::new("status",  "Show indexing state, graph stats, memory count, uptime", empty.clone()),
@@ -344,7 +390,11 @@ fn format_response(value: &Value, max_tokens: usize) -> String {
             if let Some(pos) = truncated.rfind("},") {
                 return format!("{}}}],\"truncated\":true}}", &output[..pos]);
             }
-            return format!("{}...[truncated to {} tokens]", &output[..max_chars], max_tokens);
+            return format!(
+                "{}...[truncated to {} tokens]",
+                &output[..max_chars],
+                max_tokens
+            );
         }
     }
     output
@@ -353,7 +403,8 @@ fn format_response(value: &Value, max_tokens: usize) -> String {
 fn strip_empty_nested(value: &Value, is_top_level: bool) -> Value {
     match value {
         Value::Object(map) => {
-            let cleaned: serde_json::Map<String, Value> = map.iter()
+            let cleaned: serde_json::Map<String, Value> = map
+                .iter()
                 .filter(|(_, v)| is_top_level || !is_empty_value(v))
                 .map(|(k, v)| (k.clone(), strip_empty_nested(v, false)))
                 .collect();
@@ -395,7 +446,9 @@ fn strip_absolute_paths(value: Value, base: &str) -> Value {
                 .collect(),
         ),
         Value::Array(arr) => Value::Array(
-            arr.into_iter().map(|v| strip_absolute_paths(v, base)).collect(),
+            arr.into_iter()
+                .map(|v| strip_absolute_paths(v, base))
+                .collect(),
         ),
         other => other,
     }
@@ -410,8 +463,12 @@ fn strip_codebase(path: &str, codebase: Option<&str>) -> String {
 
 fn edit_distance(a: &str, b: &str) -> usize {
     let (m, n) = (a.len(), b.len());
-    if m == 0 { return n; }
-    if n == 0 { return m; }
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
     let mut prev: Vec<usize> = (0..=n).collect();
     let mut curr = vec![0; n + 1];
     for (i, ca) in a.chars().enumerate() {
@@ -438,9 +495,13 @@ fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeSto
         return 0; // KB already has content; don't overwrite
     }
     let candidates = [
-        "README.md", "README.txt", "README",
-        "CLAUDE.md", "AGENTS.md",
-        "docs/README.md", "docs/index.md",
+        "README.md",
+        "README.txt",
+        "README",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "docs/README.md",
+        "docs/index.md",
         "CONTRIBUTING.md",
     ];
     let mut count = 0;
@@ -483,19 +544,51 @@ impl ServerHandler for ContextroServer {
 
         let tier = std::env::var("CTX_TOOL_TIER").unwrap_or_else(|_| "full".to_string());
         let core_tools: &[&str] = &[
-            "code", "explain", "find_callers", "find_callees", "find_symbol",
-            "health", "impact", "index", "search", "status",
+            "code",
+            "explain",
+            "find_callers",
+            "find_callees",
+            "find_symbol",
+            "health",
+            "impact",
+            "index",
+            "search",
+            "status",
         ];
         let standard_tools: &[&str] = &[
-            "analyze", "architecture", "code", "commit_history", "commit_search",
-            "dead_code", "explain", "find_callers", "find_callees", "find_symbol",
-            "focus", "forget", "health", "impact", "index", "introspect",
-            "knowledge", "overview", "recall", "remember", "search", "status",
+            "analyze",
+            "architecture",
+            "code",
+            "commit_history",
+            "commit_search",
+            "dead_code",
+            "explain",
+            "find_callers",
+            "find_callees",
+            "find_symbol",
+            "focus",
+            "forget",
+            "health",
+            "impact",
+            "index",
+            "introspect",
+            "knowledge",
+            "overview",
+            "recall",
+            "remember",
+            "search",
+            "status",
         ];
 
         let filtered = match tier.as_str() {
-            "core" => tools.into_iter().filter(|t| core_tools.contains(&t.name.as_ref())).collect(),
-            "standard" => tools.into_iter().filter(|t| standard_tools.contains(&t.name.as_ref())).collect(),
+            "core" => tools
+                .into_iter()
+                .filter(|t| core_tools.contains(&t.name.as_ref()))
+                .collect(),
+            "standard" => tools
+                .into_iter()
+                .filter(|t| standard_tools.contains(&t.name.as_ref()))
+                .collect(),
             _ => tools, // "full" — all tools
         };
 

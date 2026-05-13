@@ -35,9 +35,7 @@ pub fn handle_search(
         .map(String::from);
 
     let results = match mode.as_str() {
-        "vector" => {
-            vector_search(query, limit, vector_index)
-        }
+        "vector" => vector_search(query, limit, vector_index),
         "hybrid" => {
             let bm25_results = {
                 let options = SearchOptions {
@@ -145,7 +143,11 @@ fn fuse_results(
         }))
         .collect();
 
-    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     for r in candidates {
         let key = format!("{}:{}", r.filepath, r.line_start);

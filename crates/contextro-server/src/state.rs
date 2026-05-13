@@ -30,6 +30,7 @@ pub struct AppState {
     pub bm25: Arc<Bm25Engine>,
     pub vector_index: Arc<VectorIndex>,
     pub query_cache: Arc<QueryCache>,
+    #[allow(dead_code)]
     pub sandbox: Arc<OutputSandbox>,
     pub session_tracker: Arc<SessionTracker>,
     pub memory_store: Arc<MemoryStore>,

@@ -15,7 +15,7 @@ static MODEL: OnceLock<RwLock<Option<Model2Vec>>> = OnceLock::new();
 fn resolve_hf_id(key: &str) -> &str {
     match key {
         "potion-code-16m" | "potion-code-16M" => "minishlab/potion-code-16M",
-        "potion-base-8m"  | "potion-base-8M"  => "minishlab/potion-base-8M",
+        "potion-base-8m" | "potion-base-8M" => "minishlab/potion-base-8M",
         "potion-base-32m" | "potion-base-32M" => "minishlab/potion-base-32M",
         other => other,
     }

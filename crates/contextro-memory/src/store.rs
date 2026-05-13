@@ -4,12 +4,11 @@ use std::path::Path;
 
 /// Common English words unlikely to discriminate between memories.
 const STOP_WORDS: &[&str] = &[
-    "a", "an", "the", "is", "it", "in", "on", "at", "to", "for", "of", "or", "and",
-    "how", "does", "what", "which", "why", "when", "where", "who", "do", "did",
-    "be", "was", "are", "were", "been", "have", "has", "had", "can", "could",
-    "this", "that", "these", "those", "with", "from", "by", "as", "but", "not",
-    "work", "works", "use", "used", "using", "get", "set", "will", "would", "should",
-    "we", "my", "our", "their", "its", "me", "him", "her", "us", "them",
+    "a", "an", "the", "is", "it", "in", "on", "at", "to", "for", "of", "or", "and", "how", "does",
+    "what", "which", "why", "when", "where", "who", "do", "did", "be", "was", "are", "were",
+    "been", "have", "has", "had", "can", "could", "this", "that", "these", "those", "with", "from",
+    "by", "as", "but", "not", "work", "works", "use", "used", "using", "get", "set", "will",
+    "would", "should", "we", "my", "our", "their", "its", "me", "him", "her", "us", "them",
 ];
 
 /// Light suffix-stripping to improve recall across word forms ("indexing" → "index").
@@ -127,7 +126,11 @@ impl MemoryStore {
                 .into_iter()
                 .collect();
             // Fall back to unfiltered words if everything was a stop word
-            if filtered.is_empty() { raw_words.clone() } else { filtered }
+            if filtered.is_empty() {
+                raw_words.clone()
+            } else {
+                filtered
+            }
         };
 
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
@@ -213,7 +216,10 @@ impl MemoryStore {
                 (hits, m)
             })
             .collect();
-        ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.created_at.cmp(&a.1.created_at)));
+        ranked.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then_with(|| b.1.created_at.cmp(&a.1.created_at))
+        });
 
         Ok(ranked.into_iter().take(limit).map(|(_, m)| m).collect())
     }

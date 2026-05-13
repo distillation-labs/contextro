@@ -29,17 +29,22 @@ pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&st
     for node in &matches {
         for caller in graph.get_callers(&node.id) {
             let fp = relativize(&caller.location.file_path, codebase);
-            callers.push(format!("{} ({}:{})", caller.name, fp, caller.location.start_line));
+            callers.push(format!(
+                "{} ({}:{})",
+                caller.name, fp, caller.location.start_line
+            ));
         }
     }
 
     let mut result = json!({"symbol": name, "callers": callers, "total": callers.len()});
     if callers.is_empty() {
         let is_type = matches.iter().any(|n| {
-            matches!(n.node_type,
-                contextro_core::NodeType::Class |
-                contextro_core::NodeType::Interface |
-                contextro_core::NodeType::Enum)
+            matches!(
+                n.node_type,
+                contextro_core::NodeType::Class
+                    | contextro_core::NodeType::Interface
+                    | contextro_core::NodeType::Enum
+            )
         });
         if is_type {
             result["hint"] = json!(
@@ -66,17 +71,22 @@ pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&st
     for node in &matches {
         for callee in graph.get_callees(&node.id) {
             let fp = relativize(&callee.location.file_path, codebase);
-            callees.push(format!("{} ({}:{})", callee.name, fp, callee.location.start_line));
+            callees.push(format!(
+                "{} ({}:{})",
+                callee.name, fp, callee.location.start_line
+            ));
         }
     }
 
     let mut result = json!({"symbol": name, "callees": callees, "total": callees.len()});
     if callees.is_empty() {
         let is_type = matches.iter().any(|n| {
-            matches!(n.node_type,
-                contextro_core::NodeType::Class |
-                contextro_core::NodeType::Interface |
-                contextro_core::NodeType::Enum)
+            matches!(
+                n.node_type,
+                contextro_core::NodeType::Class
+                    | contextro_core::NodeType::Interface
+                    | contextro_core::NodeType::Enum
+            )
         });
         if is_type {
             result["hint"] = json!(
@@ -104,13 +114,27 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         .get_callers(&node.id)
         .iter()
         .take(10)
-        .map(|c| format!("{} ({}:{})", c.name, relativize(&c.location.file_path, codebase), c.location.start_line))
+        .map(|c| {
+            format!(
+                "{} ({}:{})",
+                c.name,
+                relativize(&c.location.file_path, codebase),
+                c.location.start_line
+            )
+        })
         .collect();
     let callees: Vec<String> = graph
         .get_callees(&node.id)
         .iter()
         .take(10)
-        .map(|c| format!("{} ({}:{})", c.name, relativize(&c.location.file_path, codebase), c.location.start_line))
+        .map(|c| {
+            format!(
+                "{} ({}:{})",
+                c.name,
+                relativize(&c.location.file_path, codebase),
+                c.location.start_line
+            )
+        })
         .collect();
 
     json!({
