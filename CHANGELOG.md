@@ -4,6 +4,14 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-05-12
+
+### Fixed
+
+- `test_coverage_map` now detects `.test.ts`, `.test.tsx`, `.spec.ts`, `.spec.tsx`, and `__tests__/` directory patterns — previously only detected Rust-style `test_*.rs` naming, reporting 0% coverage on TypeScript projects.
+- `architecture` and `analyze` now exclude test files from hub symbol rankings — previously test framework helpers like `describe`/`eq`/`withIndex` appeared as top architectural hubs.
+- JSX component usage (`<ComponentName`) is now parsed as a call edge — `find_callers`, `impact`, and `explain` now work for React components. Graph edges increased from 42,434 to 51,264 on the platform repo; `DataGrid` went from 0 to 21 callers.
+
 ## [0.8.1] - 2026-05-12
 
 ### Fixed

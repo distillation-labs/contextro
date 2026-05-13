@@ -46,6 +46,7 @@ pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let mut scored: Vec<(String, String, usize)> = nodes
         .iter()
         .filter(|n| !GENERIC_NAMES.contains(&n.name.as_str()))
+        .filter(|n| !is_test_file(&n.location.file_path))
         .map(|n| {
             let (in_d, out_d) = graph.get_node_degree(&n.id);
             (n.name.clone(), n.location.file_path.clone(), in_d + out_d)
@@ -91,7 +92,7 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         *file_sizes
             .entry(node.location.file_path.clone())
             .or_default() += 1;
-        if GENERIC_NAMES.contains(&node.name.as_str()) {
+        if GENERIC_NAMES.contains(&node.name.as_str()) || is_test_file(&node.location.file_path) {
             continue;
         }
         let (in_d, out_d) = graph.get_node_degree(&node.id);
@@ -278,8 +279,8 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
 }
 
 /// Static test coverage map.
-/// Recognises both external test files (test_*.rs, *_test.rs, tests/ dir) and
-/// Rust inline test modules (`#[cfg(test)]` / `#[test]` attributes).
+/// Recognises test files by: test_*.rs, *_test.rs, *.test.ts/tsx, *.spec.ts/tsx,
+/// __tests__/ directories, tests/ directories, and Rust inline #[cfg(test)] blocks.
 pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
     let mut source_files: HashSet<String> = HashSet::new();
@@ -287,48 +288,39 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
 
     for node in &nodes {
         let fp = &node.location.file_path;
-        let basename = Path::new(fp)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        if basename.starts_with("test_")
-            || basename.ends_with("_test.rs")
-            || fp.contains("/tests/")
-            || fp.contains("/test/")
-        {
+        if is_test_file(fp) {
             test_files.insert(fp.clone());
         } else {
             source_files.insert(fp.clone());
         }
     }
 
-    // Check source files for inline #[cfg(test)] or #[test] blocks
+    // Rust inline test modules
     let mut inline_tested: HashSet<String> = HashSet::new();
     for fp in &source_files {
-        if let Ok(content) = std::fs::read_to_string(fp) {
-            if content.contains("#[cfg(test)]") || content.contains("#[test]") {
-                inline_tested.insert(fp.clone());
+        if fp.ends_with(".rs") {
+            if let Ok(content) = std::fs::read_to_string(fp) {
+                if content.contains("#[cfg(test)]") || content.contains("#[test]") {
+                    inline_tested.insert(fp.clone());
+                }
             }
         }
     }
 
-    // Match test files to source files by naming convention
     let mut covered: Vec<String> = Vec::new();
     let mut uncovered: Vec<String> = Vec::new();
 
     for src in &source_files {
-        let src_stem = Path::new(src)
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy();
-        let has_external_test = test_files.iter().any(|t| {
-            let t_stem = Path::new(t)
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy();
-            t_stem == format!("test_{}", src_stem) || t_stem == format!("{}_test", src_stem)
+        let src_stem = file_stem_stripped(src);
+
+        let has_test = inline_tested.contains(src) || test_files.iter().any(|t| {
+            let t_stem = file_stem_stripped(t);
+            t_stem == src_stem
+                || t_stem == format!("test_{}", src_stem)
+                || t_stem == format!("{}_test", src_stem)
         });
-        if has_external_test || inline_tested.contains(src) {
+
+        if has_test {
             covered.push(strip_base(src, codebase));
         } else {
             uncovered.push(strip_base(src, codebase));
@@ -348,6 +340,33 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
         "test_files": test_files.len() + inline_tested.len(),
         "uncovered": uncovered.into_iter().take(20).collect::<Vec<_>>(),
     })
+}
+
+fn file_stem_stripped(fp: &str) -> String {
+    let stem = Path::new(fp)
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    if let Some(s) = stem.strip_suffix(".test") { return s.to_string(); }
+    if let Some(s) = stem.strip_suffix(".spec") { return s.to_string(); }
+    stem
+}
+
+fn is_test_file(fp: &str) -> bool {
+    let basename = Path::new(fp)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
+    basename.starts_with("test_")
+        || basename.ends_with("_test.rs")
+        || basename.contains(".test.")   // foo.test.ts, foo.test.tsx
+        || basename.contains(".spec.")   // foo.spec.ts, foo.spec.tsx
+        || fp.contains("/__tests__/")
+        || fp.contains("/tests/")
+        || fp.contains("/test/")
+        || fp.contains("/e2e/")
+        || fp.contains("/spec/")
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

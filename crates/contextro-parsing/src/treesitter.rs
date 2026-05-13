@@ -608,8 +608,8 @@ fn parse_generic_def(line: &str, filepath: &str, language: &str, line_num: u32) 
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
-/// Extract function calls from a block of code lines.
-/// Looks for identifier( patterns, filtering out keywords and duplicates.
+/// Extract function calls and JSX component usages from a block of code lines.
+/// Looks for identifier( patterns and <ComponentName patterns, filtering keywords.
 fn extract_calls_from_body(lines: &[&str], start: usize, end: usize) -> Vec<String> {
     let mut calls = Vec::new();
     let upper = std::cmp::min(end, lines.len().saturating_sub(1));
@@ -624,28 +624,19 @@ fn extract_calls_from_body(lines: &[&str], start: usize, end: usize) -> Vec<Stri
 
     for line in lines.iter().take(upper + 1).skip(start) {
         let trimmed = line.trim();
-        // Skip comments
         if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*') {
             continue;
         }
-        // Find all identifier( patterns
         let bytes = trimmed.as_bytes();
         let len = bytes.len();
         let mut j = 0;
         while j < len {
-            // Find '('
+            // identifier( — function call
             if bytes[j] == b'(' && j > 0 {
-                // Walk backwards to get the identifier
                 let end_pos = j;
-                // Skip any whitespace before (
                 let mut k = j - 1;
-                // The char before ( should be part of an identifier
                 if bytes[k].is_ascii_alphanumeric() || bytes[k] == b'_' || bytes[k] == b'$' {
-                    while k > 0
-                        && (bytes[k - 1].is_ascii_alphanumeric()
-                            || bytes[k - 1] == b'_'
-                            || bytes[k - 1] == b'$')
-                    {
+                    while k > 0 && (bytes[k-1].is_ascii_alphanumeric() || bytes[k-1] == b'_' || bytes[k-1] == b'$') {
                         k -= 1;
                     }
                     let candidate = &trimmed[k..end_pos];
@@ -656,6 +647,23 @@ fn extract_calls_from_body(lines: &[&str], start: usize, end: usize) -> Vec<Stri
                     {
                         calls.push(candidate.to_string());
                     }
+                }
+            }
+            // <ComponentName — JSX usage (uppercase first letter = component, not HTML tag)
+            if bytes[j] == b'<' && j + 1 < len {
+                let rest = &trimmed[j+1..];
+                // Skip closing tags </Foo> and fragments <>
+                if rest.starts_with('/') || rest.starts_with('>') {
+                    j += 1;
+                    continue;
+                }
+                let name_end = rest.find(|c: char| !c.is_alphanumeric() && c != '_').unwrap_or(rest.len());
+                let component = &rest[..name_end];
+                if !component.is_empty()
+                    && component.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                    && !calls.contains(&component.to_string())
+                {
+                    calls.push(component.to_string());
                 }
             }
             j += 1;
