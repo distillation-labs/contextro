@@ -528,6 +528,8 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         });
     }
 
+    let mut subsystem_dominant_file: Option<String> = None;
+
     if !normalized_query.is_empty() {
         hits.sort_by(|a, b| {
             b.score
@@ -548,6 +550,9 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
             &query_tokens,
             targets_product_surface,
         );
+        if prefers_subsystem_closure {
+            subsystem_dominant_file = dominant_file.clone();
+        }
 
         let mut seed_ids = Vec::new();
         if let Some(dominant_file) = dominant_file.as_ref() {
@@ -776,12 +781,23 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
     let mut hits: Vec<CodebaseMapHit> = deduped_hits.into_values().collect();
 
     if !normalized_query.is_empty() {
-        let dominant_file = detect_dominant_codebase_map_file(
-            &hits,
-            graph,
-            &query_tokens,
-            targets_product_surface,
-        );
+        let dominant_file = if prefers_subsystem_closure {
+            subsystem_dominant_file.clone().or_else(|| {
+                detect_dominant_codebase_map_file(
+                    &hits,
+                    graph,
+                    &query_tokens,
+                    targets_product_surface,
+                )
+            })
+        } else {
+            detect_dominant_codebase_map_file(
+                &hits,
+                graph,
+                &query_tokens,
+                targets_product_surface,
+            )
+        };
 
         if let Some(dominant_file) = dominant_file.as_ref() {
             let subsystem_nodes = if prefers_subsystem_closure {
@@ -1506,7 +1522,11 @@ fn select_dominant_file_subsystem_anchors(
         .filter(|hit| hit.source_file == dominant_file)
         .filter_map(|hit| {
             let node = graph.get_node(&hit.node_id)?;
-            if is_codebase_map_meta_helper_symbol(&node.name) {
+            if is_codebase_map_meta_helper_symbol(&node.name)
+                || hit.is_test_like
+                || is_codebase_map_generic_helper_symbol(&node.name)
+                    && !codebase_map_has_behavioral_role(&node)
+            {
                 return None;
             }
 
@@ -1547,7 +1567,9 @@ fn should_include_subsystem_closure_node(
     targets_product_surface: bool,
     distance: usize,
 ) -> bool {
-    if is_codebase_map_meta_helper_symbol(&node.name) {
+    if is_codebase_map_meta_helper_symbol(&node.name)
+        || is_probable_codebase_map_test_symbol(&node.name)
+    {
         return false;
     }
 
@@ -1561,11 +1583,15 @@ fn should_include_subsystem_closure_node(
     );
     let query_overlap = codebase_map_symbol_concept_overlap(node, query_terms);
     let behavioral_role = codebase_map_has_behavioral_role(node);
+    let generic_non_behavioral = is_codebase_map_generic_helper_symbol(&node.name) && !behavioral_role;
+    if generic_non_behavioral && query_overlap == 0 {
+        return false;
+    }
 
     match distance {
         0 => score >= 0.55,
-        1 => score >= 0.78 || behavioral_role || query_overlap >= 1,
-        2 => score >= 0.82 && (behavioral_role || query_overlap >= 1),
+        1 => score >= 0.78 && (behavioral_role || query_overlap >= 1),
+        2 => score >= 0.82 && behavioral_role && query_overlap >= 1,
         _ => false,
     }
 }
