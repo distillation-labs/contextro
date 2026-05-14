@@ -1,7 +1,7 @@
 //! Code tool: AST operations dispatch.
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use crate::analysis::is_test_file;
@@ -479,6 +479,7 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
     let query_tokens = tokenize_codebase_map_text(raw_query);
     let query_term_set: HashSet<String> = query_tokens.iter().cloned().collect();
     let targets_product_surface = codebase_map_query_targets_product_surface(raw_query);
+    let prefers_subsystem_closure = codebase_map_query_prefers_subsystem_closure(raw_query);
     let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
     let resolved_filter = if path_filter.is_empty() {
         None
@@ -601,6 +602,21 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
             }
         }
 
+        if let Some(dominant_file) = dominant_file.as_ref() {
+            if prefers_subsystem_closure {
+                let (subsystem_hits, _) = collect_dominant_file_subsystem_hits(
+                    &hits,
+                    graph,
+                    dominant_file,
+                    &normalized_query,
+                    &query_tokens,
+                    targets_product_surface,
+                    codebase,
+                );
+                hits.extend(subsystem_hits);
+            }
+        }
+
         let mut expanded_hits = Vec::new();
 
         for seed_id in seed_ids {
@@ -679,64 +695,66 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         hits.extend(expanded_hits);
 
         if let Some(dominant_file) = dominant_file.as_ref() {
-            let dominant_concepts: HashSet<String> = hits
-                .iter()
-                .filter(|hit| &hit.source_file == dominant_file)
-                .take(6)
-                .filter_map(|hit| graph.get_node(&hit.node_id))
-                .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
-                .chain(query_tokens.iter().cloned())
-                .collect();
+            if !prefers_subsystem_closure {
+                let dominant_concepts: HashSet<String> = hits
+                    .iter()
+                    .filter(|hit| &hit.source_file == dominant_file)
+                    .take(6)
+                    .filter_map(|hit| graph.get_node(&hit.node_id))
+                    .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
+                    .chain(query_tokens.iter().cloned())
+                    .collect();
 
-            let mut same_file_candidates: Vec<(UniversalNode, f64)> = all_nodes
-                .iter()
-                .filter(|node| node.location.file_path == *dominant_file)
-                .filter(|node| {
-                    should_keep_same_file_codebase_map_candidate(
-                        node,
-                        &query_term_set,
-                        &dominant_concepts,
-                    )
-                })
-                .map(|node| {
-                    (
-                        node.clone(),
-                        codebase_map_same_file_score(
+                let mut same_file_candidates: Vec<(UniversalNode, f64)> = all_nodes
+                    .iter()
+                    .filter(|node| node.location.file_path == *dominant_file)
+                    .filter(|node| {
+                        should_keep_same_file_codebase_map_candidate(
                             node,
-                            &normalized_query,
-                            &query_tokens,
+                            &query_term_set,
                             &dominant_concepts,
-                            targets_product_surface,
-                            codebase_map_local_connectivity_bias(graph, node),
-                        ),
-                    )
-                })
-                .filter(|(_, score)| *score >= 0.50)
-                .collect();
-            same_file_candidates.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1)
-                    .unwrap_or(Ordering::Equal)
-                    .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
-            });
-
-            for (node, score) in same_file_candidates.into_iter().take(8) {
-                let rel = strip_base(&node.location.file_path, codebase);
-                let (callers, callees) = graph.get_node_degree(&node.id);
-                hits.push(CodebaseMapHit {
-                    node_id: node.id.clone(),
-                    is_test_like: is_test_file(&node.location.file_path)
-                        || is_probable_codebase_map_test_symbol(&node.name),
-                    file: rel,
-                    source_file: node.location.file_path.clone(),
-                    score,
-                    symbol: json!({
-                        "name": node.name,
-                        "type": node.node_type.to_string(),
-                        "line": node.location.start_line,
-                        "callers": callers,
-                        "callees": callees,
-                    }),
+                        )
+                    })
+                    .map(|node| {
+                        (
+                            node.clone(),
+                            codebase_map_same_file_score(
+                                node,
+                                &normalized_query,
+                                &query_tokens,
+                                &dominant_concepts,
+                                targets_product_surface,
+                                codebase_map_local_connectivity_bias(graph, node),
+                            ),
+                        )
+                    })
+                    .filter(|(_, score)| *score >= 0.50)
+                    .collect();
+                same_file_candidates.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1)
+                        .unwrap_or(Ordering::Equal)
+                        .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
                 });
+
+                for (node, score) in same_file_candidates.into_iter().take(8) {
+                    let rel = strip_base(&node.location.file_path, codebase);
+                    let (callers, callees) = graph.get_node_degree(&node.id);
+                    hits.push(CodebaseMapHit {
+                        node_id: node.id.clone(),
+                        is_test_like: is_test_file(&node.location.file_path)
+                            || is_probable_codebase_map_test_symbol(&node.name),
+                        file: rel,
+                        source_file: node.location.file_path.clone(),
+                        score,
+                        symbol: json!({
+                            "name": node.name,
+                            "type": node.node_type.to_string(),
+                            "line": node.location.start_line,
+                            "callers": callers,
+                            "callees": callees,
+                        }),
+                    });
+                }
             }
         }
     }
@@ -766,14 +784,38 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         );
 
         if let Some(dominant_file) = dominant_file.as_ref() {
-            let dominant_concepts: HashSet<String> = hits
+            let subsystem_nodes = if prefers_subsystem_closure {
+                build_dominant_file_subsystem_nodes(
+                    &hits,
+                    graph,
+                    dominant_file,
+                    &normalized_query,
+                    &query_tokens,
+                    targets_product_surface,
+                )
+            } else {
+                Vec::new()
+            };
+            let subsystem_ids: HashSet<String> = subsystem_nodes
                 .iter()
-                .filter(|hit| &hit.source_file == dominant_file)
-                .take(8)
-                .filter_map(|hit| graph.get_node(&hit.node_id))
-                .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
-                .chain(query_tokens.iter().cloned())
+                .map(|(node, _, _)| node.id.clone())
                 .collect();
+            let dominant_concepts: HashSet<String> = if prefers_subsystem_closure && !subsystem_nodes.is_empty() {
+                subsystem_nodes
+                    .iter()
+                    .flat_map(|(node, _, _)| codebase_map_symbol_candidate_tokens(node))
+                    .chain(query_tokens.iter().cloned())
+                    .collect()
+            } else {
+                hits
+                    .iter()
+                    .filter(|hit| &hit.source_file == dominant_file)
+                    .take(8)
+                    .filter_map(|hit| graph.get_node(&hit.node_id))
+                    .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
+                    .chain(query_tokens.iter().cloned())
+                    .collect()
+            };
 
             for hit in &mut hits {
                 let Some(node) = graph.get_node(&hit.node_id) else {
@@ -793,12 +835,13 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 }
             }
 
-            if codebase_map_query_prefers_subsystem_closure(raw_query) {
+            if prefers_subsystem_closure {
                 apply_dominant_file_focus(
                     &mut hits,
                     graph,
                     dominant_file,
                     &dominant_concepts,
+                    Some(&subsystem_ids),
                 );
             }
         }
@@ -1177,6 +1220,7 @@ fn apply_dominant_file_focus(
     graph: &CodeGraph,
     dominant_file: &str,
     dominant_concepts: &HashSet<String>,
+    subsystem_ids: Option<&HashSet<String>>,
 ) {
     let dominant_scores: Vec<f64> = hits
         .iter()
@@ -1200,6 +1244,11 @@ fn apply_dominant_file_focus(
 
     hits.retain(|hit| {
         if hit.source_file == dominant_file {
+            if let Some(subsystem_ids) = subsystem_ids {
+                if !subsystem_ids.is_empty() {
+                    return subsystem_ids.contains(&hit.node_id);
+                }
+            }
             return true;
         }
 
@@ -1353,19 +1402,370 @@ fn codebase_map_subsystem_role_bias(node: &UniversalNode, targets_product_surfac
     if is_codebase_map_meta_helper_symbol(&symbol_name) {
         -0.45
     } else if symbol_name.starts_with("handle_") {
+        0.22
+    } else if symbol_name.starts_with("rerank_")
+        || symbol_name.contains("_rerank")
+        || symbol_name.starts_with("drop_")
+        || symbol_name.starts_with("filter_")
+        || symbol_name.contains("_filter")
+        || symbol_name.contains("classifier")
+        || symbol_name.starts_with("classify_")
+        || symbol_name.contains("guard")
+    {
         0.18
-    } else if matches!(
-        symbol_name.as_str(),
-        "rerank_natural_language_results"
-            | "drop_low_confidence_noise"
-            | "is_symbol_lookup_query"
-            | "result_matches_symbol_query"
-            | "vector_candidate_limit"
-    ) {
+    } else if symbol_name.starts_with("is_")
+        && (symbol_name.contains("query")
+            || symbol_name.contains("lookup")
+            || symbol_name.contains("symbol"))
+    {
+        0.16
+    } else if symbol_name.contains("match")
+        && (symbol_name.contains("query")
+            || symbol_name.contains("symbol")
+            || symbol_name.contains("result"))
+    {
+        0.16
+    } else if symbol_name.ends_with("_limit")
+        && (symbol_name.contains("candidate") || symbol_name.contains("result"))
+    {
         0.16
     } else {
         0.0
     }
+}
+
+fn codebase_map_has_behavioral_role(node: &UniversalNode) -> bool {
+    codebase_map_subsystem_role_bias(node, true) > 0.0
+}
+
+fn codebase_map_anchor_score(
+    graph: &CodeGraph,
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+) -> f64 {
+    codebase_map_symbol_match_score(node, normalized_query, query_tokens)
+        + if targets_product_surface {
+            codebase_map_surface_bias(node)
+        } else {
+            0.0
+        }
+        + codebase_map_subsystem_role_bias(node, targets_product_surface)
+        + codebase_map_local_connectivity_bias(graph, node)
+        - codebase_map_local_meta_helper_penalty(node, targets_product_surface)
+        - if is_codebase_map_generic_helper_symbol(&node.name)
+            && !codebase_map_has_behavioral_role(node)
+        {
+            0.18
+        } else {
+            0.0
+        }
+}
+
+fn codebase_map_subsystem_closure_score(
+    graph: &CodeGraph,
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+    distance: usize,
+) -> f64 {
+    let distance_bonus = match distance {
+        0 => 0.40,
+        1 => 0.24,
+        2 => 0.12,
+        _ => 0.0,
+    };
+    let role_bonus = if distance > 0 && codebase_map_has_behavioral_role(node) {
+        0.08
+    } else {
+        0.0
+    };
+
+    codebase_map_anchor_score(
+        graph,
+        node,
+        normalized_query,
+        query_tokens,
+        targets_product_surface,
+    ) + distance_bonus
+        + role_bonus
+}
+
+fn select_dominant_file_subsystem_anchors(
+    hits: &[CodebaseMapHit],
+    graph: &CodeGraph,
+    dominant_file: &str,
+    normalized_query: &str,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+) -> Vec<String> {
+    let mut anchor_candidates: Vec<(String, f64, u32)> = hits
+        .iter()
+        .filter(|hit| hit.source_file == dominant_file)
+        .filter_map(|hit| {
+            let node = graph.get_node(&hit.node_id)?;
+            if is_codebase_map_meta_helper_symbol(&node.name) {
+                return None;
+            }
+
+            let score = codebase_map_anchor_score(
+                graph,
+                &node,
+                normalized_query,
+                query_tokens,
+                targets_product_surface,
+            );
+            if score < 0.55 {
+                return None;
+            }
+
+            Some((node.id.clone(), score, node.location.start_line))
+        })
+        .collect();
+
+    anchor_candidates.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.2.cmp(&b.2))
+    });
+    anchor_candidates.dedup_by(|a, b| a.0 == b.0);
+    anchor_candidates
+        .into_iter()
+        .take(3)
+        .map(|(node_id, _, _)| node_id)
+        .collect()
+}
+
+fn should_include_subsystem_closure_node(
+    graph: &CodeGraph,
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    query_terms: &HashSet<String>,
+    targets_product_surface: bool,
+    distance: usize,
+) -> bool {
+    if is_codebase_map_meta_helper_symbol(&node.name) {
+        return false;
+    }
+
+    let score = codebase_map_subsystem_closure_score(
+        graph,
+        node,
+        normalized_query,
+        query_tokens,
+        targets_product_surface,
+        distance,
+    );
+    let query_overlap = codebase_map_symbol_concept_overlap(node, query_terms);
+    let behavioral_role = codebase_map_has_behavioral_role(node);
+
+    match distance {
+        0 => score >= 0.55,
+        1 => score >= 0.78 || behavioral_role || query_overlap >= 1,
+        2 => score >= 0.82 && (behavioral_role || query_overlap >= 1),
+        _ => false,
+    }
+}
+
+fn should_expand_subsystem_closure_from(
+    graph: &CodeGraph,
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    query_terms: &HashSet<String>,
+    targets_product_surface: bool,
+    distance: usize,
+) -> bool {
+    if distance >= 2 {
+        return false;
+    }
+
+    let score = codebase_map_subsystem_closure_score(
+        graph,
+        node,
+        normalized_query,
+        query_tokens,
+        targets_product_surface,
+        distance,
+    );
+    let query_overlap = codebase_map_symbol_concept_overlap(node, query_terms);
+
+    codebase_map_has_behavioral_role(node) || query_overlap >= 2 || score >= 1.15
+}
+
+fn build_dominant_file_subsystem_nodes(
+    hits: &[CodebaseMapHit],
+    graph: &CodeGraph,
+    dominant_file: &str,
+    normalized_query: &str,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+) -> Vec<(UniversalNode, usize, f64)> {
+    let anchor_ids = select_dominant_file_subsystem_anchors(
+        hits,
+        graph,
+        dominant_file,
+        normalized_query,
+        query_tokens,
+        targets_product_surface,
+    );
+    if anchor_ids.is_empty() {
+        return Vec::new();
+    }
+
+    let query_terms: HashSet<String> = query_tokens.iter().cloned().collect();
+    let mut queue: VecDeque<(String, usize)> = anchor_ids
+        .iter()
+        .cloned()
+        .map(|node_id| (node_id, 0))
+        .collect();
+    let mut best_nodes: HashMap<String, (usize, f64)> = HashMap::new();
+
+    for anchor_id in &anchor_ids {
+        let Some(anchor) = graph.get_node(anchor_id) else {
+            continue;
+        };
+        let score = codebase_map_subsystem_closure_score(
+            graph,
+            &anchor,
+            normalized_query,
+            query_tokens,
+            targets_product_surface,
+            0,
+        );
+        best_nodes.insert(anchor.id.clone(), (0, score));
+    }
+
+    while let Some((node_id, distance)) = queue.pop_front() {
+        let Some(node) = graph.get_node(&node_id) else {
+            continue;
+        };
+        if node.location.file_path != dominant_file || distance >= 2 {
+            continue;
+        }
+
+        let mut seen_neighbors = HashSet::new();
+        let neighbors: Vec<UniversalNode> = graph
+            .get_callers(&node_id)
+            .into_iter()
+            .chain(graph.get_callees(&node_id).into_iter())
+            .filter(|neighbor| {
+                neighbor.location.file_path == dominant_file
+                    && seen_neighbors.insert(neighbor.id.clone())
+            })
+            .collect();
+
+        for neighbor in neighbors {
+            let next_distance = distance + 1;
+            if !should_include_subsystem_closure_node(
+                graph,
+                &neighbor,
+                normalized_query,
+                query_tokens,
+                &query_terms,
+                targets_product_surface,
+                next_distance,
+            ) {
+                continue;
+            }
+
+            let score = codebase_map_subsystem_closure_score(
+                graph,
+                &neighbor,
+                normalized_query,
+                query_tokens,
+                targets_product_surface,
+                next_distance,
+            );
+
+            let should_update = match best_nodes.get(&neighbor.id) {
+                Some((best_distance, best_score)) => {
+                    next_distance < *best_distance
+                        || (next_distance == *best_distance && score > *best_score)
+                }
+                None => true,
+            };
+
+            if should_update {
+                best_nodes.insert(neighbor.id.clone(), (next_distance, score));
+            }
+
+            if should_expand_subsystem_closure_from(
+                graph,
+                &neighbor,
+                normalized_query,
+                query_tokens,
+                &query_terms,
+                targets_product_surface,
+                next_distance,
+            ) {
+                queue.push_back((neighbor.id.clone(), next_distance));
+            }
+        }
+    }
+
+    let mut subsystem_nodes: Vec<(UniversalNode, usize, f64)> = best_nodes
+        .into_iter()
+        .filter_map(|(node_id, (distance, score))| graph.get_node(&node_id).map(|node| (node, distance, score)))
+        .collect();
+    subsystem_nodes.sort_by(|a, b| {
+        b.2.partial_cmp(&a.2)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
+    });
+    subsystem_nodes.truncate(8);
+    subsystem_nodes
+}
+
+fn collect_dominant_file_subsystem_hits(
+    hits: &[CodebaseMapHit],
+    graph: &CodeGraph,
+    dominant_file: &str,
+    normalized_query: &str,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+    codebase: Option<&str>,
+) -> (Vec<CodebaseMapHit>, HashSet<String>) {
+    let subsystem_nodes = build_dominant_file_subsystem_nodes(
+        hits,
+        graph,
+        dominant_file,
+        normalized_query,
+        query_tokens,
+        targets_product_surface,
+    );
+    let subsystem_ids: HashSet<String> = subsystem_nodes
+        .iter()
+        .map(|(node, _, _)| node.id.clone())
+        .collect();
+    let subsystem_hits = subsystem_nodes
+        .into_iter()
+        .map(|(node, _, score)| {
+            let rel = strip_base(&node.location.file_path, codebase);
+            let (callers, callees) = graph.get_node_degree(&node.id);
+            CodebaseMapHit {
+                node_id: node.id.clone(),
+                is_test_like: is_test_file(&node.location.file_path)
+                    || is_probable_codebase_map_test_symbol(&node.name),
+                file: rel,
+                source_file: node.location.file_path.clone(),
+                score,
+                symbol: json!({
+                    "name": node.name,
+                    "type": node.node_type.to_string(),
+                    "line": node.location.start_line,
+                    "callers": callers,
+                    "callees": callees,
+                }),
+            }
+        })
+        .collect();
+
+    (subsystem_hits, subsystem_ids)
 }
 
 fn codebase_map_local_meta_helper_penalty(
