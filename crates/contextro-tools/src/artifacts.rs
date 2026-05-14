@@ -50,6 +50,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
         parameters: &[
             "symbol_name (preferred): target symbol name",
             "name / symbol: backward-compatible aliases",
+            "limit: maximum callers to return, default 50",
         ],
         example: r#"find_callers({"symbol_name":"BrowserSession"})"#,
     },
@@ -59,6 +60,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
         parameters: &[
             "symbol_name (preferred): target symbol name",
             "name / symbol: backward-compatible aliases",
+            "limit: maximum callees to return, default 50",
         ],
         example: r#"find_callees({"symbol_name":"BrowserSession"})"#,
     },
@@ -90,13 +92,17 @@ const TOOL_DOCS: &[ToolDoc] = &[
     ToolDoc {
         name: "architecture",
         description: "Show hub symbols and high-level architectural structure.",
-        parameters: &[],
+        parameters: &["limit: maximum hub symbols to return, default 10"],
         example: r#"architecture({})"#,
     },
     ToolDoc {
         name: "analyze",
         description: "Show complexity hotspots for a file or directory.",
-        parameters: &["path: optional file or directory path to scope the analysis"],
+        parameters: &[
+            "path: optional file or directory path to scope the analysis",
+            "min_connections: minimum connectivity threshold for hotspot reporting",
+            "top_n: maximum high-connectivity symbols to return, default 10",
+        ],
         example: r#"analyze({"path":"crates/contextro-tools/src"})"#,
     },
     ToolDoc {
@@ -158,7 +164,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
         name: "recall",
         description: "Search stored memories.",
         parameters: &[
-            "query (required): memory search text",
+            "query: memory search text; empty string lists recent memories",
             "limit: maximum results, default 5",
             "memory_type: optional type filter",
             "tags: optional tag filter",
@@ -185,7 +191,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
         name: "knowledge",
         description: "Index lightweight documentation or notes, then search or inspect sources within the active indexed repo scope.",
         parameters: &[
-            "command: add | search | show | list | remove | update",
+            "command: add | search | show | list | remove | update | clear",
             "name: knowledge base name for add/remove/update",
             "value: raw text or file/directory path for add",
             "query: search text; also auto-triggers search when command is omitted",
@@ -203,13 +209,17 @@ const TOOL_DOCS: &[ToolDoc] = &[
         parameters: &[
             "content (required): text to archive",
             "metadata: optional JSON metadata stored with the archive",
+            "ttl: requested retention hint for observability (permanent | session | day | week | month)",
         ],
         example: r#"compact({"content":"session summary"})"#,
     },
     ToolDoc {
         name: "session_snapshot",
         description: "Show recent tool calls and captured arguments.",
-        parameters: &[],
+        parameters: &[
+            "limit: maximum events to return, default 20",
+            "type: optional event type filter such as search or index",
+        ],
         example: r#"session_snapshot({})"#,
     },
     ToolDoc {
@@ -237,7 +247,11 @@ const TOOL_DOCS: &[ToolDoc] = &[
     ToolDoc {
         name: "commit_history",
         description: "Show recent commits.",
-        parameters: &["limit: maximum commits, default 20"],
+        parameters: &[
+            "limit: maximum commits, default 20",
+            "author: optional author substring filter",
+            "since: optional RFC3339 or YYYY-MM-DD lower time bound",
+        ],
         example: r#"commit_history({"limit":10})"#,
     },
     ToolDoc {
@@ -284,7 +298,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
         name: "sidecar_export",
         description: "Write .graph.md sidecar files for indexed source files.",
         parameters: &[
-            "path: optional source subtree to export",
+            "path: optional indexed source file or subtree to export",
             "output_dir: optional output directory",
         ],
         example: r#"sidecar_export({"path":"crates/contextro-tools/src"})"#,
@@ -616,6 +630,9 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
             .to_string()
     };
     let target_is_dir = Path::new(&target).is_dir();
+    if !Path::new(&target).exists() {
+        return json!({"error": format!("Path not found: {}", path)});
+    }
 
     // Resolve output directory
     let out_base = if Path::new(output_dir).is_absolute() {
@@ -675,6 +692,15 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
         if std::fs::write(&sidecar_path, &content).is_ok() {
             files_written += 1;
         }
+    }
+
+    if files_written == 0 {
+        return json!({
+            "error": format!("No indexed files matched path: {}", path),
+            "path": path,
+            "output_dir": out_base,
+            "hint": "Pass a file or source subtree from the indexed codebase, not the output directory."
+        });
     }
 
     json!({"status": "exported", "sidecars": files_written, "path": path, "output_dir": out_base})
@@ -951,5 +977,67 @@ mod tests {
         assert!(output_dir.join("src/session.py.graph.md").exists());
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_sidecar_export_errors_when_path_matches_no_indexed_files() {
+        let root = temp_dir("sidecars-missing");
+        let codebase = root.join("repo");
+        std::fs::create_dir_all(codebase.join("src")).unwrap();
+        std::fs::create_dir_all(codebase.join("out")).unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "browser-session".into(),
+            name: "BrowserSession".into(),
+            node_type: NodeType::Class,
+            location: UniversalLocation {
+                file_path: codebase
+                    .join("src/session.py")
+                    .to_string_lossy()
+                    .to_string(),
+                start_line: 1,
+                end_line: 20,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let base = codebase.to_string_lossy().to_string();
+        let result = handle_sidecar_export(
+            &json!({"path":"out","output_dir": codebase.join("export").to_string_lossy()}),
+            &graph,
+            Some(base.as_str()),
+        );
+
+        assert!(result["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("No indexed files matched path"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_skill_prompt_mentions_updated_parameter_contracts() {
+        let result = handle_introspect(&json!({"tool":"commit_history"}));
+        let parameters = result["parameters"].as_array().expect("parameters array");
+
+        assert!(parameters.iter().any(
+            |parameter| parameter.as_str() == Some("author: optional author substring filter")
+        ));
+
+        let recall = handle_introspect(&json!({"tool":"recall"}));
+        assert!(recall["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|parameter| parameter
+                .as_str()
+                .unwrap_or("")
+                .contains("empty string lists recent memories")));
     }
 }
