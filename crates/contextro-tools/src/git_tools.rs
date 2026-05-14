@@ -141,7 +141,10 @@ pub fn handle_commit_history(args: &Value, codebase: Option<&str>) -> Value {
             let commit = repo.find_commit(oid).ok()?;
             let author = commit.author().name().unwrap_or("").to_string();
             if let Some(filter) = author_filter {
-                if !author.to_ascii_lowercase().contains(&filter.to_ascii_lowercase()) {
+                if !author
+                    .to_ascii_lowercase()
+                    .contains(&filter.to_ascii_lowercase())
+                {
                     return None;
                 }
             }
@@ -206,11 +209,24 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
         );
     }
 
+    let min_score = commit_search_min_score(query, &query_tokens);
+    scored_commits.retain(|(score, _)| *score >= min_score);
     scored_commits.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     scored_commits.truncate(limit);
 
     let commits: Vec<Value> = scored_commits.into_iter().map(|(_, v)| v).collect();
     json!({"query": query, "commits": commits, "total": commits.len()})
+}
+
+fn commit_search_min_score(query: &str, query_tokens: &[String]) -> f64 {
+    if query_tokens.is_empty() {
+        return 1.0;
+    }
+    if query.contains('_') || query.contains('-') || query_tokens.len() >= 3 {
+        0.45
+    } else {
+        0.18
+    }
 }
 
 fn score_commits(
@@ -271,8 +287,19 @@ pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
         return json!({"error": format!("Not a directory: {}", path)});
     }
     let name = args.get("name").and_then(|v| v.as_str());
+    let normalized_path = normalize_repo_path(path);
+    let is_git = git2::Repository::discover(&normalized_path).is_ok();
     registry.add(path, name);
-    json!({"registered": true, "path": normalize_repo_path(path), "hint": "Run index(path) to build the graph and enable search for this repo."})
+    json!({
+        "registered": true,
+        "path": normalized_path,
+        "is_git": is_git,
+        "hint": if is_git {
+            "Run index(path) to build the graph and enable search for this repo."
+        } else {
+            "Registered a non-git directory. Index/search can still work, but git tools such as commit_history and commit_search will return errors until you target a git repository."
+        }
+    })
 }
 
 pub fn handle_repo_remove(args: &Value, registry: &RepoRegistry) -> Value {
@@ -412,8 +439,15 @@ fn token_match_quality(query_token: &str, doc_token: &str) -> f64 {
 fn parse_since_filter(value: &str) -> Result<i64, String> {
     DateTime::parse_from_rfc3339(&format!("{value}T00:00:00Z"))
         .map(|date| date.with_timezone(&Utc).timestamp())
-        .or_else(|_| DateTime::parse_from_rfc3339(value).map(|date| date.with_timezone(&Utc).timestamp()))
-        .map_err(|_| format!("Invalid since value: '{}'. Use RFC3339 or YYYY-MM-DD.", value))
+        .or_else(|_| {
+            DateTime::parse_from_rfc3339(value).map(|date| date.with_timezone(&Utc).timestamp())
+        })
+        .map_err(|_| {
+            format!(
+                "Invalid since value: '{}'. Use RFC3339 or YYYY-MM-DD.",
+                value
+            )
+        })
 }
 
 #[cfg(test)]
@@ -761,6 +795,74 @@ mod tests {
         );
         assert_eq!(future_result["total"], 0);
 
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_commit_search_filters_nonsense_queries_below_threshold() {
+        let repo_dir = temp_file("commit-search-nonsense-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+        let mut parent: Option<git2::Oid> = None;
+
+        for (idx, message) in ["Update LICENSE", "Update Dockerfile", "Update .gitignore"]
+            .iter()
+            .enumerate()
+        {
+            std::fs::write(repo_dir.join("tracked.txt"), format!("commit-{idx}\n")).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parents = parent
+                .map(|oid| vec![repo.find_commit(oid).unwrap()])
+                .unwrap_or_default();
+            let parent_refs = parents.iter().collect::<Vec<_>>();
+            let oid = repo
+                .commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    message,
+                    &tree,
+                    &parent_refs,
+                )
+                .unwrap();
+            parent = Some(oid);
+        }
+
+        let result = handle_commit_search(
+            &json!({"query":"___definitely_not_a_real_commit_phrase___","limit":3}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 0);
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_repo_add_reports_non_git_directory() {
+        let path = temp_file("repo-add-non-git.json");
+        let repo_dir = temp_file("repo-add-non-git-dir");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let registry = RepoRegistry::with_path(&path);
+        let result = handle_repo_add(
+            &json!({"path": repo_dir.to_string_lossy().to_string()}),
+            &registry,
+        );
+
+        assert_eq!(result["registered"], true);
+        assert_eq!(result["is_git"], false);
+        assert!(result["hint"]
+            .as_str()
+            .unwrap_or("")
+            .contains("non-git directory"));
+
+        let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_dir_all(repo_dir);
     }
 }
