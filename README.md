@@ -168,6 +168,9 @@ knowledge(command="add", name="API docs", value="/path/to/docs/")
 knowledge(command="search", query="rate limiting")
 ```
 
+`knowledge` searches the currently active indexed repo. `repo_add(...)` auto-indexes the added
+repo and makes that repo the active scope.
+
 ### Analysis tools
 
 ```
@@ -202,14 +205,14 @@ focus(path="src/auth.rs")
 | `audit` | Packaged audit report |
 | `commit_search` | Semantic git history search |
 | `commit_history` | Browse recent commits |
-| `repo_add` | Register another repo |
+| `repo_add` | Register and auto-index another repo |
 | `repo_remove` | Unregister a repo |
 | `repo_status` | View all repos |
 | `remember` | Store a note/decision |
 | `recall` | Search memories |
 | `forget` | Delete memories |
 | `tags` | List all memory tags |
-| `knowledge` | Index and search docs |
+| `knowledge` | Index and search docs in the active repo |
 | `compact` | Archive session content |
 | `session_snapshot` | Context recovery |
 | `restore` | Project re-entry summary |
