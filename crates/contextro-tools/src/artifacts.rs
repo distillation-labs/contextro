@@ -77,7 +77,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
         parameters: &[
             "symbol_name (preferred): target symbol name",
             "name / symbol: backward-compatible aliases",
-            "max_depth: caller traversal depth, default 5",
+            "max_depth: caller traversal depth, default 5; smaller values intentionally narrow the blast radius",
         ],
         example: r#"impact({"symbol_name":"BrowserSession","max_depth":3})"#,
     },
@@ -119,7 +119,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "test_coverage_map",
-        description: "Estimate static test coverage from file naming and inline test markers.",
+        description: "Estimate static test coverage bounds from file naming and inline test markers.",
         parameters: &[],
         example: r#"test_coverage_map({})"#,
     },
@@ -263,8 +263,11 @@ const TOOL_DOCS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "docs_bundle",
-        description: "Generate Markdown docs in an output directory.",
-        parameters: &["output_dir: target directory, default .contextro-docs"],
+        description: "Generate Markdown docs in an output directory from the currently indexed graph.",
+        parameters: &[
+            "output_dir: target directory, default .contextro-docs",
+            "requires an indexed graph: run index(path) first",
+        ],
         example: r#"docs_bundle({"output_dir":".contextro-docs"})"#,
     },
     ToolDoc {
@@ -374,7 +377,8 @@ fn sidecar_target_matches(
     target_is_dir: bool,
     codebase: Option<&str>,
 ) -> bool {
-    let normalized_file = std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path));
+    let normalized_file =
+        std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path));
     if target_is_dir {
         if normalized_file == target_abs || normalized_file.starts_with(target_abs) {
             return true;
@@ -454,6 +458,13 @@ pub fn handle_audit(graph: &CodeGraph, _codebase: Option<&str>) -> Value {
 
 /// Generate a docs bundle.
 pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
+    if graph.node_count() == 0 {
+        return json!({
+            "error": "No indexed graph loaded. Run index(path) before docs_bundle.",
+            "hint": "Call index({\"path\":\"/path/to/repo\"}) first so Contextro can build the graph used by docs_bundle."
+        });
+    }
+
     let output_dir = args
         .get("output_dir")
         .and_then(|v| v.as_str())
@@ -505,7 +516,11 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
         .filter(|n| !is_test_file(&n.location.file_path))
         .map(|n| {
             let (i, o) = graph.get_node_degree(&n.id);
-            (n.name.clone(), strip_base(&n.location.file_path, codebase), i + o)
+            (
+                n.name.clone(),
+                strip_base(&n.location.file_path, codebase),
+                i + o,
+            )
         })
         .collect();
     scored.sort_by_key(|b| std::cmp::Reverse(b.2));
@@ -539,7 +554,12 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
     ));
     push_count_section(&mut overview, "Languages", &top_languages, "symbols");
     push_count_section(&mut overview, "Symbol Types", &top_symbol_types, "nodes");
-    push_count_section(&mut overview, "Top Directories", &top_directories, "symbols");
+    push_count_section(
+        &mut overview,
+        "Top Directories",
+        &top_directories,
+        "symbols",
+    );
     push_count_section(&mut overview, "Top Files", &top_files, "symbols");
 
     overview.push_str("## Hub Symbols\n\n");
@@ -580,7 +600,9 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
     } else if Path::new(path).is_absolute() {
         strip_base(path, codebase)
     } else {
-        path.trim_start_matches("./").trim_end_matches('/').to_string()
+        path.trim_start_matches("./")
+            .trim_end_matches('/')
+            .to_string()
     };
     let target_is_dir = Path::new(&target).is_dir();
 
@@ -731,10 +753,7 @@ pub fn handle_introspect(args: &Value) -> Value {
         .collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.name.cmp(b.1.name)));
 
-    let matching: Vec<Value> = scored
-        .iter()
-        .map(|(_, doc)| tool_doc_detail(doc))
-        .collect();
+    let matching: Vec<Value> = scored.iter().map(|(_, doc)| tool_doc_detail(doc)).collect();
 
     json!({"query": query, "matching_tools": matching, "total": matching.len()})
 }
@@ -742,7 +761,9 @@ pub fn handle_introspect(args: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use contextro_core::graph::{RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship};
+    use contextro_core::graph::{
+        RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
+    };
     use contextro_core::NodeType;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -762,10 +783,12 @@ mod tests {
         let parameters = result["parameters"].as_array().expect("parameters array");
 
         assert_eq!(result["tool"], "search");
-        assert_eq!(result["description"], "Hybrid, vector, or BM25 code search.");
-        assert!(parameters
-            .iter()
-            .any(|parameter| parameter.as_str() == Some("query (required): search text or symbol-like identifier")));
+        assert_eq!(
+            result["description"],
+            "Hybrid, vector, or BM25 code search."
+        );
+        assert!(parameters.iter().any(|parameter| parameter.as_str()
+            == Some("query (required): search text or symbol-like identifier")));
     }
 
     #[test]
@@ -796,7 +819,10 @@ mod tests {
             name: "BrowserSession".into(),
             node_type: NodeType::Class,
             location: UniversalLocation {
-                file_path: codebase.join("src/browser/session.py").to_string_lossy().to_string(),
+                file_path: codebase
+                    .join("src/browser/session.py")
+                    .to_string_lossy()
+                    .to_string(),
                 start_line: 1,
                 end_line: 20,
                 start_column: 0,
@@ -811,7 +837,10 @@ mod tests {
             name: "get_or_create_session".into(),
             node_type: NodeType::Function,
             location: UniversalLocation {
-                file_path: codebase.join("src/browser/session.py").to_string_lossy().to_string(),
+                file_path: codebase
+                    .join("src/browser/session.py")
+                    .to_string_lossy()
+                    .to_string(),
                 start_line: 22,
                 end_line: 35,
                 start_column: 0,
@@ -839,6 +868,28 @@ mod tests {
         assert!(overview.contains("## Top Files"));
         assert!(overview.contains("## Hub Symbols"));
         assert!(overview.contains("BrowserSession"));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_docs_bundle_requires_indexed_graph() {
+        let root = temp_dir("docs-bundle-empty");
+        let codebase = root.join("repo");
+        std::fs::create_dir_all(&codebase).unwrap();
+        let graph = CodeGraph::new();
+
+        let base = codebase.to_string_lossy().to_string();
+        let result = handle_docs_bundle(&json!({"output_dir":"docs"}), &graph, Some(base.as_str()));
+
+        assert_eq!(
+            result["error"],
+            "No indexed graph loaded. Run index(path) before docs_bundle."
+        );
+        assert!(
+            !codebase.join("docs/overview.md").exists(),
+            "docs bundle should not write placeholder docs when no graph is loaded"
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }

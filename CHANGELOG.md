@@ -14,7 +14,17 @@ All notable changes to this project are tracked here.
 - **`test_coverage_map` is filename-based** — matches source files to test files by naming convention (e.g. `foo.ts` ↔ `foo.test.ts`). Does not measure actual line/branch coverage.
 - **tree-sitter-rust ABI incompatible** — `tree-sitter-rust 0.24` requires ABI version 15, incompatible with `tree-sitter 0.24.7` (ABI 14). Rust uses an improved heuristic parser instead.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
-- **Tool consolidation deferred** — 36 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
+- **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
+
+## [1.6.3] - 2026-05-13
+
+### Fixed
+
+- **`docs_bundle` now fails fast when no graph is loaded** — a fresh MCP session without `index(path)` no longer writes misleading placeholder docs with `0` symbols; it returns an explicit error and hint instead.
+- **Natural-language search is less test-heavy by default** — multi-word implementation queries like `DOM watchdog screenshots` and `security watchdog domain filtering` now prefer indexed implementation code over tests, while explicit test-oriented queries still surface test files first.
+- **Manual knowledge indexing is stronger and more predictable** — `knowledge(add)` and `knowledge(update)` now walk nested directories recursively, so developer-owned docs folders are searchable immediately instead of only indexing top-level files.
+- **`commit_search` exposes real ranking signal** — commit history matches are now scored with exact-match and density boosts instead of collapsing many plausible hits to the same flat overlap score.
+- **Analysis and tool metadata are clearer under live use** — `impact` now reports its default depth explicitly and explains when a smaller explicit depth narrows the blast radius, `test_coverage_map` adds lower/upper-bound context, and release-facing docs/tool metadata now match the current 37-tool surface and `docs_bundle` preconditions.
 
 ## [1.6.2] - 2026-05-13
 
@@ -64,7 +74,7 @@ All notable changes to this project are tracked here.
 
 - **Token budget parameter** (`max_tokens`): Any tool accepts `max_tokens` to cap response size. Server truncates at token boundary. 87% reduction when budget is set.
 - **Actionable errors** (#8): Symbol-not-found errors now include `did_you_mean` suggestions using edit distance matching, plus a `hint` with the correct tool call to try.
-- **Tool tiering** (#10): Set `CTX_TOOL_TIER=core` (10 tools), `standard` (22 tools), or `full` (36 tools, default) to reduce schema token overhead for simpler workflows.
+- **Tool tiering** (#10): Set `CTX_TOOL_TIER=core` (10 tools), `standard` (22 tools), or `full` (37 tools, default) to reduce schema token overhead for simpler workflows.
 
 ### Changed
 

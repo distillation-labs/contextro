@@ -198,7 +198,7 @@ focus(path="src/auth.rs")
 | `focus` | Low-token context slice |
 | `dead_code` | Unreachable code detection |
 | `circular_dependencies` | Import cycle detection (Rust + TypeScript) |
-| `test_coverage_map` | Static test coverage |
+| `test_coverage_map` | Static test coverage bounds |
 | `audit` | Packaged audit report |
 | `commit_search` | Semantic git history search |
 | `commit_history` | Browse recent commits |
@@ -213,7 +213,7 @@ focus(path="src/auth.rs")
 | `compact` | Archive session content |
 | `session_snapshot` | Context recovery |
 | `restore` | Project re-entry summary |
-| `docs_bundle` | Generate documentation |
+| `docs_bundle` | Generate documentation from the current index |
 | `sidecar_export` | Generate .graph.* sidecars |
 | `skill_prompt` | Agent bootstrap block |
 | `introspect` | Look up Contextro docs |
@@ -235,7 +235,7 @@ All settings via `CTX_` environment variables:
 | `CTX_HTTP_PORT` | `8000` | HTTP port |
 | `CTX_LOG_LEVEL` | `INFO` | Logging level |
 | `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model for vector search |
-| `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (36) |
+| `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (37) |
 | `CTX_NO_UPDATE_CHECK` | unset | Set to `1` to disable update checks |
 | `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model for vector search |
 | `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (36) |

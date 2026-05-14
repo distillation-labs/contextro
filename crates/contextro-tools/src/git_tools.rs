@@ -1,6 +1,6 @@
 //! Git tools: commit_search, commit_history, repo_add, repo_remove, repo_status.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use contextro_config::get_settings;
@@ -183,9 +183,9 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
                 }
             }
 
-            // Score by token overlap
+            // Score by token overlap plus exact-match and density signals.
             let msg_tokens = tokenize(&msg);
-            let score = token_overlap_score(&query_tokens, &msg_tokens);
+            let score = token_overlap_score(query, &query_tokens, &msg, &msg_tokens);
             if score > 0.0 {
                 Some((
                     score,
@@ -278,19 +278,43 @@ fn tokenize(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn token_overlap_score(query_tokens: &[String], doc_tokens: &[String]) -> f64 {
+fn token_overlap_score(
+    query: &str,
+    query_tokens: &[String],
+    document: &str,
+    doc_tokens: &[String],
+) -> f64 {
     if query_tokens.is_empty() || doc_tokens.is_empty() {
         return 0.0;
     }
-    let matches = query_tokens
+
+    let unique_doc_tokens: HashSet<&str> = doc_tokens.iter().map(|token| token.as_str()).collect();
+    let matched_tokens = query_tokens
         .iter()
-        .filter(|qt| {
-            doc_tokens
-                .iter()
-                .any(|dt| dt.contains(qt.as_str()) || qt.contains(dt.as_str()))
+        .filter(|query_token| {
+            doc_tokens.iter().any(|doc_token| {
+                doc_token.contains(query_token.as_str()) || query_token.contains(doc_token.as_str())
+            })
         })
         .count();
-    matches as f64 / query_tokens.len() as f64
+    if matched_tokens == 0 {
+        return 0.0;
+    }
+
+    let exact_matches = query_tokens
+        .iter()
+        .filter(|query_token| unique_doc_tokens.contains(query_token.as_str()))
+        .count();
+    let coverage = matched_tokens as f64 / query_tokens.len() as f64;
+    let exact_ratio = exact_matches as f64 / query_tokens.len() as f64;
+    let density = matched_tokens as f64 / doc_tokens.len() as f64;
+    let phrase_bonus = if document.to_lowercase().contains(&query.to_lowercase()) {
+        0.2
+    } else {
+        0.0
+    };
+
+    (coverage * 0.5 + exact_ratio * 0.3 + density * 0.2 + phrase_bonus).min(1.0)
 }
 
 #[cfg(test)]
@@ -339,6 +363,94 @@ mod tests {
         assert!(registry.list().is_empty());
 
         let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_token_overlap_score_rewards_exact_phrase_and_density() {
+        let exact = token_overlap_score(
+            "fix reliability",
+            &tokenize("fix reliability"),
+            "fix reliability bug in session tracker",
+            &tokenize("fix reliability bug in session tracker"),
+        );
+        let partial = token_overlap_score(
+            "fix reliability",
+            &tokenize("fix reliability"),
+            "fix session tracker bug",
+            &tokenize("fix session tracker bug"),
+        );
+        let diluted = token_overlap_score(
+            "fix reliability",
+            &tokenize("fix reliability"),
+            "fix the repo registry and update changelog entries for release housekeeping",
+            &tokenize(
+                "fix the repo registry and update changelog entries for release housekeeping",
+            ),
+        );
+
+        assert!(
+            exact > partial,
+            "exact phrase should outrank partial overlap"
+        );
+        assert!(
+            partial > diluted,
+            "denser partial match should outrank diluted overlap"
+        );
+    }
+
+    #[test]
+    fn test_handle_commit_search_returns_differentiated_scores() {
+        let repo_dir = temp_file("commit-search-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+        let mut parent: Option<git2::Oid> = None;
+
+        for (idx, message) in [
+            "chore release housekeeping",
+            "fix session tracker bug",
+            "fix reliability regression in session tracker",
+        ]
+        .iter()
+        .enumerate()
+        {
+            std::fs::write(repo_dir.join("tracked.txt"), format!("commit-{idx}\n")).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parents = parent
+                .map(|oid| vec![repo.find_commit(oid).unwrap()])
+                .unwrap_or_default();
+            let parent_refs = parents.iter().collect::<Vec<_>>();
+            let oid = repo
+                .commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    message,
+                    &tree,
+                    &parent_refs,
+                )
+                .unwrap();
+            parent = Some(oid);
+        }
+
+        let result = handle_commit_search(
+            &json!({"query":"fix reliability","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+        let commits = result["commits"].as_array().expect("commits array");
+
+        assert_eq!(
+            commits[0]["message"],
+            "fix reliability regression in session tracker"
+        );
+        assert!(commits[0]["score"].as_f64().unwrap() > commits[1]["score"].as_f64().unwrap());
+
         let _ = std::fs::remove_dir_all(repo_dir);
     }
 }

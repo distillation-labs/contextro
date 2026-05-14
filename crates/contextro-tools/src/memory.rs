@@ -1,6 +1,7 @@
 //! Memory tools: remember, recall, forget, knowledge.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use parking_lot::RwLock;
@@ -211,6 +212,47 @@ impl Default for KnowledgeStore {
     }
 }
 
+fn read_knowledge_source(path: &Path) -> String {
+    if path.is_file() {
+        return std::fs::read_to_string(path).unwrap_or_default();
+    }
+    if !path.is_dir() {
+        return String::new();
+    }
+
+    let mut files = collect_knowledge_files(path);
+    files.sort();
+
+    let mut content = String::new();
+    for file in files {
+        if let Ok(text) = std::fs::read_to_string(&file) {
+            if text.trim().is_empty() {
+                continue;
+            }
+            content.push_str(&format!("--- {} ---\n{}\n", file.display(), text));
+        }
+    }
+    content
+}
+
+fn collect_knowledge_files(path: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return files;
+    };
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            files.extend(collect_knowledge_files(&entry_path));
+        } else if entry_path.is_file() {
+            files.push(entry_path);
+        }
+    }
+
+    files
+}
+
 pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
     // If `query` is provided without `command`, default to search (backward compat)
     let command = args
@@ -239,27 +281,8 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
                 return json!({"error": "Missing required parameter: name"});
             }
             // If value is a file/dir path, read it; otherwise treat as text
-            let content = if std::path::Path::new(value).exists() {
-                if std::path::Path::new(value).is_file() {
-                    std::fs::read_to_string(value).unwrap_or_else(|_| value.to_string())
-                } else {
-                    // Directory: read all text files
-                    let mut buf = String::new();
-                    if let Ok(entries) = std::fs::read_dir(value) {
-                        for entry in entries.flatten() {
-                            if entry.path().is_file() {
-                                if let Ok(text) = std::fs::read_to_string(entry.path()) {
-                                    buf.push_str(&format!(
-                                        "--- {} ---\n{}\n",
-                                        entry.path().display(),
-                                        text
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    buf
-                }
+            let content = if Path::new(value).exists() {
+                read_knowledge_source(Path::new(value))
             } else {
                 value.to_string()
             };
@@ -295,12 +318,11 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
                 return json!({"error": "Missing required parameter: path"});
             }
             let n = name.unwrap_or(path);
-            let content = if std::path::Path::new(path).is_file() {
-                std::fs::read_to_string(path).unwrap_or_default()
-            } else {
-                String::new()
-            };
+            let content = read_knowledge_source(Path::new(path));
             let chunk_count = knowledge.add(n, &content);
+            if chunk_count == 0 {
+                return json!({"error": "Content is empty — nothing indexed", "name": n});
+            }
             json!({"status": "updated", "name": n, "chunks": chunk_count})
         }
         _ => json!({"error": format!("Unknown knowledge command: {}", command)}),
@@ -331,6 +353,15 @@ fn parse_ttl_arg(s: &str) -> MemoryTtl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("contextro-knowledge-{unique}-{name}"))
+    }
 
     #[test]
     fn test_knowledge_list_alias_returns_indexed_bases() {
@@ -341,5 +372,33 @@ mod tests {
         assert_eq!(result["total"], 1);
         assert_eq!(result["knowledge_bases"][0]["name"], "docs");
         assert_eq!(result["knowledge_bases"][0]["chunks"], 1);
+    }
+
+    #[test]
+    fn test_knowledge_add_indexes_nested_directory_contents() {
+        let root = temp_dir("nested");
+        let nested = root.join("docs/guides");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(
+            nested.join("manual.md"),
+            "Nested manual token: unique_nested_knowledge_token",
+        )
+        .unwrap();
+
+        let knowledge = KnowledgeStore::new();
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"nested-docs","value": root.to_string_lossy()}),
+            &knowledge,
+        );
+        assert_eq!(add_result["status"], "indexed");
+
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"unique_nested_knowledge_token","limit":5}),
+            &knowledge,
+        );
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "nested-docs");
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

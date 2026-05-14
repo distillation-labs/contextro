@@ -152,7 +152,7 @@ focus(path="src/auth.rs")
 
 ---
 
-## All 35 Tools
+## All 37 Tools
 
 | Tool | What it does |
 |---|---|
@@ -170,7 +170,7 @@ focus(path="src/auth.rs")
 | `focus` | Low-token context slice |
 | `dead_code` | Unreachable code detection |
 | `circular_dependencies` | SCC-based cycle detection |
-| `test_coverage_map` | Static test coverage |
+| `test_coverage_map` | Static test coverage bounds |
 | `audit` | Packaged audit report |
 | `commit_search` | Semantic git history search |
 | `commit_history` | Browse recent commits |
@@ -180,17 +180,19 @@ focus(path="src/auth.rs")
 | `remember` | Store a note/decision |
 | `recall` | Search memories |
 | `forget` | Delete memories |
+| `tags` | List all memory tags |
 | `knowledge` | Index and search docs |
 | `compact` | Archive session content |
 | `session_snapshot` | Context recovery |
 | `restore` | Project re-entry summary |
-| `docs_bundle` | Generate documentation |
+| `docs_bundle` | Generate documentation from the current index |
 | `sidecar_export` | Generate .graph.* sidecars |
 | `skill_prompt` | Agent bootstrap block |
 | `introspect` | Look up Contextro docs |
 | `retrieve` | Fetch sandboxed output |
 | `status` | Server status |
 | `health` | Readiness check |
+| `refactor_check` | Pre-refactor analysis |
 
 ---
 

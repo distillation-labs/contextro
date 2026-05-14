@@ -161,8 +161,10 @@ pub fn handle_explain(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
 }
 
 pub fn handle_impact(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
+    const DEFAULT_IMPACT_DEPTH: usize = 5;
     let name = get_symbol_name(args);
-    let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+    let requested_depth = args.get("max_depth").and_then(|v| v.as_u64());
+    let max_depth = requested_depth.unwrap_or(DEFAULT_IMPACT_DEPTH as u64) as usize;
 
     if name.is_empty() {
         return json!({"error": "Missing required parameter: symbol_name"});
@@ -204,9 +206,20 @@ pub fn handle_impact(args: &Value, graph: &CodeGraph, codebase: Option<&str>) ->
     let mut result = json!({
         "symbol": name,
         "max_depth": max_depth,
+        "default_depth": DEFAULT_IMPACT_DEPTH,
         "impacted": impacted,
         "total_impacted": impacted.len(),
     });
+
+    if let Some(explicit_depth) = requested_depth {
+        if explicit_depth as usize != DEFAULT_IMPACT_DEPTH {
+            result["depth_hint"] = json!(format!(
+                "Explicit max_depth={} overrides the default depth of {}. Smaller depths intentionally return a narrower impact set.",
+                explicit_depth,
+                DEFAULT_IMPACT_DEPTH
+            ));
+        }
+    }
 
     // Hint for entry points: 0 transitive callers means nothing depends on this symbol,
     // which is expected for top-level entry points (main, CLI handlers, etc.)
@@ -327,8 +340,16 @@ mod tests {
             strength: 1.0,
         });
 
-        let depth_one = handle_impact(&json!({"symbol_name":"BrowserSession","max_depth":1}), &graph, Some("/tmp/repo"));
-        let depth_three = handle_impact(&json!({"symbol_name":"BrowserSession","max_depth":3}), &graph, Some("/tmp/repo"));
+        let depth_one = handle_impact(
+            &json!({"symbol_name":"BrowserSession","max_depth":1}),
+            &graph,
+            Some("/tmp/repo"),
+        );
+        let depth_three = handle_impact(
+            &json!({"symbol_name":"BrowserSession","max_depth":3}),
+            &graph,
+            Some("/tmp/repo"),
+        );
 
         assert_eq!(depth_one["total_impacted"], 1);
         assert_eq!(depth_three["total_impacted"], 2);
@@ -350,5 +371,44 @@ mod tests {
         for name in shallow {
             assert!(deep.contains(&name));
         }
+    }
+
+    #[test]
+    fn test_impact_reports_default_depth_and_explicit_depth_hint() {
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "leaf".into(),
+            name: "BrowserSession".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "/tmp/repo/src/session.py".into(),
+                start_line: 10,
+                end_line: 10,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let default_result = handle_impact(
+            &json!({"symbol_name":"BrowserSession"}),
+            &graph,
+            Some("/tmp/repo"),
+        );
+        let explicit_result = handle_impact(
+            &json!({"symbol_name":"BrowserSession","max_depth":3}),
+            &graph,
+            Some("/tmp/repo"),
+        );
+
+        assert_eq!(default_result["default_depth"], 5);
+        assert!(default_result.get("depth_hint").is_none());
+        assert_eq!(explicit_result["default_depth"], 5);
+        assert!(explicit_result["depth_hint"]
+            .as_str()
+            .unwrap_or("")
+            .contains("narrower impact set"));
     }
 }

@@ -540,8 +540,13 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
     json!({
         "coverage_type": "static_heuristic",
         "coverage_percent": (coverage_pct * 10.0).round() / 10.0,
+        "likely_coverage_percent": (coverage_pct * 10.0).round() / 10.0,
         "static_coverage_percent": (coverage_pct * 10.0).round() / 10.0,
         "conservative_coverage_percent": (conservative_pct * 10.0).round() / 10.0,
+        "coverage_range_percent": {
+            "lower_bound": (conservative_pct * 10.0).round() / 10.0,
+            "upper_bound": (coverage_pct * 10.0).round() / 10.0,
+        },
         "covered_files": covered.len(),
         "conservative_covered_files": covered_exact.len(),
         "likely_covered_files": likely_covered.len(),
@@ -549,6 +554,7 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
         "test_files": test_files.len() + inline_tested.len(),
         "likely_covered": likely_covered.into_iter().take(20).collect::<Vec<_>>(),
         "uncovered": uncovered.into_iter().take(20).collect::<Vec<_>>(),
+        "interpretation": "Read conservative_coverage_percent as an exact-match lower bound and coverage_percent / likely_coverage_percent as a heuristic upper bound for projects whose test files do not follow naming conventions.",
         "note": "Static heuristic based on inline tests, exact filename matches, and source/test token overlap. Treat this as directional file coverage, not runtime or line coverage.",
     })
 }
@@ -570,8 +576,22 @@ fn file_stem_stripped(fp: &str) -> String {
 
 fn coverage_tokens(text: &str) -> HashSet<String> {
     const GENERIC_COVERAGE_TOKENS: &[&str] = &[
-        "test", "tests", "spec", "ci", "e2e", "integration", "unit", "src", "lib", "app",
-        "main", "index", "init", "conftest", "python", "rust",
+        "test",
+        "tests",
+        "spec",
+        "ci",
+        "e2e",
+        "integration",
+        "unit",
+        "src",
+        "lib",
+        "app",
+        "main",
+        "index",
+        "init",
+        "conftest",
+        "python",
+        "rust",
     ];
 
     let mut spaced = String::with_capacity(text.len() * 2);
@@ -611,7 +631,13 @@ fn has_probable_test_signal(
     let strong_overlap = overlap
         .iter()
         .filter(|token| token.len() >= 4)
-        .filter(|token| source_token_frequency.get(token.as_str()).copied().unwrap_or(usize::MAX) <= 5)
+        .filter(|token| {
+            source_token_frequency
+                .get(token.as_str())
+                .copied()
+                .unwrap_or(usize::MAX)
+                <= 5
+        })
         .count();
 
     strong_overlap >= 1 || overlap.iter().filter(|token| token.len() >= 4).count() >= 2
@@ -785,7 +811,9 @@ fn tarjan_scc(nodes: &[String], edges: &HashMap<String, HashSet<String>>) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use contextro_core::graph::{RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship};
+    use contextro_core::graph::{
+        RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
+    };
     use contextro_engines::graph::CodeGraph;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1011,5 +1039,11 @@ mod tests {
         assert_eq!(result["conservative_covered_files"], 0);
         assert_eq!(result["likely_covered_files"], 1);
         assert_eq!(result["likely_covered"][0], "traverse/browser/session.py");
+        assert_eq!(result["coverage_range_percent"]["lower_bound"], 0.0);
+        assert_eq!(result["coverage_range_percent"]["upper_bound"], 100.0);
+        assert!(result["interpretation"]
+            .as_str()
+            .unwrap_or("")
+            .contains("lower bound"));
     }
 }

@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::analysis::is_test_file;
 use contextro_core::models::SearchResult;
 use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
@@ -94,6 +95,7 @@ pub fn handle_search(
     }
 
     results = apply_symbol_query_guard(query, results);
+    results = rerank_natural_language_results(query, results);
 
     let confidence = confidence_label(&results);
 
@@ -133,16 +135,50 @@ fn apply_symbol_query_guard(query: &str, results: Vec<SearchResult>) -> Vec<Sear
         .collect()
 }
 
+fn rerank_natural_language_results(
+    query: &str,
+    mut results: Vec<SearchResult>,
+) -> Vec<SearchResult> {
+    if query.split_whitespace().count() < 2
+        || is_symbol_lookup_query(query)
+        || query_explicitly_targets_tests(query)
+    {
+        return results;
+    }
+
+    if !results.iter().any(|result| !is_test_file(&result.filepath)) {
+        return results;
+    }
+
+    for result in &mut results {
+        if is_test_file(&result.filepath) {
+            result.score *= 0.8;
+        } else {
+            result.score *= 1.02;
+        }
+    }
+
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results
+}
+
 fn is_symbol_lookup_query(query: &str) -> bool {
     let trimmed = query.trim();
     !trimmed.is_empty() && trimmed.split_whitespace().count() == 1
 }
 
-fn result_matches_symbol_query(
-    query: &str,
-    normalized_query: &str,
-    result: &SearchResult,
-) -> bool {
+fn query_explicitly_targets_tests(query: &str) -> bool {
+    let lowered = query.to_ascii_lowercase();
+    ["test", "tests", "pytest", "spec", "fixture"]
+        .iter()
+        .any(|token| lowered.contains(token))
+}
+
+fn result_matches_symbol_query(query: &str, normalized_query: &str, result: &SearchResult) -> bool {
     let query_tokens = tokenize_identifier(query);
     if query_tokens.is_empty() {
         return true;
@@ -418,5 +454,55 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].symbol_name, "BrowserSession");
+    }
+
+    #[test]
+    fn test_natural_language_reranker_prefers_implementation_over_tests() {
+        let reranked = rerank_natural_language_results(
+            "security watchdog domain filtering",
+            vec![
+                make_named_result(
+                    "test-hit",
+                    "test_is_root_domain_helper",
+                    "tests/ci/security/test_domain_filtering.py",
+                    0.73,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "impl-hit",
+                    "SecurityWatchdog._is_root_domain",
+                    "traverse/browser/watchdogs/security_watchdog.py",
+                    0.64,
+                    &["vector"],
+                ),
+            ],
+        );
+
+        assert_eq!(reranked[0].symbol_name, "SecurityWatchdog._is_root_domain");
+    }
+
+    #[test]
+    fn test_natural_language_reranker_skips_explicit_test_queries() {
+        let reranked = rerank_natural_language_results(
+            "test domain filtering fixtures",
+            vec![
+                make_named_result(
+                    "test-hit",
+                    "test_is_root_domain_helper",
+                    "tests/ci/security/test_domain_filtering.py",
+                    0.73,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "impl-hit",
+                    "SecurityWatchdog._is_root_domain",
+                    "traverse/browser/watchdogs/security_watchdog.py",
+                    0.64,
+                    &["vector"],
+                ),
+            ],
+        );
+
+        assert_eq!(reranked[0].symbol_name, "test_is_root_domain_helper");
     }
 }

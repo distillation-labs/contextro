@@ -296,7 +296,7 @@ impl ContextroServer {
                 self.state.vector_index.clear();
                 let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
                 if let Some(vectors) = contextro_indexing::embed_batch(&texts) {
-                    for (chunk, vector) in chunks.iter().zip(vectors.into_iter()) {
+                    for (chunk, vector) in chunks.iter().zip(vectors) {
                         let sr = contextro_core::models::SearchResult {
                             id: chunk.id.clone(),
                             filepath: chunk.filepath.clone(),
@@ -515,7 +515,7 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"}},"required":["query"]}"#,
         );
         let impact_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"max_depth":{"type":"integer","description":"BFS depth (default: 5)"}}}"#,
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"max_depth":{"type":"integer","description":"BFS depth (default: 5; smaller values intentionally narrow the blast radius)"}}}"#,
         );
         let code_schema = mk(
             r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
@@ -555,7 +555,7 @@ impl ContextroServer {
             Tool::new("focus",        "Per-symbol callers/callees for a file or directory. Args: path", path_schema.clone()),
             Tool::new("dead_code",    "Symbols with no callers (unreachable from entry points)", empty.clone()),
             Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
-            Tool::new("test_coverage_map",     "Static heuristic test coverage estimate (not runtime coverage)", empty.clone()),
+            Tool::new("test_coverage_map",     "Static heuristic test coverage bounds (not runtime coverage)", empty.clone()),
             Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path), search_symbols(symbol_name), lookup_symbols(symbols:[]), list_symbols(path), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
             Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
             Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
@@ -575,7 +575,7 @@ impl ContextroServer {
                 mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Registered repository path"},"name":{"type":"string","description":"Registered repository name"}}}"#)),
             Tool::new("repo_status", "Show all registered repositories", empty.clone()),
             Tool::new("audit",        "Code quality audit report with recommendations", empty.clone()),
-            Tool::new("docs_bundle",  "Generate Markdown docs bundle. Args: output_dir",
+            Tool::new("docs_bundle",  "Generate Markdown docs bundle from the current indexed graph. Args: output_dir",
                 mk(r#"{"type":"object","properties":{"output_dir":{"type":"string","description":"Output directory for generated docs (default: .contextro-docs)"}}}"#)),
             Tool::new("sidecar_export", "Export graph sidecar files alongside source. Args: path",
                 mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Directory to write .graph.* sidecar files"}}}"#)),
@@ -652,9 +652,14 @@ fn shrink_json_value(value: Value) -> Value {
     match value {
         Value::String(text) => Value::String(shrink_text(text)),
         Value::Array(items) => {
-            let target_len = if items.len() > 1 { items.len().div_ceil(2) } else { 1 };
+            let target_len = if items.len() > 1 {
+                items.len().div_ceil(2)
+            } else {
+                1
+            };
             Value::Array(
-                items.into_iter()
+                items
+                    .into_iter()
                     .take(target_len)
                     .map(shrink_json_value)
                     .collect(),
@@ -882,7 +887,7 @@ impl ServerHandler for ContextroServer {
                 name: "contextro".into(),
                 version: env!("CARGO_PKG_VERSION").into(),
             },
-            instructions: Some("Contextro: code intelligence MCP server. 35 tools for search, graph analysis, memory, and git.".into()),
+            instructions: Some("Contextro: code intelligence MCP server. 37 tools for search, graph analysis, memory, and git.".into()),
         }
     }
 
@@ -993,9 +998,12 @@ fn rank_nodes_by_degree(
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{format_response, resolve_refactor_targets, ContextroServer};
-    use contextro_core::graph::{RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship};
+    use contextro_core::graph::{
+        RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
+    };
     use contextro_core::NodeType;
     use contextro_engines::graph::CodeGraph;
     use serde_json::{json, Value};
@@ -1038,13 +1046,17 @@ mod tests {
         });
 
         let rendered = format_response(&value, 200);
-        let parsed: Value = serde_json::from_str(&rendered).expect("truncated output should stay valid JSON");
+        let parsed: Value =
+            serde_json::from_str(&rendered).expect("truncated output should stay valid JSON");
 
         assert_eq!(parsed["symbol"], "BrowserSession.close");
         assert_eq!(parsed["total"], 120);
         assert_eq!(parsed["truncated"], true);
         assert!(parsed["callers"].as_array().unwrap().len() < 120);
-        assert!(parsed["hint"].as_str().unwrap().contains("Response truncated"));
+        assert!(parsed["hint"]
+            .as_str()
+            .unwrap()
+            .contains("Response truncated"));
     }
 
     #[test]
