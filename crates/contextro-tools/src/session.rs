@@ -57,7 +57,12 @@ pub fn handle_session_snapshot(args: &Value, tracker: &SessionTracker) -> Value 
     })
 }
 
-pub fn handle_restore(codebase: Option<&str>, indexed: bool, node_count: usize, rel_count: usize) -> Value {
+pub fn handle_restore(
+    codebase: Option<&str>,
+    indexed: bool,
+    node_count: usize,
+    rel_count: usize,
+) -> Value {
     json!({
         "codebase_path": codebase,
         "indexed": indexed,
@@ -146,7 +151,10 @@ mod tests {
 
         assert_eq!(result["total"], 1);
         assert_eq!(result["events"][0]["type"], "search");
-        assert!(result["events"][0]["summary"].as_str().unwrap().contains("cache"));
+        assert!(result["events"][0]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("cache"));
 
         let _ = std::fs::remove_file(path);
     }
