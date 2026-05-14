@@ -230,6 +230,7 @@ impl KnowledgeStore {
             .split_whitespace()
             .filter(|w| w.len() >= 3)
             .collect();
+        let normalized_query_terms = knowledge_terms(query);
 
         let state = self.state.read();
         let mut results: Vec<(String, String, usize)> = Vec::new();
@@ -263,6 +264,19 @@ impl KnowledgeStore {
                         .filter(|word| chunk_lower.contains(*word))
                         .count();
                     score = metadata_matches * 12 + content_matches * 4;
+                }
+                if score == 0 && !normalized_query_terms.is_empty() {
+                    let metadata_terms = knowledge_terms(&metadata_lower);
+                    let content_terms = knowledge_terms(&chunk_lower);
+                    let metadata_matches = normalized_query_terms
+                        .iter()
+                        .filter(|term| knowledge_terms_match(&metadata_terms, term))
+                        .count();
+                    let content_matches = normalized_query_terms
+                        .iter()
+                        .filter(|term| knowledge_terms_match(&content_terms, term))
+                        .count();
+                    score = metadata_matches * 10 + content_matches * 3;
                 }
 
                 if score > 0 {
@@ -456,6 +470,37 @@ fn normalize_knowledge_label(label: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn normalize_knowledge_term(term: &str) -> String {
+    let term = term.trim().to_lowercase();
+    if term.len() <= 4 {
+        return term;
+    }
+    if let Some(stem) = term.strip_suffix("ies") {
+        return format!("{stem}y");
+    }
+    if !term.ends_with("ss") {
+        if let Some(stem) = term.strip_suffix('s') {
+            return stem.to_string();
+        }
+    }
+    term
+}
+
+fn knowledge_terms(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|term| term.len() >= 3)
+        .map(normalize_knowledge_term)
+        .collect()
+}
+
+fn knowledge_terms_match(doc_terms: &[String], query_term: &str) -> bool {
+    doc_terms.iter().any(|doc_term| {
+        doc_term == query_term
+            || doc_term.contains(query_term)
+            || query_term.contains(doc_term.as_str())
+    })
 }
 
 fn summarize_preview(text: &str, max_chars: usize) -> Option<String> {
@@ -714,6 +759,37 @@ mod tests {
 
         let search_result = handle_knowledge(
             &json!({"command":"search","query":"roadmap priorities","limit":5}),
+            &knowledge,
+        );
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "ROADMAP.md");
+
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_search_matches_plural_variants() {
+        let root = temp_dir("milestones");
+        let roadmap = root.join("ROADMAP.md");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            &roadmap,
+            "Roadmap priorities: developer trust and milestone discipline.",
+        )
+        .unwrap();
+
+        let store_path = temp_file("milestones");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        knowledge.set_active_scope(Some(root.to_string_lossy().as_ref()));
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"ROADMAP.md","value": roadmap.to_string_lossy()}),
+            &knowledge,
+        );
+        assert_eq!(add_result["status"], "indexed");
+
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"milestones","limit":5}),
             &knowledge,
         );
         assert_eq!(search_result["total"], 1);

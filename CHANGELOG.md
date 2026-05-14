@@ -16,6 +16,17 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.6] - 2026-05-14
+
+### Fixed
+
+- **`introspect()` restored the expected `name` field** — bare tool discovery now returns both `name` and `tool`, so older agent flows that enumerate tools by `name` work again without breaking newer clients.
+- **`forget` now accepts the `id` returned by `remember`** — agent pipelines can pass `remember(...).id` straight into `forget({"id": ...})` without having to rename the field to `memory_id`.
+- **`commit_search` now falls back to deeper history when recent commits miss** — broad queries like `fix` and `knowledge` no longer stop at the newest 500 commits and incorrectly return zero results on this repo.
+- **`knowledge search` now handles simple plural/singular variants** — sparse docs such as `milestone` content are discoverable from queries like `milestones`, improving low-token developer lookups without changing exact-match behavior.
+- **Unicode truncation is safe across tool responses** — `knowledge search`, symbol signature truncation, and typo hints no longer risk panics when previews cut through multi-byte characters.
+- **Release validation was rerun on both transports** — the full repo gate stayed green, targeted live HTTP repros for the eval issues passed, and a focused stdio regression pass also passed cleanly.
+
 ## [1.6.5] - 2026-05-13
 
 ### Fixed

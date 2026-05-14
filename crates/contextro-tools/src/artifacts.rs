@@ -334,11 +334,12 @@ fn find_tool_doc(name: &str) -> Option<&'static ToolDoc> {
 }
 
 fn tool_doc_summary(doc: &ToolDoc) -> Value {
-    json!({"tool": doc.name, "description": doc.description})
+    json!({"name": doc.name, "tool": doc.name, "description": doc.description})
 }
 
 fn tool_doc_detail(doc: &ToolDoc) -> Value {
     json!({
+        "name": doc.name,
         "tool": doc.name,
         "description": doc.description,
         "parameters": doc.parameters,
@@ -792,6 +793,7 @@ mod tests {
         let result = handle_introspect(&json!({"tool":"search"}));
         let parameters = result["parameters"].as_array().expect("parameters array");
 
+        assert_eq!(result["name"], "search");
         assert_eq!(result["tool"], "search");
         assert_eq!(
             result["description"],
@@ -815,6 +817,16 @@ mod tests {
         assert!(core_tools
             .iter()
             .any(|tool| tool["tool"] == "search" && tool["parameters"].is_array()));
+    }
+
+    #[test]
+    fn test_introspect_list_includes_name_alias() {
+        let result = handle_introspect(&json!({}));
+        let tools = result["tools"].as_array().expect("tools array");
+
+        assert!(tools
+            .iter()
+            .any(|tool| tool["name"] == "search" && tool["tool"] == "search"));
     }
 
     #[test]
