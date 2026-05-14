@@ -16,6 +16,14 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.9] - 2026-05-14
+
+### Fixed
+
+- **Strict MCP clients can now start `contextro@latest` again** — no-argument tools now expose a real object input schema instead of `{}`, which unblocks clients like Opencode that reject invalid tool schemas during discovery.
+- **Memory, session, and git tool parameters are now truthful under live use** — `remember`, `recall`, `forget`, `knowledge`, `compact`, `session_snapshot`, `restore`, and `commit_history` now validate inputs, honor the documented filters, and surface observability fields such as `ttl`, `expires_at`, `overwritten`, and `requires_index`.
+- **Release-blocking regressions are locked down with targeted tests** — new coverage verifies the schema contract for every tool plus the previously ignored memory/session/git arguments that broke real MCP workflows.
+
 ## [1.6.8] - 2026-05-14
 
 ### Fixed
