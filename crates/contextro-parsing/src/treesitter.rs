@@ -729,6 +729,7 @@ fn parse_rust(content: &str, filepath: &str) -> Vec<Symbol> {
 
 fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
     let lines: Vec<&str> = content.lines().collect();
+    let module_doc = extract_rust_module_doc(&lines);
     let mut symbols = Vec::new();
     let mut i = 0;
     let mut current_impl: Option<String> = None;
@@ -806,7 +807,10 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
                         line_end: (end_line + 1) as u32,
                         language: "rust".to_string(),
                         signature: trimmed.to_string(),
-                        docstring: extract_rust_doc(content.as_bytes(), i),
+                        docstring: merge_rust_doc_context(
+                            &extract_rust_item_doc(&lines, i),
+                            &module_doc,
+                        ),
                         parent: current_impl.clone(),
                         code_snippet: snippet_from(content.as_bytes(), i, end_line),
                         imports: vec![],
@@ -843,7 +847,10 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
                         line_end: (end_line + 1) as u32,
                         language: "rust".to_string(),
                         signature: trimmed.to_string(),
-                        docstring: extract_rust_doc(content.as_bytes(), i),
+                        docstring: merge_rust_doc_context(
+                            &extract_rust_item_doc(&lines, i),
+                            &module_doc,
+                        ),
                         parent: None,
                         code_snippet: snippet_from(content.as_bytes(), i, end_line),
                         imports: vec![],
@@ -1122,27 +1129,161 @@ fn extract_jsdoc_above(source: &[u8], row: usize) -> String {
     String::new()
 }
 
-fn extract_rust_doc(source: &[u8], row: usize) -> String {
-    if row == 0 {
+fn extract_rust_item_doc(lines: &[&str], row: usize) -> String {
+    if row == 0 || lines.is_empty() {
         return String::new();
     }
-    let s = std::str::from_utf8(source).unwrap_or("");
-    let lines: Vec<&str> = s.lines().collect();
+
     let mut doc_lines = Vec::new();
     let mut j = row;
     while j > 0 {
         j -= 1;
         let l = lines.get(j).unwrap_or(&"").trim();
+
         if l.starts_with("///") {
-            doc_lines.push(l.trim_start_matches('/').trim());
+            push_doc_line(&mut doc_lines, l.trim_start_matches("///").trim());
+        } else if l.ends_with("*/") {
+            if let Some((start, mut block_lines)) = extract_rust_doc_block_above(lines, j) {
+                block_lines.reverse();
+                doc_lines.extend(block_lines);
+                j = start;
+            } else {
+                break;
+            }
         } else if l.starts_with("#[") || l.is_empty() {
-            // skip attributes and blank lines
+            continue;
         } else {
             break;
         }
     }
     doc_lines.reverse();
-    doc_lines.join(" ")
+    normalize_doc_lines(doc_lines)
+}
+
+fn extract_rust_module_doc(lines: &[&str]) -> String {
+    let mut doc_lines = Vec::new();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        if trimmed.is_empty()
+            || (i == 0 && trimmed.starts_with("#!") && !trimmed.starts_with("#!["))
+            || trimmed.starts_with("#![")
+        {
+            i += 1;
+            continue;
+        }
+
+        if trimmed.starts_with("//!") {
+            push_doc_line(&mut doc_lines, trimmed.trim_start_matches("//!").trim());
+            i += 1;
+            continue;
+        }
+
+        if trimmed.starts_with("/*!") {
+            let (next, block_lines) = extract_rust_doc_block_below(lines, i);
+            if block_lines.is_empty() {
+                break;
+            }
+            doc_lines.extend(block_lines);
+            i = next;
+            continue;
+        }
+
+        break;
+    }
+
+    truncate_doc(&normalize_doc_lines(doc_lines), 220)
+}
+
+fn extract_rust_doc_block_above(lines: &[&str], end: usize) -> Option<(usize, Vec<String>)> {
+    let mut start = end;
+    loop {
+        let trimmed = lines.get(start)?.trim();
+        if trimmed.starts_with("/**") || trimmed.starts_with("/*!") {
+            let mut block_lines = Vec::new();
+            for line in lines.iter().take(end + 1).skip(start) {
+                push_doc_line(&mut block_lines, clean_rust_doc_line(line.trim()).as_str());
+            }
+            return Some((start, block_lines));
+        }
+        if start == 0 || trimmed.starts_with("/*") {
+            return None;
+        }
+        start -= 1;
+    }
+}
+
+fn extract_rust_doc_block_below(lines: &[&str], start: usize) -> (usize, Vec<String>) {
+    let mut block_lines = Vec::new();
+    let mut i = start;
+
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        push_doc_line(&mut block_lines, clean_rust_doc_line(trimmed).as_str());
+        i += 1;
+        if trimmed.ends_with("*/") {
+            break;
+        }
+    }
+
+    (i, block_lines)
+}
+
+fn clean_rust_doc_line(line: &str) -> String {
+    line.trim()
+        .trim_start_matches("/**")
+        .trim_start_matches("/*!")
+        .trim_start_matches("/*")
+        .trim_start_matches('*')
+        .trim_end_matches("*/")
+        .trim()
+        .to_string()
+}
+
+fn push_doc_line(doc_lines: &mut Vec<String>, line: &str) {
+    let trimmed = line.trim();
+    if !trimmed.is_empty() {
+        doc_lines.push(trimmed.to_string());
+    }
+}
+
+fn normalize_doc_lines(lines: Vec<String>) -> String {
+    lines.join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn merge_rust_doc_context(item_doc: &str, module_doc: &str) -> String {
+    let item_doc = truncate_doc(item_doc.trim(), 360);
+    let module_doc = truncate_doc(module_doc.trim(), 220);
+
+    if item_doc.is_empty() {
+        return module_doc;
+    }
+    if module_doc.is_empty() || item_doc.chars().count() > 220 {
+        return item_doc;
+    }
+
+    let normalized_item = normalize_identifierish(&item_doc);
+    let normalized_module = normalize_identifierish(&module_doc);
+    if !normalized_module.is_empty() && normalized_item.contains(&normalized_module) {
+        return item_doc;
+    }
+
+    truncate_doc(&format!("{}\n\nModule context: {}", item_doc, module_doc), 500)
+}
+
+fn truncate_doc(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
+}
+
+fn normalize_identifierish(text: &str) -> String {
+    text.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
 }
 
 // ─── Heuristic fallback (for Python, Go, etc.) ──────────────────────────────
@@ -1627,6 +1768,67 @@ pub fn execute_search() {
 
         assert_eq!(helper.parent.as_deref(), Some("SearchOptions"));
         assert_eq!(execute_search.parent, None);
+
+        std::fs::remove_file(tmp).ok();
+    }
+
+    #[test]
+    fn test_rust_heuristic_extracts_item_and_module_doc_context() {
+        let parser = TreeSitterParser::new();
+        let tmp = std::env::temp_dir().join("test_rust_doc_context.rs");
+        std::fs::write(
+            &tmp,
+            r#"
+//! Session archive persistence across restart.
+//!
+//! Retrieve archived session content after restart.
+
+/// Retrieves archived session content by reference id.
+#[instrument(skip(store))]
+pub fn retrieve_archived_session() {}
+
+/**
+ * Repository registry for multi-repo indexing.
+ */
+#[derive(Debug)]
+pub struct RepoRegistry;
+"#,
+        )
+        .unwrap();
+
+        let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
+        let retrieve = result
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "retrieve_archived_session")
+            .unwrap();
+        let repo_registry = result
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "RepoRegistry")
+            .unwrap();
+
+        assert!(
+            retrieve
+                .docstring
+                .contains("Retrieves archived session content by reference id"),
+            "retrieve docstring: {}",
+            retrieve.docstring
+        );
+        assert!(
+            retrieve
+                .docstring
+                .contains("Session archive persistence across restart"),
+            "retrieve docstring: {}",
+            retrieve.docstring
+        );
+        assert!(
+            repo_registry
+                .docstring
+                .contains("Repository registry for multi-repo indexing"),
+            "RepoRegistry docstring: {}",
+            repo_registry.docstring
+        );
 
         std::fs::remove_file(tmp).ok();
     }
