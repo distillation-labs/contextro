@@ -16,6 +16,14 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.12] - 2026-05-14
+
+### Fixed
+
+- **`search_codebase_map` now keeps subsystem closures focused on implementation symbols** — dominant-file selection is reused for subsystem traversal, while test-like nodes and generic helpers without behavioral context are filtered more aggressively so evaluation queries stop surfacing noisy support symbols.
+- **Code-map subsystem expansion is stricter about behavioral relevance** — nearby nodes now need stronger query overlap and behavioral signal at deeper distances, which keeps the resulting map aligned with the intended product-surface closure.
+- **Release validation passed on the local fix surface before cut** — the targeted evaluation repros were already green locally, and the release prep keeps that validated behavior while moving the package to the next patch release.
+
 ## [1.6.11] - 2026-05-14
 
 ### Fixed
