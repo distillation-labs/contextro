@@ -98,6 +98,8 @@ pub fn handle_search(
 
     results = apply_symbol_query_guard(query, results);
     results = rerank_natural_language_results(query, results);
+    results = drop_low_confidence_noise(query, results);
+    let total = results.len();
     results.truncate(limit);
 
     let confidence = confidence_label(&results);
@@ -119,7 +121,26 @@ pub fn handle_search(
         "query": query,
         "confidence": confidence,
         "results": out,
+        "total": total,
+        "limit": limit,
+        "truncated": total > limit,
     })
+}
+
+fn drop_low_confidence_noise(query: &str, results: Vec<SearchResult>) -> Vec<SearchResult> {
+    if results.is_empty() {
+        return results;
+    }
+
+    let min_score = if is_symbol_lookup_query(query) {
+        0.12
+    } else {
+        0.18
+    };
+    results
+        .into_iter()
+        .filter(|result| result.score >= min_score)
+        .collect()
 }
 
 fn apply_symbol_query_guard(query: &str, results: Vec<SearchResult>) -> Vec<SearchResult> {
@@ -869,5 +890,21 @@ mod tests {
             rerank_natural_language_results("semantic search ranking noise", vec![engine, handler]);
 
         assert_eq!(reranked[0].symbol_name, "handle_search");
+    }
+
+    #[test]
+    fn test_drop_low_confidence_noise_removes_nonsense_hits() {
+        let filtered = drop_low_confidence_noise(
+            "xyznonexistent999",
+            vec![make_named_result(
+                "noise",
+                "test_knowledge_add_rejects_nonexistent_path_like_value",
+                "crates/contextro-tools/src/memory.rs",
+                0.0674,
+                &["bm25"],
+            )],
+        );
+
+        assert!(filtered.is_empty());
     }
 }
