@@ -62,6 +62,22 @@ impl SessionTracker {
         events.iter().rev().take(limit).cloned().collect()
     }
 
+    pub fn recent_events_filtered(&self, limit: usize, event_type: Option<&str>) -> Vec<SessionEvent> {
+        let event_type = event_type.map(|value| value.to_ascii_lowercase());
+        let events = self.events.lock();
+        events
+            .iter()
+            .rev()
+            .filter(|event| {
+                event_type.as_ref().is_none_or(|expected| {
+                    event.event_type.to_ascii_lowercase() == *expected
+                })
+            })
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
     fn save_locked(&self, events: &VecDeque<SessionEvent>) {
         if let Some(parent) = self.file_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -140,6 +156,22 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].event_type, "search");
         assert_eq!(events[0].arguments.as_ref().unwrap()["query"], "jwt");
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_recent_events_filtered_applies_type_and_limit() {
+        let path = temp_file("events-filtered.json");
+        let tracker = SessionTracker::with_path(10, &path);
+        tracker.track("index", "index(path=\"repo\")", None);
+        tracker.track("search", "search(query=\"jwt\")", None);
+        tracker.track("search", "search(query=\"cache\")", None);
+
+        let events = tracker.recent_events_filtered(1, Some("search"));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "search");
+        assert!(events[0].summary.contains("cache"));
 
         let _ = std::fs::remove_file(path);
     }
