@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use contextro_config::get_settings;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -113,6 +114,14 @@ struct StoredRepo {
 
 pub fn handle_commit_history(args: &Value, codebase: Option<&str>) -> Value {
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+    let author_filter = args.get("author").and_then(|v| v.as_str());
+    let since_filter = match args.get("since").and_then(|v| v.as_str()) {
+        Some(value) if !value.is_empty() => match parse_since_filter(value) {
+            Ok(parsed) => Some(parsed),
+            Err(error) => return json!({"error": error}),
+        },
+        _ => None,
+    };
     let repo_path = codebase.unwrap_or(".");
 
     let repo = match git2::Repository::discover(repo_path) {
@@ -127,20 +136,38 @@ pub fn handle_commit_history(args: &Value, codebase: Option<&str>) -> Value {
     revwalk.push_head().ok();
 
     let commits: Vec<Value> = revwalk
-        .take(limit)
         .filter_map(|oid| {
             let oid = oid.ok()?;
             let commit = repo.find_commit(oid).ok()?;
+            let author = commit.author().name().unwrap_or("").to_string();
+            if let Some(filter) = author_filter {
+                if !author.to_ascii_lowercase().contains(&filter.to_ascii_lowercase()) {
+                    return None;
+                }
+            }
+            let commit_time = commit.time().seconds();
+            if let Some(since) = since_filter {
+                if commit_time < since {
+                    return None;
+                }
+            }
             Some(json!({
                 "hash": oid.to_string()[..12].to_string(),
                 "message": commit.summary().unwrap_or("").to_string(),
-                "author": commit.author().name().unwrap_or("").to_string(),
-                "time": commit.time().seconds(),
+                "author": author,
+                "time": commit_time,
             }))
         })
+        .take(limit)
         .collect();
 
-    json!({"commits": commits, "total": commits.len()})
+    json!({
+        "commits": commits,
+        "total": commits.len(),
+        "limit": limit,
+        "author": author_filter,
+        "since": args.get("since").and_then(|v| v.as_str()),
+    })
 }
 
 /// Semantic commit search: tokenize query and score commits by token overlap.
@@ -380,6 +407,13 @@ fn token_match_quality(query_token: &str, doc_token: &str) -> f64 {
     } else {
         0.0
     }
+}
+
+fn parse_since_filter(value: &str) -> Result<i64, String> {
+    DateTime::parse_from_rfc3339(&format!("{value}T00:00:00Z"))
+        .map(|date| date.with_timezone(&Utc).timestamp())
+        .or_else(|_| DateTime::parse_from_rfc3339(value).map(|date| date.with_timezone(&Utc).timestamp()))
+        .map_err(|_| format!("Invalid since value: '{}'. Use RFC3339 or YYYY-MM-DD.", value))
 }
 
 #[cfg(test)]
@@ -671,6 +705,61 @@ mod tests {
             "fix persistence regression in knowledge store"
         );
         assert_eq!(knowledge_result["total"], 2);
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_handle_commit_history_applies_author_and_since_filters() {
+        let repo_dir = temp_file("commit-history-filters-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let mut parent: Option<git2::Oid> = None;
+
+        for (idx, (author, email, message)) in [
+            ("Alice Example", "alice@example.com", "first commit"),
+            ("Bob Example", "bob@example.com", "second commit"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let signature = git2::Signature::now(author, email).unwrap();
+            std::fs::write(repo_dir.join("tracked.txt"), format!("commit-{idx}\n")).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parents = parent
+                .map(|oid| vec![repo.find_commit(oid).unwrap()])
+                .unwrap_or_default();
+            let parent_refs = parents.iter().collect::<Vec<_>>();
+            let oid = repo
+                .commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    message,
+                    &tree,
+                    &parent_refs,
+                )
+                .unwrap();
+            parent = Some(oid);
+        }
+
+        let author_result = handle_commit_history(
+            &json!({"author":"Bob Example","limit":10}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+        assert_eq!(author_result["total"], 1);
+        assert_eq!(author_result["commits"][0]["author"], "Bob Example");
+
+        let future_result = handle_commit_history(
+            &json!({"since":"2999-01-01","limit":10}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+        assert_eq!(future_result["total"], 0);
 
         let _ = std::fs::remove_dir_all(repo_dir);
     }
