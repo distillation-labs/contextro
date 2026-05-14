@@ -95,10 +95,11 @@ impl ContextroServer {
             "knowledge" => contextro_tools::memory::handle_knowledge(&args, &s.knowledge),
             "compact" => contextro_tools::session::handle_compact(&args, &s.archive),
             "session_snapshot" => {
-                contextro_tools::session::handle_session_snapshot(&s.session_tracker)
+                contextro_tools::session::handle_session_snapshot(&args, &s.session_tracker)
             }
             "restore" => contextro_tools::session::handle_restore(
                 cb,
+                *s.indexed.read(),
                 s.graph.node_count(),
                 s.graph.relationship_count(),
             ),
@@ -494,10 +495,10 @@ impl ContextroServer {
     }
 
     fn tool_definitions() -> Vec<Tool> {
-        let empty: Arc<serde_json::Map<String, Value>> = Arc::new(serde_json::Map::new());
         let mk = |schema_json: &str| -> Arc<serde_json::Map<String, Value>> {
             Arc::new(serde_json::from_str(schema_json).unwrap_or_default())
         };
+        let empty = mk(r#"{"type":"object","properties":{}}"#);
 
         // All schemas use current param names; backward-compat aliases are handled in dispatch.
         let path_schema = mk(
@@ -528,10 +529,10 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
         );
         let recall_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string","description":"What to search for in memories"},"limit":{"type":"integer","description":"Max results (default: 5)"},"memory_type":{"type":"string","description":"Filter by type: note, decision, …"},"tags":{"type":"string","description":"Filter by tag"}},"required":["query"]}"#,
+            r#"{"type":"object","properties":{"query":{"type":"string","description":"What to search for in memories. Empty string lists recent memories."},"limit":{"type":"integer","description":"Max results (default: 5)"},"memory_type":{"type":"string","description":"Filter by type: note, decision, …"},"tags":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}],"description":"Filter by tag (string or array)"}}}"#,
         );
         let knowledge_schema = mk(
-            r#"{"type":"object","properties":{"command":{"type":"string","description":"add | search | show | remove | update (omit to auto-detect from query)"},"name":{"type":"string","description":"Knowledge base name (add, remove, update)"},"query":{"type":"string","description":"Search query (search); also triggers search when command is omitted"},"value":{"type":"string","description":"Content or file/directory path to index (add)"},"limit":{"type":"integer","description":"Max results (search, default: 5)"}}}"#,
+            r#"{"type":"object","properties":{"command":{"type":"string","description":"add | search | show | list | remove | update | clear (omit to auto-detect from query)"},"name":{"type":"string","description":"Knowledge base name (add, remove, update)"},"query":{"type":"string","description":"Search query (search); also triggers search when command is omitted"},"value":{"type":"string","description":"Inline content or an existing file/directory path to index (add)"},"path":{"type":"string","description":"Existing file/directory path to re-index for update"},"limit":{"type":"integer","description":"Max results (search, default: 5)"}}}"#,
         );
         let ref_schema = mk(
             r#"{"type":"object","properties":{"ref_id":{"type":"string","description":"Reference ID returned by compact"}},"required":["ref_id"]}"#,
@@ -540,7 +541,7 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"query":{"type":"string","description":"Keywords or description to search commit messages"},"limit":{"type":"integer","description":"Max results"},"author":{"type":"string","description":"Filter by author name"}},"required":["query"]}"#,
         );
         let hist_schema = mk(
-            r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Number of commits to return (default: 20)"}}}"#,
+            r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Number of commits to return (default: 20)"},"since":{"type":"string","description":"Only return commits on or after this timestamp/date (RFC3339 or YYYY-MM-DD)"},"author":{"type":"string","description":"Only return commits whose author matches this string"}}}"#,
         );
 
         vec![
@@ -568,8 +569,9 @@ impl ContextroServer {
                 mk(r#"{"type":"object","properties":{"id":{"type":"string","description":"ID returned by remember()"},"memory_id":{"type":"string","description":"Legacy alias for the memory ID"},"tags":{"type":"string","description":"Delete all memories with this tag"},"memory_type":{"type":"string","description":"Delete all memories of this type"}}}"#)),
             Tool::new("knowledge", "Index and search project docs/notes within the active indexed repo scope. Args: command (add|search|show|remove), name, query, value", knowledge_schema),
             Tool::new("compact",   "Archive session content and get a ref_id for later retrieval. Args: content (required)",
-                mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Session content to archive"}},"required":["content"]}"#)),
-            Tool::new("session_snapshot", "Show recent tool calls with arguments — useful after compaction", empty.clone()),
+                mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Session content to archive"},"metadata":{"type":"object","description":"Optional metadata stored with the archive entry"},"ttl":{"type":"string","description":"Requested visibility TTL: permanent | session | day | week | month"}},"required":["content"]}"#)),
+            Tool::new("session_snapshot", "Show recent tool calls with arguments — useful after compaction",
+                mk(r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum events to return (default: 20)"},"type":{"type":"string","description":"Optional event type filter such as search or index"}}}"#)),
             Tool::new("restore",  "Project re-entry summary: graph size, path, recent session activity", empty.clone()),
             Tool::new("retrieve", "Fetch previously archived content by ref_id. Args: ref_id (required)", ref_schema),
             Tool::new("commit_search",  "Semantic search over git commit messages. Args: query (required), limit, author", commit_schema),
@@ -1188,6 +1190,20 @@ mod tests {
     fn test_take_chars_handles_unicode_boundaries() {
         assert_eq!(take_chars("─alpha", 1), "─");
         assert_eq!(take_chars("hello", 4), "hell");
+    }
+
+    #[test]
+    fn test_all_tool_definitions_expose_object_input_schema() {
+        for tool in ContextroServer::tool_definitions() {
+            let schema = tool.schema_as_json_value();
+            assert_eq!(
+                schema.get("type").and_then(Value::as_str),
+                Some("object"),
+                "tool '{}' must expose an object input schema: {}",
+                tool.name,
+                schema
+            );
+        }
     }
 }
 
