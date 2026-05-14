@@ -175,15 +175,15 @@ const TOOL_DOCS: &[ToolDoc] = &[
         name: "forget",
         description: "Delete stored memories by id, tag, or type.",
         parameters: &[
-            "memory_id: delete a specific memory",
+            "id or memory_id: delete a specific memory",
             "tags: delete memories with matching tags",
             "memory_type: delete memories of a given type",
         ],
-        example: r#"forget({"memory_id":"mem_123"})"#,
+        example: r#"forget({"id":"mem_123"})"#,
     },
     ToolDoc {
         name: "knowledge",
-        description: "Index lightweight documentation or notes, then search or inspect indexed sources.",
+        description: "Index lightweight documentation or notes, then search or inspect sources within the active indexed repo scope.",
         parameters: &[
             "command: add | search | show | list | remove | update",
             "name: knowledge base name for add/remove/update",
@@ -191,6 +191,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
             "query: search text; also auto-triggers search when command is omitted",
             "path: source path for update",
             "limit: maximum results for search, default 5",
+            "scope note: results come from the currently active indexed repo",
             "show: detailed source summaries with preview and source_path",
             "list: compact source summary with name and chunk count",
         ],
@@ -241,10 +242,11 @@ const TOOL_DOCS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "repo_add",
-        description: "Register an additional repository for multi-repo analysis.",
+        description: "Register and auto-index an additional repository for multi-repo analysis.",
         parameters: &[
             "path (required): repository directory",
             "name: optional stable label for later removal",
+            "behavior: auto-indexes the repo and makes it the active repo scope",
         ],
         example: r#"repo_add({"path":"/tmp/browser-use","name":"browser-use-test"})"#,
     },
