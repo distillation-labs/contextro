@@ -323,7 +323,7 @@ impl ContextroServer {
                             line_start: chunk.line_start,
                             line_end: chunk.line_end,
                             score: 0.0,
-                            code: String::new(),
+                            code: chunk.text.clone(),
                             signature: chunk.signature.clone(),
                             match_sources: vec!["vector".into()],
                         };
