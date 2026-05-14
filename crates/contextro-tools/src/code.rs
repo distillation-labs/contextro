@@ -7,6 +7,16 @@ use contextro_engines::graph::CodeGraph;
 use contextro_parsing::TreeSitterParser;
 use serde_json::{json, Value};
 
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    let mut chars = text.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}…")
+    } else {
+        truncated
+    }
+}
+
 pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     // Accept both `operation` (current) and `action` (v0.4.0 name) for backward compat
     let operation = args
@@ -72,8 +82,8 @@ fn get_document_symbols(args: &Value, codebase: Option<&str>) -> Value {
                         sym["end_line"] = json!(s.line_end);
                     }
                     // Truncate long signatures to save tokens
-                    let sig = if s.signature.len() > 60 {
-                        format!("{}…", &s.signature[..57])
+                    let sig = if s.signature.chars().count() > 60 {
+                        truncate_chars(&s.signature, 57)
                     } else {
                         s.signature.clone()
                     };
@@ -663,6 +673,26 @@ mod tests {
         );
         assert_eq!(result["total_files"], 1);
         assert_eq!(result["total_symbols"], 1);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_list_symbols_truncates_unicode_signatures_safely() {
+        let dir = temp_dir("unicode-signature");
+        let file = dir.join("main.py");
+        let signature = format!("def hello({}) -> str:", "─".repeat(80));
+        std::fs::write(&file, format!("{signature}\n    return 'ok'\n")).unwrap();
+
+        let result = get_document_symbols(
+            &json!({"path": file.to_string_lossy().to_string()}),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 1);
+        let rendered = result["symbols"][0]["signature"].as_str().unwrap();
+        assert!(rendered.ends_with('…'));
+        assert!(rendered.chars().count() <= 58);
 
         let _ = std::fs::remove_dir_all(dir);
     }
