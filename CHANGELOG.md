@@ -16,6 +16,15 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.10] - 2026-05-14
+
+### Fixed
+
+- **Search, graph, and analysis outputs are more honest under live MCP use** — `search` now reports `total`, `limit`, and `truncated` while filtering nonsense low-score hits, `find_callers` / `find_callees` honor `limit`, and `architecture` / `analyze` now accept the documented limit and hotspot controls.
+- **Code and artifact tools fail fast on bad paths and better match developer intent** — `pattern_search`, `pattern_rewrite`, and `sidecar_export` now return explicit errors for missing or non-indexed paths, ast-grep-style metavariables like `$NAME` and `$$$ARGS` work in pattern search, and symbol lookup/edit-plan validation now points agents toward the correct inputs.
+- **Git, repo, and server diagnostics are less misleading** — `commit_search` drops nonsense false positives, `repo_add` reports when a directory is non-git or auto-indexing fails, `health` now includes version/graph/memory stats, and exact `find_symbol` misses now explain the `exact=false` fuzzy fallback when applicable.
+- **Release validation was rerun on the local RC before cut** — the targeted Rust suites stayed green, and a fresh HTTP MCP regression pass covered index, search, graph, code, repo, artifact, retrieve, and health flows against the built release binary.
+
 ## [1.6.9] - 2026-05-14
 
 ### Fixed
