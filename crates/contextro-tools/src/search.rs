@@ -98,9 +98,7 @@ pub fn handle_search(
 
     results = apply_symbol_query_guard(query, results);
     results = rerank_natural_language_results(query, results);
-    if mode != "vector" {
-        results = drop_low_confidence_noise(query, results);
-    }
+    results = drop_low_confidence_noise(query, &mode, results);
     let total = results.len();
     results.truncate(limit);
 
@@ -129,20 +127,74 @@ pub fn handle_search(
     })
 }
 
-fn drop_low_confidence_noise(query: &str, results: Vec<SearchResult>) -> Vec<SearchResult> {
+fn drop_low_confidence_noise(query: &str, mode: &str, results: Vec<SearchResult>) -> Vec<SearchResult> {
+    let mut results = results;
+
     if results.is_empty() {
         return results;
     }
 
-    let min_score = if is_symbol_lookup_query(query) {
+    if mode == "vector" && vector_query_requires_literal_grounding(query) {
+        results.retain(|result| result_has_literal_query_grounding(query, result));
+        if results.is_empty() {
+            return results;
+        }
+    }
+
+    let min_score = if mode == "vector" {
+        if is_symbol_lookup_query(query) {
+            0.15
+        } else {
+            0.18
+        }
+    } else if is_symbol_lookup_query(query) {
         0.12
     } else {
         0.18
     };
+
+    let relative_floor = if mode == "vector" {
+        let top_score = results[0].score.max(0.0);
+        if top_score >= min_score {
+            let ratio = if is_symbol_lookup_query(query) {
+                0.72
+            } else {
+                0.70
+            };
+            top_score * ratio
+        } else {
+            min_score
+        }
+    } else {
+        min_score
+    };
+
     results
         .into_iter()
-        .filter(|result| result.score >= min_score)
+        .filter(|result| result.score >= min_score && result.score >= relative_floor)
         .collect()
+}
+
+fn vector_query_requires_literal_grounding(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.is_empty()
+        && trimmed.split_whitespace().count() == 1
+        && trimmed.chars().any(|ch| ch.is_ascii_digit())
+}
+
+fn result_has_literal_query_grounding(query: &str, result: &SearchResult) -> bool {
+    let normalized_query = normalize_identifier(query);
+    if normalized_query.len() < 3 {
+        return true;
+    }
+
+    [
+        result.symbol_name.as_str(),
+        result.filepath.as_str(),
+        result.signature.as_str(),
+    ]
+    .iter()
+    .any(|field| normalize_identifier(field).contains(&normalized_query))
 }
 
 fn apply_symbol_query_guard(query: &str, results: Vec<SearchResult>) -> Vec<SearchResult> {
@@ -903,6 +955,7 @@ mod tests {
     fn test_drop_low_confidence_noise_removes_nonsense_hits() {
         let filtered = drop_low_confidence_noise(
             "xyznonexistent999",
+            "bm25",
             vec![make_named_result(
                 "noise",
                 "test_knowledge_add_rejects_nonexistent_path_like_value",
@@ -913,5 +966,83 @@ mod tests {
         );
 
         assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_drop_low_confidence_noise_prunes_vector_tail_noise() {
+        let filtered = drop_low_confidence_noise(
+            "session archive persistence across restart",
+            "vector",
+            vec![
+                make_named_result(
+                    "top-hit",
+                    "handle_retrieve",
+                    "crates/contextro-tools/src/session.rs",
+                    0.42,
+                    &["vector"],
+                ),
+                make_named_result(
+                    "tail-hit",
+                    "random_helper",
+                    "crates/contextro-tools/src/search.rs",
+                    0.21,
+                    &["vector"],
+                ),
+                make_named_result(
+                    "noise-hit",
+                    "test_search_fixture",
+                    "crates/contextro-tools/src/search.rs",
+                    0.12,
+                    &["vector"],
+                ),
+            ],
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].symbol_name, "handle_retrieve");
+    }
+
+    #[test]
+    fn test_drop_low_confidence_noise_vector_rejects_digit_bearing_nonsense_without_literal_match() {
+        let filtered = drop_low_confidence_noise(
+            "xyznonexistent999",
+            "vector",
+            vec![
+                make_named_result(
+                    "noise-1",
+                    "test_knowledge_add_rejects_nonexistent_path_like_value",
+                    "crates/contextro-tools/src/memory.rs",
+                    0.46,
+                    &["vector"],
+                ),
+                make_named_result(
+                    "noise-2",
+                    "test_repo_add_reports_non_git_directory",
+                    "crates/contextro-tools/src/git_tools.rs",
+                    0.41,
+                    &["vector"],
+                ),
+            ],
+        );
+
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_drop_low_confidence_noise_vector_keeps_digit_query_with_literal_grounding() {
+        let filtered = drop_low_confidence_noise(
+            "repo_add_v2",
+            "vector",
+            vec![make_named_result(
+                "real-hit",
+                "handle_repo_add_v2",
+                "crates/contextro-tools/src/git_tools.rs",
+                0.43,
+                &["vector"],
+            )],
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].symbol_name, "handle_repo_add_v2");
     }
 }
