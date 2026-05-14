@@ -176,12 +176,21 @@ struct KnowledgeDocument {
     source_path: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct PersistedKnowledgeState {
     #[serde(default = "default_knowledge_scope")]
     active_scope: String,
     #[serde(default)]
     scopes: HashMap<String, HashMap<String, KnowledgeDocument>>,
+}
+
+impl Default for PersistedKnowledgeState {
+    fn default() -> Self {
+        Self {
+            active_scope: default_knowledge_scope(),
+            scopes: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -407,6 +416,10 @@ fn default_knowledge_scope() -> String {
     "__global__".to_string()
 }
 
+fn is_global_knowledge_scope(scope: &str) -> bool {
+    scope.trim().is_empty() || scope == default_knowledge_scope()
+}
+
 fn normalize_knowledge_scope(scope: Option<&str>) -> String {
     let scope = scope.unwrap_or("").trim();
     if scope.is_empty() {
@@ -432,7 +445,81 @@ fn load_knowledge_state(path: &Path) -> PersistedKnowledgeState {
         return PersistedKnowledgeState::default();
     };
 
-    serde_json::from_slice::<PersistedKnowledgeState>(&bytes).unwrap_or_default()
+    let raw = serde_json::from_slice::<Value>(&bytes).ok();
+    let state = serde_json::from_slice::<PersistedKnowledgeState>(&bytes).unwrap_or_default();
+    normalize_loaded_knowledge_state(state, raw.as_ref())
+}
+
+fn normalize_loaded_knowledge_state(
+    mut state: PersistedKnowledgeState,
+    raw: Option<&Value>,
+) -> PersistedKnowledgeState {
+    migrate_legacy_global_scope(&mut state);
+
+    let active_scope_missing_or_blank = raw_active_scope_missing_or_blank(raw);
+
+    if state.active_scope.trim().is_empty() {
+        state.active_scope = default_knowledge_scope();
+    }
+
+    if !state.scopes.contains_key(&state.active_scope)
+        && is_global_knowledge_scope(&state.active_scope)
+    {
+        if let Some(scope) = sole_repo_knowledge_scope(&state.scopes) {
+            state.active_scope = scope;
+        }
+    } else if active_scope_missing_or_blank && is_global_knowledge_scope(&state.active_scope) {
+        if let Some(scope) = sole_repo_knowledge_scope(&state.scopes) {
+            state.active_scope = scope;
+        }
+    }
+
+    state
+}
+
+fn raw_active_scope_missing_or_blank(raw: Option<&Value>) -> bool {
+    let Some(raw) = raw else {
+        return false;
+    };
+
+    let Some(object) = raw.as_object() else {
+        return false;
+    };
+
+    match object.get("active_scope") {
+        None => true,
+        Some(Value::String(scope)) => scope.trim().is_empty(),
+        Some(Value::Null) => true,
+        _ => false,
+    }
+}
+
+fn migrate_legacy_global_scope(state: &mut PersistedKnowledgeState) {
+    let Some(legacy_docs) = state.scopes.remove("") else {
+        return;
+    };
+
+    let global_scope = default_knowledge_scope();
+    let docs = state.scopes.entry(global_scope).or_default();
+    for (name, document) in legacy_docs {
+        docs.entry(name).or_insert(document);
+    }
+}
+
+fn sole_repo_knowledge_scope(
+    scopes: &HashMap<String, HashMap<String, KnowledgeDocument>>,
+) -> Option<String> {
+    let mut repo_scopes: Vec<String> = scopes
+        .iter()
+        .filter(|(scope, docs)| !docs.is_empty() && !is_global_knowledge_scope(scope))
+        .map(|(scope, _)| scope.clone())
+        .collect();
+
+    if repo_scopes.len() == 1 {
+        repo_scopes.pop()
+    } else {
+        None
+    }
 }
 
 fn read_knowledge_source(path: &Path) -> String {
@@ -1102,6 +1189,99 @@ mod tests {
         assert_eq!(search_result["results"][0]["source"], "ROADMAP.md");
 
         let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_restart_restores_sole_repo_scope_when_active_scope_missing() {
+        let store_path = temp_file("restart-scope-missing");
+        let root = temp_dir("restart-scope-root");
+        let note = root.join("evaluation.md");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&note, "release blocker persistence note").unwrap();
+
+        let repo_scope = std::fs::canonicalize(&root)
+            .unwrap_or_else(|_| root.clone())
+            .to_string_lossy()
+            .to_string();
+        let source_path = std::fs::canonicalize(&note)
+            .unwrap_or_else(|_| note.clone())
+            .to_string_lossy()
+            .to_string();
+
+        let persisted = json!({
+            "scopes": {
+                "": {
+                    "README.md": {
+                        "chunks": [{"content": "global default docs"}],
+                        "metadata_text": "README.md",
+                        "source_path": serde_json::Value::Null,
+                    }
+                },
+                repo_scope: {
+                    "qa-evaluation": {
+                        "chunks": [{"content": "release blocker persistence note"}],
+                        "metadata_text": "qa-evaluation\nevaluation.md",
+                        "source_path": source_path,
+                    }
+                }
+            }
+        });
+        std::fs::write(&store_path, serde_json::to_vec_pretty(&persisted).unwrap()).unwrap();
+
+        let reloaded = KnowledgeStore::with_path(&store_path);
+        let list_result = handle_knowledge(&json!({"command":"list"}), &reloaded);
+        let remove_result = handle_knowledge(
+            &json!({"command":"remove", "name":"qa-evaluation"}),
+            &reloaded,
+        );
+        let after_remove = handle_knowledge(&json!({"command":"list"}), &reloaded);
+
+        assert_eq!(list_result["total"], 1);
+        assert_eq!(list_result["knowledge_bases"][0]["name"], "qa-evaluation");
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(after_remove["total"], 0);
+
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_restart_does_not_guess_between_multiple_repo_scopes() {
+        let store_path = temp_file("restart-ambiguous-scope");
+        let persisted = json!({
+            "scopes": {
+                "": {
+                    "README.md": {
+                        "chunks": [{"content": "global default docs"}],
+                        "metadata_text": "README.md",
+                        "source_path": serde_json::Value::Null,
+                    }
+                },
+                "/tmp/repo-a": {
+                    "doc-a": {
+                        "chunks": [{"content": "repo a doc"}],
+                        "metadata_text": "doc-a",
+                        "source_path": serde_json::Value::Null,
+                    }
+                },
+                "/tmp/repo-b": {
+                    "doc-b": {
+                        "chunks": [{"content": "repo b doc"}],
+                        "metadata_text": "doc-b",
+                        "source_path": serde_json::Value::Null,
+                    }
+                }
+            }
+        });
+        std::fs::write(&store_path, serde_json::to_vec_pretty(&persisted).unwrap()).unwrap();
+
+        let reloaded = KnowledgeStore::with_path(&store_path);
+        let list_result = handle_knowledge(&json!({"command":"list"}), &reloaded);
+
+        assert_eq!(list_result["total"], 1);
+        assert_eq!(list_result["knowledge_bases"][0]["name"], "README.md");
+
         let _ = std::fs::remove_file(store_path);
     }
 
