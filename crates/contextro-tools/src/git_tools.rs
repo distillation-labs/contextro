@@ -305,16 +305,28 @@ fn token_overlap_score(
         .iter()
         .filter(|query_token| unique_doc_tokens.contains(query_token.as_str()))
         .count();
+    let document_lower = document.to_lowercase();
+    let doc_term_count = document_lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .count()
+        .max(1);
     let coverage = matched_tokens as f64 / query_tokens.len() as f64;
     let exact_ratio = exact_matches as f64 / query_tokens.len() as f64;
-    let density = matched_tokens as f64 / doc_tokens.len() as f64;
-    let phrase_bonus = if document.to_lowercase().contains(&query.to_lowercase()) {
-        0.2
+    let density = matched_tokens as f64 / doc_term_count as f64;
+    let phrase_bonus = if document_lower.contains(&query.to_lowercase()) {
+        0.1
+    } else {
+        0.0
+    };
+    let starts_with_bonus = if document_lower.starts_with(&query.to_lowercase()) {
+        0.1
     } else {
         0.0
     };
 
-    (coverage * 0.5 + exact_ratio * 0.3 + density * 0.2 + phrase_bonus).min(1.0)
+    (coverage * 0.4 + exact_ratio * 0.15 + density * 0.25 + phrase_bonus + starts_with_bonus)
+        .min(1.0)
 }
 
 #[cfg(test)]
@@ -450,6 +462,59 @@ mod tests {
             "fix reliability regression in session tracker"
         );
         assert!(commits[0]["score"].as_f64().unwrap() > commits[1]["score"].as_f64().unwrap());
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_handle_commit_search_differentiates_single_token_release_queries() {
+        let repo_dir = temp_file("commit-search-release-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+        let mut parent: Option<git2::Oid> = None;
+
+        for (idx, message) in [
+            "Release v1.6.3",
+            "Update publication and release artifacts",
+            "ci: add cargo publish job to release workflow",
+        ]
+        .iter()
+        .enumerate()
+        {
+            std::fs::write(repo_dir.join("tracked.txt"), format!("commit-{idx}\n")).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parents = parent
+                .map(|oid| vec![repo.find_commit(oid).unwrap()])
+                .unwrap_or_default();
+            let parent_refs = parents.iter().collect::<Vec<_>>();
+            let oid = repo
+                .commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    message,
+                    &tree,
+                    &parent_refs,
+                )
+                .unwrap();
+            parent = Some(oid);
+        }
+
+        let result = handle_commit_search(
+            &json!({"query":"release","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+        let commits = result["commits"].as_array().expect("commits array");
+
+        assert_eq!(commits[0]["message"], "Release v1.6.3");
+        assert!(commits[0]["score"].as_f64().unwrap() > commits[1]["score"].as_f64().unwrap());
+        assert!(commits[1]["score"].as_f64().unwrap() > commits[2]["score"].as_f64().unwrap());
 
         let _ = std::fs::remove_dir_all(repo_dir);
     }

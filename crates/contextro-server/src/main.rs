@@ -153,7 +153,7 @@ impl ContextroServer {
 
         // #5: Strip absolute codebase prefix from all file paths in response
         let result = if let Some(base) = cb {
-            strip_absolute_paths(result, base)
+            strip_response_paths(result, base)
         } else {
             result
         };
@@ -713,11 +713,29 @@ fn is_empty_value(v: &Value) -> bool {
     }
 }
 
+/// Strip absolute codebase prefixes from display-oriented file paths in responses,
+/// while preserving identity-bearing root fields like `codebase_path` and repo `path`.
+fn strip_response_paths(value: Value, base: &str) -> Value {
+    strip_absolute_paths_impl(value, base, true, None)
+}
+
 /// Recursively replace any string value that starts with `base/` with the relative path.
 fn strip_absolute_paths(value: Value, base: &str) -> Value {
+    strip_absolute_paths_impl(value, base, false, None)
+}
+
+fn strip_absolute_paths_impl(
+    value: Value,
+    base: &str,
+    preserve_identity_paths: bool,
+    parent_key: Option<&str>,
+) -> Value {
     let prefix = format!("{}/", base);
     match value {
         Value::String(s) => {
+            if preserve_identity_paths && matches!(parent_key, Some("codebase_path" | "path")) {
+                return Value::String(s);
+            }
             if s.starts_with(&prefix) {
                 Value::String(s[prefix.len()..].to_string())
             } else if s == base {
@@ -728,12 +746,20 @@ fn strip_absolute_paths(value: Value, base: &str) -> Value {
         }
         Value::Object(map) => Value::Object(
             map.into_iter()
-                .map(|(k, v)| (k, strip_absolute_paths(v, base)))
+                .map(|(k, v)| {
+                    let stripped = strip_absolute_paths_impl(
+                        v,
+                        base,
+                        preserve_identity_paths,
+                        Some(k.as_str()),
+                    );
+                    (k, stripped)
+                })
                 .collect(),
         ),
         Value::Array(arr) => Value::Array(
             arr.into_iter()
-                .map(|v| strip_absolute_paths(v, base))
+                .map(|v| strip_absolute_paths_impl(v, base, preserve_identity_paths, parent_key))
                 .collect(),
         ),
         other => other,
@@ -850,7 +876,11 @@ impl Default for ContextroServer {
 /// Scan `root` for project documentation files and add them to the knowledge store.
 /// Returns the number of documents indexed. Does nothing if the KB already has content.
 fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeStore) -> usize {
-    if knowledge.show().into_iter().any(|(_, count)| count > 0) {
+    if knowledge
+        .show()
+        .into_iter()
+        .any(|summary| summary.chunks > 0)
+    {
         return 0; // KB already has content; don't overwrite
     }
     let candidates = [
@@ -868,7 +898,7 @@ fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeSto
         let p = std::path::Path::new(root).join(name);
         if let Ok(content) = std::fs::read_to_string(&p) {
             if !content.trim().is_empty() {
-                let chunks = knowledge.add(name, &content);
+                let chunks = knowledge.add(name, &content, Some(&p));
                 if chunks > 0 {
                     count += 1;
                 }
@@ -1000,7 +1030,7 @@ fn rank_nodes_by_degree(
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use super::{format_response, resolve_refactor_targets, ContextroServer};
+    use super::{format_response, resolve_refactor_targets, strip_response_paths, ContextroServer};
     use contextro_core::graph::{
         RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
     };
@@ -1120,6 +1150,27 @@ mod tests {
         assert!(!matches.is_empty());
         assert_eq!(matches[0].name, "close");
         assert_eq!(matches[0].parent.as_deref(), Some("BrowserSession"));
+    }
+
+    #[test]
+    fn test_strip_response_paths_preserves_root_identity_fields() {
+        let base = "/tmp/contextro-repo";
+        let stripped = strip_response_paths(
+            json!({
+                "codebase_path": base,
+                "path": base,
+                "file": format!("{base}/src/lib.rs"),
+                "repos": [{"path": base, "name": "repo-a"}],
+                "nested": {"file": format!("{base}/src/main.rs")},
+            }),
+            base,
+        );
+
+        assert_eq!(stripped["codebase_path"], base);
+        assert_eq!(stripped["path"], base);
+        assert_eq!(stripped["repos"][0]["path"], base);
+        assert_eq!(stripped["file"], "src/lib.rs");
+        assert_eq!(stripped["nested"]["file"], "src/main.rs");
     }
 }
 

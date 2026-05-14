@@ -177,7 +177,7 @@ const TOOL_DOCS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "knowledge",
-        description: "Index and search lightweight documentation or notes.",
+        description: "Index lightweight documentation or notes, then search or inspect indexed sources.",
         parameters: &[
             "command: add | search | show | list | remove | update",
             "name: knowledge base name for add/remove/update",
@@ -185,6 +185,8 @@ const TOOL_DOCS: &[ToolDoc] = &[
             "query: search text; also auto-triggers search when command is omitted",
             "path: source path for update",
             "limit: maximum results for search, default 5",
+            "show: detailed source summaries with preview and source_path",
+            "list: compact source summary with name and chunk count",
         ],
         example: r#"knowledge({"command":"search","query":"cache invalidation"})"#,
     },

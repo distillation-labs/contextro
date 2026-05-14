@@ -237,9 +237,6 @@ All settings via `CTX_` environment variables:
 | `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model for vector search |
 | `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (37) |
 | `CTX_NO_UPDATE_CHECK` | unset | Set to `1` to disable update checks |
-| `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model for vector search |
-| `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (36) |
-| `CTX_NO_UPDATE_CHECK` | unset | Set to `1` to disable update checks |
 
 ---
 

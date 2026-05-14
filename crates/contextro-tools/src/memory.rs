@@ -1,5 +1,6 @@
 //! Memory tools: remember, recall, forget, knowledge.
 
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -130,9 +131,29 @@ pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     }
 }
 
-/// Knowledge base: simple in-memory doc store with substring search.
+#[derive(Clone, Debug)]
+struct KnowledgeChunk {
+    content: String,
+}
+
+#[derive(Clone, Debug)]
+struct KnowledgeDocument {
+    chunks: Vec<KnowledgeChunk>,
+    metadata_text: String,
+    source_path: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnowledgeDocSummary {
+    pub name: String,
+    pub chunks: usize,
+    pub preview: Option<String>,
+    pub source_path: Option<String>,
+}
+
+/// Knowledge base: lightweight in-memory doc store with metadata-aware search.
 pub struct KnowledgeStore {
-    docs: RwLock<HashMap<String, Vec<String>>>,
+    docs: RwLock<HashMap<String, KnowledgeDocument>>,
 }
 
 impl KnowledgeStore {
@@ -143,18 +164,30 @@ impl KnowledgeStore {
     }
 
     /// Index content under `name`. Returns the number of chunks stored.
-    pub fn add(&self, name: &str, content: &str) -> usize {
+    pub fn add(&self, name: &str, content: &str, source_path: Option<&Path>) -> usize {
         if content.trim().is_empty() {
             return 0;
         }
         let lines: Vec<&str> = content.lines().collect();
-        let chunks: Vec<String> = if lines.is_empty() {
+        let chunks: Vec<KnowledgeChunk> = if lines.is_empty() {
             vec![]
         } else {
-            lines.chunks(20).map(|c| c.join("\n")).collect()
+            lines
+                .chunks(20)
+                .map(|chunk_lines| KnowledgeChunk {
+                    content: chunk_lines.join("\n"),
+                })
+                .collect()
         };
         let count = chunks.len();
-        self.docs.write().insert(name.to_string(), chunks);
+        self.docs.write().insert(
+            name.to_string(),
+            KnowledgeDocument {
+                chunks,
+                metadata_text: knowledge_metadata_text(name, source_path),
+                source_path: source_path.map(|path| path.to_string_lossy().to_string()),
+            },
+        );
         count
     }
 
@@ -169,23 +202,40 @@ impl KnowledgeStore {
         let docs = self.docs.read();
         let mut results: Vec<(String, String, usize)> = Vec::new();
 
-        for (name, chunks) in docs.iter() {
-            for chunk in chunks {
-                let chunk_lower = chunk.to_lowercase();
-                // Exact substring match scores highest
+        for (name, doc) in docs.iter() {
+            let metadata_lower = doc.metadata_text.to_lowercase();
+            for chunk in &doc.chunks {
+                let chunk_lower = chunk.content.to_lowercase();
+
+                // Search metadata (name/path aliases) and content together, but only
+                // return the original chunk content so results stay truthful.
+                let mut score = 0usize;
+
+                if metadata_lower.contains(&query_lower) {
+                    score += 120;
+                }
                 if chunk_lower.contains(&query_lower) {
-                    results.push((name.clone(), chunk.clone(), 100));
-                } else if !words.is_empty() {
-                    // Word overlap score
-                    let matched = words.iter().filter(|w| chunk_lower.contains(*w)).count();
-                    if matched > 0 {
-                        results.push((name.clone(), chunk.clone(), matched));
-                    }
+                    score += 100;
+                }
+                if score == 0 && !words.is_empty() {
+                    let metadata_matches = words
+                        .iter()
+                        .filter(|word| metadata_lower.contains(*word))
+                        .count();
+                    let content_matches = words
+                        .iter()
+                        .filter(|word| chunk_lower.contains(*word))
+                        .count();
+                    score = metadata_matches * 12 + content_matches * 4;
+                }
+
+                if score > 0 {
+                    results.push((name.clone(), chunk.content.clone(), score));
                 }
             }
         }
 
-        results.sort_by_key(|r| std::cmp::Reverse(r.2));
+        results.sort_by_key(|result| Reverse(result.2));
         results
             .into_iter()
             .take(limit)
@@ -193,12 +243,23 @@ impl KnowledgeStore {
             .collect()
     }
 
-    pub fn show(&self) -> Vec<(String, usize)> {
-        self.docs
+    pub fn show(&self) -> Vec<KnowledgeDocSummary> {
+        let mut summaries: Vec<KnowledgeDocSummary> = self
+            .docs
             .read()
             .iter()
-            .map(|(k, v)| (k.clone(), v.len()))
-            .collect()
+            .map(|(name, doc)| KnowledgeDocSummary {
+                name: name.clone(),
+                chunks: doc.chunks.len(),
+                preview: doc
+                    .chunks
+                    .first()
+                    .and_then(|chunk| summarize_preview(&chunk.content, 120)),
+                source_path: doc.source_path.clone(),
+            })
+            .collect();
+        summaries.sort_by(|left, right| left.name.cmp(&right.name));
+        summaries
     }
 
     pub fn remove(&self, name: &str) -> bool {
@@ -253,6 +314,68 @@ fn collect_knowledge_files(path: &Path) -> Vec<PathBuf> {
     files
 }
 
+fn canonicalize_if_exists(path: &Path) -> Option<PathBuf> {
+    if !path.exists() {
+        return None;
+    }
+    Some(std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()))
+}
+
+fn knowledge_metadata_text(name: &str, source_path: Option<&Path>) -> String {
+    let mut aliases = vec![name.to_string(), normalize_knowledge_label(name)];
+
+    if let Some(path) = source_path {
+        let path_str = path.to_string_lossy().to_string();
+        aliases.push(path_str);
+
+        if let Some(file_name) = path.file_name().and_then(|value| value.to_str()) {
+            aliases.push(file_name.to_string());
+            aliases.push(normalize_knowledge_label(file_name));
+        }
+
+        if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
+            aliases.push(stem.to_string());
+            aliases.push(normalize_knowledge_label(stem));
+        }
+    }
+
+    aliases.retain(|alias| !alias.trim().is_empty());
+    aliases.sort();
+    aliases.dedup();
+    aliases.join("\n")
+}
+
+fn normalize_knowledge_label(label: &str) -> String {
+    label
+        .chars()
+        .map(|ch| {
+            if ch.is_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn summarize_preview(text: &str, max_chars: usize) -> Option<String> {
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.is_empty() {
+        return None;
+    }
+
+    let mut chars = compact.chars();
+    let preview: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        Some(format!("{preview}..."))
+    } else {
+        Some(preview)
+    }
+}
+
 pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
     // If `query` is provided without `command`, default to search (backward compat)
     let command = args
@@ -267,11 +390,24 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
         });
     match command {
         "show" | "list" => {
-            let bases: Vec<Value> = knowledge
-                .show()
-                .iter()
-                .map(|(name, chunks)| json!({"name": name, "chunks": chunks}))
-                .collect();
+            let summaries = knowledge.show();
+            let bases: Vec<Value> = match command {
+                "show" => summaries
+                    .iter()
+                    .map(|summary| {
+                        json!({
+                            "name": summary.name,
+                            "chunks": summary.chunks,
+                            "preview": summary.preview,
+                            "source_path": summary.source_path,
+                        })
+                    })
+                    .collect(),
+                _ => summaries
+                    .iter()
+                    .map(|summary| json!({"name": summary.name, "chunks": summary.chunks}))
+                    .collect(),
+            };
             json!({"knowledge_bases": bases, "total": bases.len()})
         }
         "add" => {
@@ -281,12 +417,12 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
                 return json!({"error": "Missing required parameter: name"});
             }
             // If value is a file/dir path, read it; otherwise treat as text
-            let content = if Path::new(value).exists() {
-                read_knowledge_source(Path::new(value))
-            } else {
-                value.to_string()
-            };
-            let chunk_count = knowledge.add(name, &content);
+            let source_path = canonicalize_if_exists(Path::new(value));
+            let content = source_path
+                .as_deref()
+                .map(read_knowledge_source)
+                .unwrap_or_else(|| value.to_string());
+            let chunk_count = knowledge.add(name, &content, source_path.as_deref());
             if chunk_count == 0 {
                 return json!({"error": "Content is empty — nothing indexed", "name": name});
             }
@@ -318,8 +454,12 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
                 return json!({"error": "Missing required parameter: path"});
             }
             let n = name.unwrap_or(path);
-            let content = read_knowledge_source(Path::new(path));
-            let chunk_count = knowledge.add(n, &content);
+            let source_path = canonicalize_if_exists(Path::new(path));
+            let content = source_path
+                .as_deref()
+                .map(read_knowledge_source)
+                .unwrap_or_default();
+            let chunk_count = knowledge.add(n, &content, source_path.as_deref());
             if chunk_count == 0 {
                 return json!({"error": "Content is empty — nothing indexed", "name": n});
             }
@@ -366,7 +506,7 @@ mod tests {
     #[test]
     fn test_knowledge_list_alias_returns_indexed_bases() {
         let knowledge = KnowledgeStore::new();
-        assert_eq!(knowledge.add("docs", "chunk one\nchunk two"), 1);
+        assert_eq!(knowledge.add("docs", "chunk one\nchunk two", None), 1);
 
         let result = handle_knowledge(&json!({"command":"list"}), &knowledge);
         assert_eq!(result["total"], 1);
@@ -398,6 +538,67 @@ mod tests {
         );
         assert_eq!(search_result["total"], 1);
         assert_eq!(search_result["results"][0]["source"], "nested-docs");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_knowledge_search_matches_manual_doc_name_for_high_level_queries() {
+        let root = temp_dir("roadmap");
+        let roadmap = root.join("ROADMAP.md");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            &roadmap,
+            "Prioritize developer trust, launch quality, and release automation.",
+        )
+        .unwrap();
+
+        let knowledge = KnowledgeStore::new();
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"ROADMAP.md","value": roadmap.to_string_lossy()}),
+            &knowledge,
+        );
+        assert_eq!(add_result["status"], "indexed");
+
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"roadmap priorities","limit":5}),
+            &knowledge,
+        );
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "ROADMAP.md");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_knowledge_show_returns_more_detail_than_list() {
+        let root = temp_dir("show");
+        let note = root.join("guide.md");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&note, "Guide preview text for knowledge show details.").unwrap();
+
+        let knowledge = KnowledgeStore::new();
+        handle_knowledge(
+            &json!({"command":"add","name":"guide","value": note.to_string_lossy()}),
+            &knowledge,
+        );
+
+        let show_result = handle_knowledge(&json!({"command":"show"}), &knowledge);
+        let list_result = handle_knowledge(&json!({"command":"list"}), &knowledge);
+
+        assert_eq!(show_result["knowledge_bases"][0]["name"], "guide");
+        assert!(show_result["knowledge_bases"][0]["preview"]
+            .as_str()
+            .unwrap()
+            .contains("Guide preview text"));
+        assert!(show_result["knowledge_bases"][0]["source_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("guide.md"));
+        assert!(list_result["knowledge_bases"][0].get("preview").is_none());
+        assert!(list_result["knowledge_bases"][0]
+            .get("source_path")
+            .is_none());
 
         let _ = std::fs::remove_dir_all(root);
     }

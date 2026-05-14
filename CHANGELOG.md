@@ -16,6 +16,17 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.4] - 2026-05-13
+
+### Fixed
+
+- **Manual knowledge docs now retrieve on title-style queries** — `knowledge(add)` no longer hides manually added docs from high-level searches like `roadmap priorities`; source/title metadata is indexed alongside content so abstract queries can still find the right chunks.
+- **`knowledge show` is now genuinely more useful than `list`** — `show` returns detailed summaries with `preview` and `source_path`, while `list` remains the compact inventory view.
+- **Repo-root path fields stay truthful** — `status`, `restore`, `repo_add`, and `repo_status` now preserve absolute repo paths instead of collapsing them to `"."`, while ordinary file paths in tool output still stay compact and relative.
+- **`commit_search` ranking is less flat on release-style queries** — exact one-word searches no longer saturate all top matches to the same score as easily, so commit history is more useful under real MCP use.
+- **Tool docs and release docs were synced again** — the knowledge tool docs reflect the richer `show` behavior, and the root README config table no longer carries stale or duplicate tool-tier rows.
+- **Extensive live MCP validation was rerun before release** — the corrected full RC audit passed `65/65`, and a second exhaustive Contextro-only audit passed `64/64`, both including restart-sensitive flows on a second process.
+
 ## [1.6.3] - 2026-05-13
 
 ### Fixed
