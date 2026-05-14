@@ -62,16 +62,20 @@ impl SessionTracker {
         events.iter().rev().take(limit).cloned().collect()
     }
 
-    pub fn recent_events_filtered(&self, limit: usize, event_type: Option<&str>) -> Vec<SessionEvent> {
+    pub fn recent_events_filtered(
+        &self,
+        limit: usize,
+        event_type: Option<&str>,
+    ) -> Vec<SessionEvent> {
         let event_type = event_type.map(|value| value.to_ascii_lowercase());
         let events = self.events.lock();
         events
             .iter()
             .rev()
             .filter(|event| {
-                event_type.as_ref().is_none_or(|expected| {
-                    event.event_type.to_ascii_lowercase() == *expected
-                })
+                event_type
+                    .as_ref()
+                    .is_none_or(|expected| event.event_type.to_ascii_lowercase() == *expected)
             })
             .take(limit)
             .cloned()
