@@ -4,7 +4,7 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use contextro_config::get_settings;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -18,11 +18,14 @@ pub fn handle_remember(args: &Value, store: &MemoryStore) -> Value {
     if content.is_empty() {
         return json!({"error": "Missing required parameter: content"});
     }
-    let memory_type = parse_memory_type_arg(
+    let memory_type = match parse_memory_type_arg(
         args.get("memory_type")
             .and_then(|v| v.as_str())
             .unwrap_or("note"),
-    );
+    ) {
+        Ok(memory_type) => memory_type,
+        Err(error) => return json!({"error": error}),
+    };
     let tags: Vec<String> = match args.get("tags") {
         Some(Value::Array(arr)) => arr
             .iter()
@@ -36,11 +39,14 @@ pub fn handle_remember(args: &Value, store: &MemoryStore) -> Value {
             .collect(),
         _ => vec![],
     };
-    let ttl = parse_ttl_arg(
+    let ttl = match parse_ttl_arg(
         args.get("ttl")
             .and_then(|v| v.as_str())
             .unwrap_or("permanent"),
-    );
+    ) {
+        Ok(ttl) => ttl,
+        Err(error) => return json!({"error": error}),
+    };
     let now = Utc::now().to_rfc3339();
 
     let memory = Memory {
@@ -60,28 +66,46 @@ pub fn handle_remember(args: &Value, store: &MemoryStore) -> Value {
     };
 
     match store.remember(&memory) {
-        Ok(id) => {
-            json!({"stored": true, "id": id, "memory_type": memory_type.to_string(), "tags": tags})
-        }
+        Ok(id) => json!({
+            "stored": true,
+            "id": id,
+            "memory_type": memory_type.to_string(),
+            "tags": tags,
+            "ttl": ttl_name(ttl),
+            "expires_at": ttl_expires_at(&memory.created_at, ttl),
+        }),
         Err(e) => json!({"error": format!("Failed to store: {}", e)}),
     }
 }
 
 pub fn handle_recall(args: &Value, store: &MemoryStore) -> Value {
     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-    if query.is_empty() {
-        return json!({"error": "Missing required parameter: query"});
-    }
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
     let memory_type = args.get("memory_type").and_then(|v| v.as_str());
-    let tags = args.get("tags").and_then(|v| v.as_str());
+    let tags_owned = string_list_arg(args.get("tags"));
+    let tags = tags_owned.as_deref();
 
     match store.recall(query, limit, memory_type, tags, None) {
         Ok(memories) => {
             let results: Vec<Value> = memories.iter().map(|m| {
-                json!({"id": m.id, "content": m.content, "type": m.memory_type.to_string(), "tags": m.tags, "created_at": m.created_at})
+                json!({
+                    "id": m.id,
+                    "content": m.content,
+                    "type": m.memory_type.to_string(),
+                    "tags": m.tags,
+                    "created_at": m.created_at,
+                    "ttl": ttl_name(m.ttl),
+                    "expires_at": ttl_expires_at(&m.created_at, m.ttl),
+                })
             }).collect();
-            json!({"query": query, "memories": results, "total": results.len()})
+            json!({
+                "query": if query.is_empty() { Value::Null } else { json!(query) },
+                "memories": results,
+                "total": results.len(),
+                "limit": limit,
+                "memory_type": memory_type,
+                "tags": tags,
+            })
         }
         Err(e) => json!({"error": format!("Recall failed: {}", e)}),
     }
@@ -129,6 +153,7 @@ pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     }
 
     match store.forget(id, tags, memory_type) {
+        Ok(0) if id.is_some() => json!({"error": format!("Memory '{}' not found.", id.unwrap_or_default())}),
         Ok(n) => json!({"deleted": n}),
         Err(e) => json!({"error": format!("Forget failed: {}", e)}),
     }
@@ -223,6 +248,13 @@ impl KnowledgeStore {
         count
     }
 
+    pub fn contains(&self, name: &str) -> bool {
+        let state = self.state.read();
+        active_docs(&state)
+            .map(|docs| docs.contains_key(name))
+            .unwrap_or(false)
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> Vec<(String, String)> {
         let query_lower = query.to_lowercase();
         // Split into meaningful words (3+ chars) for fallback word matching
@@ -279,7 +311,7 @@ impl KnowledgeStore {
                     score = metadata_matches * 10 + content_matches * 3;
                 }
 
-                if score > 0 {
+                if score >= 3 {
                     results.push((name.clone(), chunk.content.clone(), score));
                 }
             }
@@ -328,6 +360,16 @@ impl KnowledgeStore {
             if scope_empty {
                 state.scopes.remove(&scope);
             }
+            self.save_locked(&state);
+        }
+        removed
+    }
+
+    pub fn clear(&self) -> usize {
+        let mut state = self.state.write();
+        let scope = state.active_scope.clone();
+        let removed = state.scopes.remove(&scope).map(|docs| docs.len()).unwrap_or(0);
+        if removed > 0 {
             self.save_locked(&state);
         }
         removed
@@ -497,9 +539,7 @@ fn knowledge_terms(text: &str) -> Vec<String> {
 
 fn knowledge_terms_match(doc_terms: &[String], query_term: &str) -> bool {
     doc_terms.iter().any(|doc_term| {
-        doc_term == query_term
-            || doc_term.contains(query_term)
-            || query_term.contains(doc_term.as_str())
+        doc_term == query_term || doc_term.contains(query_term)
     })
 }
 
@@ -568,17 +608,29 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
             if name.is_empty() {
                 return json!({"error": "Missing required parameter: name"});
             }
+            if value.trim().is_empty() {
+                return json!({"error": "Missing required parameter: value"});
+            }
             // If value is a file/dir path, read it; otherwise treat as text
             let source_path = canonicalize_if_exists(Path::new(value));
+            if source_path.is_none() && looks_like_path(value) {
+                return json!({"error": format!("Path not found: {}", value)});
+            }
             let content = source_path
                 .as_deref()
                 .map(read_knowledge_source)
                 .unwrap_or_else(|| value.to_string());
+            let overwritten = knowledge.contains(name);
             let chunk_count = knowledge.add(name, &content, source_path.as_deref());
             if chunk_count == 0 {
                 return json!({"error": "Content is empty — nothing indexed", "name": name});
             }
-            json!({"status": "indexed", "name": name, "chunks": chunk_count})
+            json!({
+                "status": "indexed",
+                "name": name,
+                "chunks": chunk_count,
+                "overwritten": overwritten,
+            })
         }
         "search" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
@@ -592,6 +644,10 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
                 .map(|(name, chunk)| json!({"source": name, "content": truncate_text(chunk, 500)}))
                 .collect();
             json!({"query": query, "results": results, "total": results.len()})
+        }
+        "clear" => {
+            let removed = knowledge.clear();
+            json!({"status": "cleared", "removed": removed})
         }
         "remove" => {
             let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
@@ -609,39 +665,118 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
             }
             let n = name.unwrap_or(path);
             let source_path = canonicalize_if_exists(Path::new(path));
+            if source_path.is_none() {
+                return json!({"error": format!("Path not found: {}", path)});
+            }
             let content = source_path
                 .as_deref()
                 .map(read_knowledge_source)
                 .unwrap_or_default();
+            let overwritten = knowledge.contains(n);
             let chunk_count = knowledge.add(n, &content, source_path.as_deref());
             if chunk_count == 0 {
                 return json!({"error": "Content is empty — nothing indexed", "name": n});
             }
-            json!({"status": "updated", "name": n, "chunks": chunk_count})
+            json!({
+                "status": "updated",
+                "name": n,
+                "chunks": chunk_count,
+                "overwritten": overwritten,
+            })
         }
         _ => json!({"error": format!("Unknown knowledge command: {}", command)}),
     }
 }
 
-fn parse_memory_type_arg(s: &str) -> MemoryType {
+fn parse_memory_type_arg(s: &str) -> Result<MemoryType, String> {
     match s {
-        "conversation" => MemoryType::Conversation,
-        "status" => MemoryType::Status,
-        "decision" => MemoryType::Decision,
-        "preference" => MemoryType::Preference,
-        "doc" => MemoryType::Doc,
-        _ => MemoryType::Note,
+        "note" => Ok(MemoryType::Note),
+        "conversation" => Ok(MemoryType::Conversation),
+        "status" => Ok(MemoryType::Status),
+        "decision" => Ok(MemoryType::Decision),
+        "preference" => Ok(MemoryType::Preference),
+        "doc" => Ok(MemoryType::Doc),
+        other => Err(format!(
+            "Invalid memory_type: '{}'. Expected one of: note, decision, preference, conversation, status, doc",
+            other
+        )),
     }
 }
 
-fn parse_ttl_arg(s: &str) -> MemoryTtl {
+fn parse_ttl_arg(s: &str) -> Result<MemoryTtl, String> {
     match s {
-        "session" => MemoryTtl::Session,
-        "day" => MemoryTtl::Day,
-        "week" => MemoryTtl::Week,
-        "month" => MemoryTtl::Month,
-        _ => MemoryTtl::Permanent,
+        "permanent" => Ok(MemoryTtl::Permanent),
+        "session" => Ok(MemoryTtl::Session),
+        "day" => Ok(MemoryTtl::Day),
+        "week" => Ok(MemoryTtl::Week),
+        "month" => Ok(MemoryTtl::Month),
+        other => Err(format!(
+            "Invalid ttl: '{}'. Expected one of: permanent, session, day, week, month",
+            other
+        )),
     }
+}
+
+fn ttl_name(ttl: MemoryTtl) -> &'static str {
+    match ttl {
+        MemoryTtl::Permanent => "permanent",
+        MemoryTtl::Session => "session",
+        MemoryTtl::Day => "day",
+        MemoryTtl::Week => "week",
+        MemoryTtl::Month => "month",
+    }
+}
+
+fn ttl_duration(ttl: MemoryTtl) -> Option<Duration> {
+    match ttl {
+        MemoryTtl::Permanent => None,
+        MemoryTtl::Session => Some(Duration::hours(4)),
+        MemoryTtl::Day => Some(Duration::days(1)),
+        MemoryTtl::Week => Some(Duration::weeks(1)),
+        MemoryTtl::Month => Some(Duration::days(30)),
+    }
+}
+
+fn ttl_expires_at(created_at: &str, ttl: MemoryTtl) -> Option<String> {
+    let created_at = DateTime::parse_from_rfc3339(created_at).ok()?;
+    let duration = ttl_duration(ttl)?;
+    Some((created_at.with_timezone(&Utc) + duration).to_rfc3339())
+}
+
+fn string_list_arg(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::Array(arr)) => {
+            let joined = arr
+                .iter()
+                .filter_map(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(",");
+            if joined.is_empty() {
+                None
+            } else {
+                Some(joined)
+            }
+        }
+        Some(Value::String(s)) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        _ => None,
+    }
+}
+
+fn looks_like_path(value: &str) -> bool {
+    if value.trim().is_empty() || value.contains('\n') || value.contains('\r') {
+        return false;
+    }
+
+    let path = Path::new(value);
+    path.is_absolute()
+        || value.starts_with("./")
+        || value.starts_with("../")
+        || value.starts_with('~')
+        || value.contains('/')
+        || value.contains('\\')
+        || (path.extension().is_some() && !value.chars().any(char::is_whitespace))
 }
 
 #[cfg(test)]
@@ -693,6 +828,61 @@ mod tests {
     }
 
     #[test]
+    fn test_remember_rejects_invalid_memory_type() {
+        let db_path = temp_db("remember-invalid-type");
+        let store = MemoryStore::new(db_path.to_string_lossy().as_ref()).unwrap();
+
+        let result = handle_remember(
+            &json!({"content":"invalid type","memory_type":"bogustype"}),
+            &store,
+        );
+
+        assert!(result["error"].as_str().unwrap().contains("Invalid memory_type"));
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_remember_reports_ttl_and_expiry() {
+        let db_path = temp_db("remember-ttl");
+        let store = MemoryStore::new(db_path.to_string_lossy().as_ref()).unwrap();
+
+        let result = handle_remember(&json!({"content":"ttl memory","ttl":"day"}), &store);
+
+        assert_eq!(result["ttl"], "day");
+        assert!(result["expires_at"].as_str().is_some());
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_recall_supports_empty_query_with_tag_filter() {
+        let db_path = temp_db("recall-empty");
+        let store = MemoryStore::new(db_path.to_string_lossy().as_ref()).unwrap();
+
+        let _ = handle_remember(
+            &json!({"content":"architecture decision","tags":["architecture"]}),
+            &store,
+        );
+        let _ = handle_remember(&json!({"content":"other note","tags":["other"]}), &store);
+
+        let result = handle_recall(&json!({"query":"","tags":["architecture"]}), &store);
+
+        assert_eq!(result["total"], 1);
+        assert_eq!(result["memories"][0]["content"], "architecture decision");
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_forget_errors_for_missing_specific_memory_id() {
+        let db_path = temp_db("forget-missing");
+        let store = MemoryStore::new(db_path.to_string_lossy().as_ref()).unwrap();
+
+        let result = handle_forget(&json!({"memory_id":"mem_missing"}), &store);
+
+        assert!(result["error"].as_str().unwrap().contains("not found"));
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[test]
     fn test_knowledge_list_alias_returns_indexed_bases() {
         let store_path = temp_file("list");
         let knowledge = KnowledgeStore::with_path(&store_path);
@@ -725,6 +915,7 @@ mod tests {
             &knowledge,
         );
         assert_eq!(add_result["status"], "indexed");
+        assert_eq!(add_result["overwritten"], false);
 
         let search_result = handle_knowledge(
             &json!({"command":"search","query":"unique_nested_knowledge_token","limit":5}),
@@ -912,10 +1103,7 @@ mod tests {
 
         let knowledge = KnowledgeStore::with_path(&store_path);
         knowledge.set_active_scope(Some(root_a.to_string_lossy().as_ref()));
-        assert_eq!(
-            knowledge.add("README.md", "alpha release checklist", None),
-            1
-        );
+        assert_eq!(knowledge.add("README.md", "alpha release checklist", None), 1);
 
         knowledge.set_active_scope(Some(root_b.to_string_lossy().as_ref()));
         assert_eq!(knowledge.add("README.md", "beta browser workflow", None), 1);
@@ -940,6 +1128,78 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(root_a);
         let _ = std::fs::remove_dir_all(root_b);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_add_rejects_nonexistent_path_like_value() {
+        let store_path = temp_file("missing-path");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+
+        let result = handle_knowledge(
+            &json!({"command":"add","name":"fake","value":"/nonexistent/path/fake.md"}),
+            &knowledge,
+        );
+
+        assert!(result["error"].as_str().unwrap().contains("Path not found"));
+        assert_eq!(handle_knowledge(&json!({"command":"list"}), &knowledge)["total"], 0);
+
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_add_reports_overwrite_signal() {
+        let store_path = temp_file("overwrite");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+
+        let first = handle_knowledge(
+            &json!({"command":"add","name":"guide","value":"first version"}),
+            &knowledge,
+        );
+        let second = handle_knowledge(
+            &json!({"command":"add","name":"guide","value":"second version"}),
+            &knowledge,
+        );
+
+        assert_eq!(first["overwritten"], false);
+        assert_eq!(second["overwritten"], true);
+
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_clear_removes_active_scope_documents() {
+        let store_path = temp_file("clear");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        let _ = handle_knowledge(
+            &json!({"command":"add","name":"guide","value":"clear me"}),
+            &knowledge,
+        );
+
+        let result = handle_knowledge(&json!({"command":"clear"}), &knowledge);
+
+        assert_eq!(result["status"], "cleared");
+        assert_eq!(result["removed"], 1);
+        assert_eq!(handle_knowledge(&json!({"command":"list"}), &knowledge)["total"], 0);
+
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_search_returns_zero_for_nonsense_query() {
+        let store_path = temp_file("nonsense-search");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        let _ = handle_knowledge(
+            &json!({"command":"add","name":"guide","value":"developer trust and release automation"}),
+            &knowledge,
+        );
+
+        let result = handle_knowledge(
+            &json!({"command":"search","query":"xyznonexistent999","limit":5}),
+            &knowledge,
+        );
+
+        assert_eq!(result["total"], 0);
         let _ = std::fs::remove_file(store_path);
     }
 }
