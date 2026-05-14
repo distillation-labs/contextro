@@ -40,21 +40,22 @@ pub fn handle_search(
     let mut results = match mode.as_str() {
         "vector" => vector_search(query, limit, vector_index),
         "hybrid" => {
+            let candidate_limit = hybrid_candidate_limit(query, limit);
             let core_results = {
                 let options = SearchOptions {
                     query: query.into(),
-                    limit: limit.saturating_mul(2).min(100),
+                    limit: candidate_limit,
                     language: language.clone(),
                     mode: "hybrid".into(),
                 };
                 let fusion = ReciprocalRankFusion::default();
                 execute_search(&options, bm25, graph, cache, &fusion).results
             };
-            let vec_results = vector_search(query, limit.saturating_mul(2).min(100), vector_index);
+            let vec_results = vector_search(query, candidate_limit, vector_index);
             if vec_results.is_empty() {
                 core_results
             } else {
-                fuse_results(core_results, vec_results, limit)
+                fuse_results(query, core_results, vec_results, limit)
             }
         }
         _ => {
@@ -150,12 +151,25 @@ fn rerank_natural_language_results(
         return results;
     }
 
+    let query_terms = tokenize_identifier(query);
     for result in &mut results {
-        if is_test_file(&result.filepath) {
-            result.score *= 0.8;
+        let overlap = result_query_overlap(&query_terms, result);
+        let agreement_bonus = 1.0 + (result.match_sources.len().saturating_sub(1) as f64 * 0.05);
+        let overlap_bonus = 1.0 + overlap * 0.35;
+        let helper_multiplier = if is_probable_internal_helper_symbol(&result.symbol_name) {
+            0.40
+        } else if is_public_signature(&result.signature) {
+            1.08
         } else {
-            result.score *= 1.02;
-        }
+            1.0
+        };
+        let quality_multiplier =
+            if is_test_file(&result.filepath) || is_probable_test_symbol(&result.symbol_name) {
+                0.35
+            } else {
+                1.03
+            };
+        result.score *= agreement_bonus * overlap_bonus * helper_multiplier * quality_multiplier;
     }
 
     results.sort_by(|a, b| {
@@ -164,6 +178,70 @@ fn rerank_natural_language_results(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     results
+}
+
+fn is_probable_test_symbol(symbol_name: &str) -> bool {
+    let symbol_name = symbol_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(symbol_name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(symbol_name)
+        .to_ascii_lowercase();
+
+    symbol_name == "tests"
+        || symbol_name.starts_with("test_")
+        || symbol_name.ends_with("_test")
+        || symbol_name.starts_with("bench_")
+}
+
+fn is_probable_internal_helper_symbol(symbol_name: &str) -> bool {
+    let symbol_name = symbol_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(symbol_name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(symbol_name)
+        .to_ascii_lowercase();
+
+    symbol_name.starts_with("make_")
+        || symbol_name.starts_with("normalize_")
+        || symbol_name.starts_with("tokenize_")
+        || symbol_name.starts_with("accumulate_")
+        || symbol_name.starts_with("confidence_")
+        || symbol_name.ends_with("_for_query")
+        || symbol_name.ends_with("_query_overlap")
+        || symbol_name.ends_with("_candidate_limit")
+        || symbol_name.ends_with("_weights")
+}
+
+fn is_public_signature(signature: &str) -> bool {
+    let trimmed = signature.trim_start();
+    trimmed.starts_with("pub ") || trimmed.starts_with("pub(")
+}
+
+fn result_query_overlap(query_terms: &[String], result: &SearchResult) -> f64 {
+    if query_terms.is_empty() {
+        return 0.0;
+    }
+
+    let result_terms: HashSet<String> =
+        tokenize_identifier(&format!("{} {}", result.symbol_name, result.filepath))
+            .into_iter()
+            .collect();
+    let matched = query_terms
+        .iter()
+        .filter(|term| {
+            result_terms.iter().any(|candidate| {
+                candidate == *term
+                    || candidate.contains(term.as_str())
+                    || term.contains(candidate.as_str())
+            })
+        })
+        .count();
+    matched as f64 / query_terms.len() as f64
 }
 
 fn is_symbol_lookup_query(query: &str) -> bool {
@@ -260,6 +338,7 @@ fn vector_search(query: &str, limit: usize, index: &VectorIndex) -> Vec<SearchRe
 
 /// Combine lexical/graph and vector signals without collapsing both tops to 1.0.
 fn fuse_results(
+    query: &str,
     lexical: Vec<SearchResult>,
     vector: Vec<SearchResult>,
     limit: usize,
@@ -267,12 +346,27 @@ fn fuse_results(
     let mut metadata: HashMap<String, SearchResult> = HashMap::new();
     let mut scores: HashMap<String, f64> = HashMap::new();
     let mut sources: HashMap<String, HashSet<String>> = HashMap::new();
+    let (lexical_weight, vector_weight) = fusion_weights_for_query(query);
 
     for (rank, result) in lexical.into_iter().enumerate() {
-        accumulate_result(&mut metadata, &mut scores, &mut sources, result, rank, 0.70);
+        accumulate_result(
+            &mut metadata,
+            &mut scores,
+            &mut sources,
+            result,
+            rank,
+            lexical_weight,
+        );
     }
     for (rank, result) in vector.into_iter().enumerate() {
-        accumulate_result(&mut metadata, &mut scores, &mut sources, result, rank, 0.30);
+        accumulate_result(
+            &mut metadata,
+            &mut scores,
+            &mut sources,
+            result,
+            rank,
+            vector_weight,
+        );
     }
 
     let mut fused: Vec<SearchResult> = scores
@@ -294,6 +388,26 @@ fn fuse_results(
     });
     fused.truncate(limit);
     fused
+}
+
+fn fusion_weights_for_query(query: &str) -> (f64, f64) {
+    if query.split_whitespace().count() >= 3
+        && !is_symbol_lookup_query(query)
+        && !query_explicitly_targets_tests(query)
+    {
+        (0.55, 0.45)
+    } else {
+        (0.70, 0.30)
+    }
+}
+
+fn hybrid_candidate_limit(query: &str, limit: usize) -> usize {
+    let multiplier = if query.split_whitespace().count() >= 3 && !is_symbol_lookup_query(query) {
+        4
+    } else {
+        2
+    };
+    limit.saturating_mul(multiplier).min(100)
 }
 
 fn accumulate_result(
@@ -372,7 +486,7 @@ mod tests {
             line_end: 1,
             score,
             code: String::new(),
-            signature: String::new(),
+            signature: "pub fn sample()".into(),
             match_sources: sources.iter().map(|source| (*source).to_string()).collect(),
         }
     }
@@ -380,6 +494,7 @@ mod tests {
     #[test]
     fn test_fuse_results_preserves_score_spread() {
         let fused = fuse_results(
+            "search ranking noise",
             vec![make_result("lexical_top", 1.0, &["bm25"])],
             vec![make_result("vector_top", 0.96, &["vector"])],
             10,
@@ -393,6 +508,7 @@ mod tests {
     #[test]
     fn test_fuse_results_rewards_cross_engine_agreement() {
         let fused = fuse_results(
+            "search ranking noise",
             vec![
                 make_result("shared", 0.92, &["bm25", "graph"]),
                 make_result("lexical_only", 1.0, &["bm25"]),
@@ -403,6 +519,21 @@ mod tests {
 
         assert_eq!(fused[0].id, "shared");
         assert!(fused[0].score > fused[1].score);
+    }
+
+    #[test]
+    fn test_fusion_weights_favor_vector_for_natural_language_queries() {
+        assert_eq!(
+            fusion_weights_for_query("semantic search ranking noise"),
+            (0.55, 0.45)
+        );
+        assert_eq!(fusion_weights_for_query("BrowserSession"), (0.70, 0.30));
+    }
+
+    #[test]
+    fn test_hybrid_candidate_limit_expands_for_natural_language_queries() {
+        assert_eq!(hybrid_candidate_limit("knowledge search milestones", 5), 20);
+        assert_eq!(hybrid_candidate_limit("BrowserSession", 5), 10);
     }
 
     #[test]
@@ -504,5 +635,92 @@ mod tests {
         );
 
         assert_eq!(reranked[0].symbol_name, "test_is_root_domain_helper");
+    }
+
+    #[test]
+    fn test_natural_language_reranker_demotes_test_symbols_inside_src_files() {
+        let reranked = rerank_natural_language_results(
+            "semantic search ranking noise",
+            vec![
+                make_named_result(
+                    "test-hit",
+                    "test_symbol_query_guard_drops_partial_noise_matches",
+                    "crates/contextro-tools/src/search.rs",
+                    0.74,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "impl-hit",
+                    "handle_search",
+                    "crates/contextro-tools/src/search.rs",
+                    0.70,
+                    &["bm25", "vector"],
+                ),
+                make_named_result(
+                    "engine-hit",
+                    "execute_search",
+                    "crates/contextro-engines/src/search.rs",
+                    0.68,
+                    &["bm25"],
+                ),
+            ],
+        );
+
+        assert_ne!(
+            reranked[0].symbol_name,
+            "test_symbol_query_guard_drops_partial_noise_matches"
+        );
+        assert_eq!(reranked[0].symbol_name, "handle_search");
+    }
+
+    #[test]
+    fn test_natural_language_reranker_prefers_handler_over_test_scaffolding() {
+        let reranked = rerank_natural_language_results(
+            "repo_add auto indexes",
+            vec![
+                make_named_result(
+                    "test-hit",
+                    "test_knowledge_add_indexes_nested_directory_contents",
+                    "crates/contextro-tools/src/memory.rs",
+                    0.73,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "impl-hit",
+                    "handle_repo_add",
+                    "crates/contextro-tools/src/git_tools.rs",
+                    0.68,
+                    &["bm25", "vector"],
+                ),
+            ],
+        );
+
+        assert_eq!(reranked[0].symbol_name, "handle_repo_add");
+    }
+
+    #[test]
+    fn test_natural_language_reranker_demotes_internal_helper_symbols() {
+        let mut helper = make_named_result(
+            "helper-hit",
+            "hybrid_candidate_limit",
+            "crates/contextro-tools/src/search.rs",
+            0.78,
+            &["bm25"],
+        );
+        helper.signature = "fn hybrid_candidate_limit(query: &str, limit: usize) -> usize".into();
+
+        let mut entrypoint = make_named_result(
+            "entrypoint-hit",
+            "handle_search",
+            "crates/contextro-tools/src/search.rs",
+            0.64,
+            &["bm25", "vector"],
+        );
+        entrypoint.signature = "pub fn handle_search(args: &Value) -> Value".into();
+
+        let reranked =
+            rerank_natural_language_results("hybrid search ranking", vec![helper, entrypoint]);
+
+        assert_eq!(reranked[0].symbol_name, "handle_search");
     }
 }

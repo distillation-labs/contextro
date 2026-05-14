@@ -21,11 +21,11 @@ pub fn classify_query(query: &str) -> QueryType {
         return QueryType::Symbol;
     }
     // Multi-word natural language
-    if words.len() >= 5
-        && !words
-            .iter()
-            .any(|w| w.contains('_') || w.chars().any(|c| c.is_uppercase()))
-    {
+    let identifier_like_words = words
+        .iter()
+        .filter(|w| w.contains('_') || w.chars().any(|c| c.is_uppercase()))
+        .count();
+    if words.len() >= 3 && identifier_like_words < words.len() {
         return QueryType::Natural;
     }
     QueryType::Hybrid
@@ -252,4 +252,24 @@ pub struct SearchResponse {
     pub results: Vec<SearchResult>,
     pub confidence: String,
     pub total: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_query, QueryType};
+
+    #[test]
+    fn test_classify_query_treats_three_word_descriptions_as_natural() {
+        assert_eq!(classify_query("repo_add auto indexes"), QueryType::Natural);
+        assert_eq!(
+            classify_query("semantic search ranking noise"),
+            QueryType::Natural
+        );
+    }
+
+    #[test]
+    fn test_classify_query_keeps_symbol_like_queries_out_of_natural() {
+        assert_eq!(classify_query("BrowserSession"), QueryType::Symbol);
+        assert_eq!(classify_query("repo_add"), QueryType::Symbol);
+    }
 }

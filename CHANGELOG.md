@@ -16,6 +16,15 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.7] - 2026-05-14
+
+### Fixed
+
+- **Natural-language search ranking is much less noisy on real developer queries** — 3+ word descriptive queries now route through the natural-query path sooner, hybrid search pulls a deeper candidate set for those queries, and the final reranker demotes `test_*` symbols plus private scoring helpers so implementation code surfaces first more reliably.
+- **Hybrid fusion is more semantic-aware without regressing exact lookup flows** — vector results now carry more weight for broad natural-language queries, while symbol-style and explicit test queries keep the previous, more lexical behavior.
+- **Search ranking regressions are now covered by targeted tests** — new regression tests lock in natural-query classification, dynamic fusion weights, expanded hybrid candidate depth, demotion of test symbols inside `src/`, and demotion of internal helper functions that should not outrank entrypoints.
+- **Release validation was rerun at product level before shipping** — the local release candidate passed a corrected `63/63` broad HTTP audit with restart persistence checks plus a focused `8/8` stdio regression pass, and the full repo/package validation suite stayed green.
+
 ## [1.6.6] - 2026-05-14
 
 ### Fixed
