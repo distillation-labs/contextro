@@ -1,7 +1,7 @@
 //! Code tool: AST operations dispatch.
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::analysis::is_test_file;
@@ -220,21 +220,10 @@ fn pattern_search(args: &Value, codebase: Option<&str>) -> Value {
     let file_path = args.get("file_path").and_then(|v| v.as_str());
     let search_path = args.get("path").and_then(|v| v.as_str());
 
-    let base = codebase.unwrap_or(".");
-    let target = file_path
-        .or(search_path)
-        .map(|p| {
-            if Path::new(p).is_absolute() {
-                p.to_string()
-            } else {
-                format!("{}/{}", base, p)
-            }
-        })
-        .unwrap_or_else(|| base.to_string());
-    if !Path::new(&target).exists() {
-        let missing = file_path.or(search_path).unwrap_or(&target);
-        return json!({"error": format!("Path not found: {}", missing)});
-    }
+    let target = match resolve_search_target(file_path.or(search_path), codebase) {
+        Ok(path) => path,
+        Err(error) => return error,
+    };
 
     // If the pattern contains ast-grep metavariables ($NAME, $$$), convert them.
     // Otherwise, treat the pattern as a regex first; fall back to literal string
@@ -250,7 +239,7 @@ fn pattern_search(args: &Value, codebase: Option<&str>) -> Value {
     };
 
     let mut matches: Vec<Value> = Vec::new();
-    let files = collect_files(&target, language);
+    let files = collect_files(target.to_string_lossy().as_ref(), language);
 
     for file in &files {
         let content = match std::fs::read_to_string(file) {
@@ -293,22 +282,10 @@ fn pattern_rewrite(args: &Value, codebase: Option<&str>) -> Value {
     let file_path = args.get("file_path").and_then(|v| v.as_str());
     let search_path = args.get("path").and_then(|v| v.as_str());
     let language = args.get("language").and_then(|v| v.as_str());
-    let base = codebase.unwrap_or(".");
-
-    let target = file_path
-        .or(search_path)
-        .map(|p| {
-            if Path::new(p).is_absolute() {
-                p.to_string()
-            } else {
-                format!("{}/{}", base, p)
-            }
-        })
-        .unwrap_or_else(|| base.to_string());
-    if !Path::new(&target).exists() {
-        let missing = file_path.or(search_path).unwrap_or(&target);
-        return json!({"error": format!("Path not found: {}", missing)});
-    }
+    let target = match resolve_search_target(file_path.or(search_path), codebase) {
+        Ok(path) => path,
+        Err(error) => return error,
+    };
 
     let regex_pattern = pattern_to_regex(pattern);
     let re = match regex_lite::Regex::new(&regex_pattern) {
@@ -316,7 +293,7 @@ fn pattern_rewrite(args: &Value, codebase: Option<&str>) -> Value {
         Err(_) => return json!({"error": "Invalid pattern"}),
     };
 
-    let files = collect_files(&target, language);
+    let files = collect_files(target.to_string_lossy().as_ref(), language);
     let mut changes: Vec<Value> = Vec::new();
     let mut total_replacements = 0;
 
@@ -385,28 +362,54 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let mut target_files: Vec<String> = Vec::new();
     let mut affected_symbols: Vec<Value> = Vec::new();
     let mut risks: Vec<String> = Vec::new();
+    let mut seen_symbol_ids = HashSet::new();
 
-    // Find target symbols
-    if let Some(sym) = symbol_name {
-        let matches = graph.find_nodes_by_name(sym, false);
-        for node in matches.iter().take(5) {
-            target_files.push(strip_base(&node.location.file_path, codebase));
-            let (in_d, _) = graph.get_node_degree(&node.id);
-            affected_symbols.push(json!({"name": node.name, "file": strip_base(&node.location.file_path, codebase), "callers": in_d}));
-            if in_d > 5 {
-                risks.push(format!(
-                    "{} has {} callers — high blast radius",
-                    node.name, in_d
-                ));
-            }
+    for node in resolve_edit_plan_primary_symbols(symbol_name, goal, graph) {
+        let file = strip_base(&node.location.file_path, codebase);
+        if !target_files.contains(&file) {
+            target_files.push(file);
+        }
+        add_edit_plan_symbol(
+            &mut affected_symbols,
+            &mut seen_symbol_ids,
+            graph,
+            &node,
+            codebase,
+            "primary",
+        );
+        add_edit_plan_neighbors(
+            &mut affected_symbols,
+            &mut seen_symbol_ids,
+            &mut target_files,
+            &mut risks,
+            graph,
+            &node,
+            codebase,
+        );
+
+        let (callers, _) = graph.get_node_degree(&node.id);
+        if callers > 5 {
+            risks.push(format!(
+                "{} has {} callers — high blast radius",
+                node.name, callers
+            ));
         }
     }
 
     if let Some(fp) = file_path {
-        if !target_files.contains(&fp.to_string()) {
-            target_files.push(fp.to_string());
+        let resolved = resolve_existing_path(fp, codebase)
+            .ok()
+            .map(|path| strip_base(&path.to_string_lossy(), codebase))
+            .unwrap_or_else(|| fp.to_string());
+        if !target_files.contains(&resolved) {
+            target_files.push(resolved);
         }
     }
+
+    target_files.sort();
+    target_files.dedup();
+    risks.sort();
+    risks.dedup();
 
     // Find related tests
     let related_tests: Vec<String> = target_files
@@ -423,13 +426,24 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
         })
         .collect();
 
-    let mut next_steps = vec!["Review the diff preview before applying".to_string()];
+    let mut next_steps = Vec::new();
     if pattern.is_some() {
-        next_steps.insert(0, "Run pattern_rewrite with dry_run=true first".to_string());
+        next_steps.push("Run pattern_rewrite with dry_run=true before applying edits".to_string());
+    }
+    if affected_symbols.is_empty() {
+        next_steps.push("Resolve the target symbol or file before editing".to_string());
+    } else {
+        next_steps.push("Review the resolved callers and callees before editing".to_string());
     }
     if !related_tests.is_empty() {
-        next_steps.push("Run related tests after applying".to_string());
+        next_steps.push("Run related tests after applying changes".to_string());
     }
+
+    let confidence = if affected_symbols.is_empty() || target_files.is_empty() {
+        "low"
+    } else {
+        "high"
+    };
 
     json!({
         "goal": goal,
@@ -437,20 +451,24 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
         "affected_symbols": affected_symbols,
         "related_tests": related_tests,
         "risks": risks,
-        "confidence": if risks.is_empty() { "high" } else { "medium" },
+        "confidence": confidence,
         "next_steps": next_steps,
     })
+}
+
+#[derive(Clone)]
+struct CodebaseMapHit {
+    node_id: String,
+    file: String,
+    source_file: String,
+    score: f64,
+    is_test_like: bool,
+    symbol: Value,
 }
 
 /// Return a symbol-level map of the codebase grouped by file.
 /// Accepts an optional `query` to filter by symbol name and an optional `path` prefix.
 fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    struct CodebaseMapHit {
-        file: String,
-        score: f64,
-        is_test_like: bool,
-        symbol: Value,
-    }
 
     let raw_query = args
         .get("query")
@@ -459,6 +477,8 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         .trim();
     let normalized_query = raw_query.to_ascii_lowercase();
     let query_tokens = tokenize_codebase_map_text(raw_query);
+    let query_term_set: HashSet<String> = query_tokens.iter().cloned().collect();
+    let targets_product_surface = codebase_map_query_targets_product_surface(raw_query);
     let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
     let resolved_filter = if path_filter.is_empty() {
         None
@@ -481,16 +501,21 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 continue;
             }
         }
-        let score = codebase_map_match_score(node, &normalized_query, &query_tokens);
+        let mut score = codebase_map_match_score(node, &normalized_query, &query_tokens);
+        if targets_product_surface {
+            score += codebase_map_surface_bias(node);
+        }
         if !normalized_query.is_empty() && score <= 0.0 {
             continue;
         }
         let rel = strip_base(&node.location.file_path, codebase);
         let (callers, callees) = graph.get_node_degree(&node.id);
         hits.push(CodebaseMapHit {
+            node_id: node.id.clone(),
             is_test_like: is_test_file(&node.location.file_path)
                 || is_probable_codebase_map_test_symbol(&node.name),
             file: rel,
+            source_file: node.location.file_path.clone(),
             score,
             symbol: json!({
                 "name": node.name,
@@ -502,8 +527,281 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         });
     }
 
+    if !normalized_query.is_empty() {
+        hits.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.file.cmp(&b.file))
+                .then_with(|| {
+                    a.symbol["line"]
+                        .as_u64()
+                        .unwrap_or(0)
+                        .cmp(&b.symbol["line"].as_u64().unwrap_or(0))
+                })
+        });
+
+        let dominant_file = detect_dominant_codebase_map_file(
+            &hits,
+            graph,
+            &query_tokens,
+            targets_product_surface,
+        );
+
+        let mut seed_ids = Vec::new();
+        if let Some(dominant_file) = dominant_file.as_ref() {
+            let mut dominant_hits: Vec<&CodebaseMapHit> = hits
+                .iter()
+                .filter(|hit| &hit.source_file == dominant_file)
+                .collect();
+            dominant_hits.sort_by(|a, b| {
+                let a_score = graph
+                    .get_node(&a.node_id)
+                    .map(|node| {
+                        codebase_map_intra_file_relevance_score(
+                            &node,
+                            &normalized_query,
+                            &query_tokens,
+                            targets_product_surface,
+                        ) + codebase_map_local_connectivity_bias(graph, &node)
+                    })
+                    .unwrap_or(a.score);
+                let b_score = graph
+                    .get_node(&b.node_id)
+                    .map(|node| {
+                        codebase_map_intra_file_relevance_score(
+                            &node,
+                            &normalized_query,
+                            &query_tokens,
+                            targets_product_surface,
+                        ) + codebase_map_local_connectivity_bias(graph, &node)
+                    })
+                    .unwrap_or(b.score);
+                b_score
+                    .partial_cmp(&a_score)
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| {
+                        a.symbol["line"]
+                            .as_u64()
+                            .unwrap_or(0)
+                            .cmp(&b.symbol["line"].as_u64().unwrap_or(0))
+                    })
+            });
+
+            for hit in dominant_hits.into_iter().take(3) {
+                seed_ids.push(hit.node_id.clone());
+            }
+        }
+        for hit in &hits {
+            if seed_ids.len() >= 3 {
+                break;
+            }
+            if !seed_ids.iter().any(|id| id == &hit.node_id) {
+                seed_ids.push(hit.node_id.clone());
+            }
+        }
+
+        let mut expanded_hits = Vec::new();
+
+        for seed_id in seed_ids {
+            let Some(seed) = graph.get_node(&seed_id) else {
+                continue;
+            };
+
+            let seed_file = seed.location.file_path.clone();
+            let mut seen_neighbors = HashSet::new();
+            let mut neighbors: Vec<UniversalNode> = graph
+                .get_callers(&seed_id)
+                .into_iter()
+                .chain(graph.get_callees(&seed_id).into_iter())
+                .filter(|node| seen_neighbors.insert(node.id.clone()))
+                .collect();
+            neighbors.sort_by(|a, b| {
+                let a_score = codebase_map_expansion_score(
+                    a,
+                    &normalized_query,
+                    &query_tokens,
+                    &seed_file,
+                    dominant_file.as_deref(),
+                    targets_product_surface,
+                );
+                let b_score = codebase_map_expansion_score(
+                    b,
+                    &normalized_query,
+                    &query_tokens,
+                    &seed_file,
+                    dominant_file.as_deref(),
+                    targets_product_surface,
+                );
+                b_score
+                    .partial_cmp(&a_score)
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| a.location.start_line.cmp(&b.location.start_line))
+            });
+
+            for node in neighbors.into_iter().take(4) {
+                if !should_keep_codebase_map_neighbor(
+                    &node,
+                    &query_term_set,
+                    dominant_file.as_deref(),
+                    &seed_file,
+                ) {
+                    continue;
+                }
+                let score = codebase_map_expansion_score(
+                    &node,
+                    &normalized_query,
+                    &query_tokens,
+                    &seed_file,
+                    dominant_file.as_deref(),
+                    targets_product_surface,
+                );
+                let rel = strip_base(&node.location.file_path, codebase);
+                let (callers, callees) = graph.get_node_degree(&node.id);
+                expanded_hits.push(CodebaseMapHit {
+                    node_id: node.id.clone(),
+                    is_test_like: is_test_file(&node.location.file_path)
+                        || is_probable_codebase_map_test_symbol(&node.name),
+                    file: rel,
+                    source_file: node.location.file_path.clone(),
+                    score,
+                    symbol: json!({
+                        "name": node.name,
+                        "type": node.node_type.to_string(),
+                        "line": node.location.start_line,
+                        "callers": callers,
+                        "callees": callees,
+                    }),
+                });
+            }
+        }
+
+        hits.extend(expanded_hits);
+
+        if let Some(dominant_file) = dominant_file.as_ref() {
+            let dominant_concepts: HashSet<String> = hits
+                .iter()
+                .filter(|hit| &hit.source_file == dominant_file)
+                .take(6)
+                .filter_map(|hit| graph.get_node(&hit.node_id))
+                .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
+                .chain(query_tokens.iter().cloned())
+                .collect();
+
+            let mut same_file_candidates: Vec<(UniversalNode, f64)> = all_nodes
+                .iter()
+                .filter(|node| node.location.file_path == *dominant_file)
+                .filter(|node| {
+                    should_keep_same_file_codebase_map_candidate(
+                        node,
+                        &query_term_set,
+                        &dominant_concepts,
+                    )
+                })
+                .map(|node| {
+                    (
+                        node.clone(),
+                        codebase_map_same_file_score(
+                            node,
+                            &normalized_query,
+                            &query_tokens,
+                            &dominant_concepts,
+                            targets_product_surface,
+                            codebase_map_local_connectivity_bias(graph, node),
+                        ),
+                    )
+                })
+                .filter(|(_, score)| *score >= 0.50)
+                .collect();
+            same_file_candidates.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
+            });
+
+            for (node, score) in same_file_candidates.into_iter().take(8) {
+                let rel = strip_base(&node.location.file_path, codebase);
+                let (callers, callees) = graph.get_node_degree(&node.id);
+                hits.push(CodebaseMapHit {
+                    node_id: node.id.clone(),
+                    is_test_like: is_test_file(&node.location.file_path)
+                        || is_probable_codebase_map_test_symbol(&node.name),
+                    file: rel,
+                    source_file: node.location.file_path.clone(),
+                    score,
+                    symbol: json!({
+                        "name": node.name,
+                        "type": node.node_type.to_string(),
+                        "line": node.location.start_line,
+                        "callers": callers,
+                        "callees": callees,
+                    }),
+                });
+            }
+        }
+    }
+
     if !codebase_map_query_targets_tests(raw_query) && hits.iter().any(|hit| !hit.is_test_like) {
         hits.retain(|hit| !hit.is_test_like);
+    }
+
+    let mut deduped_hits: HashMap<String, CodebaseMapHit> = HashMap::new();
+    for hit in hits {
+        match deduped_hits.get_mut(&hit.node_id) {
+            Some(existing) if existing.score >= hit.score => {}
+            Some(existing) => *existing = hit,
+            None => {
+                deduped_hits.insert(hit.node_id.clone(), hit);
+            }
+        }
+    }
+    let mut hits: Vec<CodebaseMapHit> = deduped_hits.into_values().collect();
+
+    if !normalized_query.is_empty() {
+        let dominant_file = detect_dominant_codebase_map_file(
+            &hits,
+            graph,
+            &query_tokens,
+            targets_product_surface,
+        );
+
+        if let Some(dominant_file) = dominant_file.as_ref() {
+            let dominant_concepts: HashSet<String> = hits
+                .iter()
+                .filter(|hit| &hit.source_file == dominant_file)
+                .take(8)
+                .filter_map(|hit| graph.get_node(&hit.node_id))
+                .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
+                .chain(query_tokens.iter().cloned())
+                .collect();
+
+            for hit in &mut hits {
+                let Some(node) = graph.get_node(&hit.node_id) else {
+                    continue;
+                };
+                let concept_overlap = if &hit.source_file == dominant_file {
+                    codebase_map_symbol_concept_overlap(&node, &dominant_concepts) as f64
+                } else {
+                    codebase_map_concept_overlap(&node, &dominant_concepts) as f64
+                };
+                if &hit.source_file == dominant_file {
+                    hit.score += 0.18 + concept_overlap.min(3.0) * 0.05;
+                } else if concept_overlap == 0.0 {
+                    hit.score = (hit.score - 0.25).max(0.0);
+                } else if concept_overlap < 2.0 {
+                    hit.score = (hit.score - 0.10).max(0.0);
+                }
+            }
+
+            if codebase_map_query_prefers_subsystem_closure(raw_query) {
+                apply_dominant_file_focus(
+                    &mut hits,
+                    graph,
+                    dominant_file,
+                    &dominant_concepts,
+                );
+            }
+        }
     }
 
     hits.sort_by(|a, b| {
@@ -518,6 +816,12 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                     .cmp(&b.symbol["line"].as_u64().unwrap_or(0))
             })
     });
+
+    if !normalized_query.is_empty() {
+        let top_score = hits.first().map(|hit| hit.score).unwrap_or(0.0);
+        let min_score = (top_score * 0.45).max(0.5);
+        hits.retain(|hit| hit.score >= min_score);
+    }
 
     let mut grouped: Vec<(String, Vec<CodebaseMapHit>, f64)> = Vec::new();
     for hit in hits {
@@ -544,6 +848,7 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
 
     let files: Vec<Value> = grouped
         .into_iter()
+        .take(if normalized_query.is_empty() { usize::MAX } else { 5 })
         .map(|(file, mut symbols, _)| {
             if normalized_query.is_empty() {
                 symbols.sort_by(|a, b| {
@@ -552,6 +857,19 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                         .unwrap_or(0)
                         .cmp(&b.symbol["line"].as_u64().unwrap_or(0))
                 });
+            } else {
+                symbols.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(Ordering::Equal)
+                        .then_with(|| {
+                            a.symbol["line"]
+                                .as_u64()
+                                .unwrap_or(0)
+                                .cmp(&b.symbol["line"].as_u64().unwrap_or(0))
+                        })
+                });
+                symbols.truncate(8);
             }
             let total = symbols.len();
             json!({
@@ -587,10 +905,22 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn strip_base(file: &str, codebase: Option<&str>) -> String {
-    codebase
-        .and_then(|b| Path::new(file).strip_prefix(b).ok())
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| file.to_string())
+    if let Some(base) = codebase {
+        let file_path = Path::new(file);
+        if let Ok(stripped) = file_path.strip_prefix(base) {
+            return stripped.to_string_lossy().to_string();
+        }
+
+        let canonical_file = std::fs::canonicalize(file_path).ok();
+        let canonical_base = std::fs::canonicalize(base).ok();
+        if let (Some(canonical_file), Some(canonical_base)) = (canonical_file, canonical_base) {
+            if let Ok(stripped) = canonical_file.strip_prefix(&canonical_base) {
+                return stripped.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    file.to_string()
 }
 
 fn codebase_map_match_score(
@@ -598,30 +928,29 @@ fn codebase_map_match_score(
     normalized_query: &str,
     query_tokens: &[String],
 ) -> f64 {
+    codebase_map_match_score_with_path(node, normalized_query, query_tokens, true)
+}
+
+fn codebase_map_symbol_match_score(
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+) -> f64 {
+    codebase_map_match_score_with_path(node, normalized_query, query_tokens, false)
+}
+
+fn codebase_map_match_score_with_path(
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    include_file_path: bool,
+) -> f64 {
     if normalized_query.is_empty() {
         return 1.0;
     }
 
-    let qualified_name = node
-        .parent
-        .as_ref()
-        .map(|parent| format!("{parent}.{}", node.name))
-        .unwrap_or_else(|| node.name.clone());
-    let fields = [
-        node.name.as_str(),
-        qualified_name.as_str(),
-        node.location.file_path.as_str(),
-        node.content.as_str(),
-        node.docstring.as_deref().unwrap_or(""),
-    ];
-
-    let exact_match = fields
-        .iter()
-        .any(|field| field.to_ascii_lowercase().contains(normalized_query));
-    let candidate_tokens: HashSet<String> = fields
-        .iter()
-        .flat_map(|field| tokenize_codebase_map_text(field))
-        .collect();
+    let exact_match = codebase_map_exact_query_match(node, normalized_query, include_file_path);
+    let candidate_tokens = codebase_map_candidate_tokens_with_path(node, include_file_path);
     let matched_terms = query_tokens
         .iter()
         .filter(|term| {
@@ -654,12 +983,481 @@ fn codebase_map_match_score(
     exact_bonus + overlap + content_bonus
 }
 
+fn codebase_map_intra_file_relevance_score(
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+) -> f64 {
+    codebase_map_symbol_match_score(node, normalized_query, query_tokens)
+        + if targets_product_surface {
+            codebase_map_surface_bias(node)
+        } else {
+            0.0
+        }
+        + codebase_map_subsystem_role_bias(node, targets_product_surface)
+        - codebase_map_local_meta_helper_penalty(node, targets_product_surface)
+}
+
+fn codebase_map_expansion_score(
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    seed_file: &str,
+    dominant_file: Option<&str>,
+    targets_product_surface: bool,
+) -> f64 {
+    let base = codebase_map_match_score(node, normalized_query, query_tokens)
+        + if targets_product_surface {
+            codebase_map_surface_bias(node)
+        } else {
+            0.0
+        };
+    let same_seed_file = node.location.file_path == seed_file;
+    let same_dominant_file = dominant_file
+        .map(|file| node.location.file_path == file)
+        .unwrap_or(false);
+    let helper_penalty = if is_codebase_map_generic_helper_symbol(&node.name)
+        && !same_seed_file
+        && !same_dominant_file
+    {
+        0.15
+    } else {
+        0.0
+    };
+
+    base
+        + codebase_map_subsystem_role_bias(node, targets_product_surface)
+        + 0.20
+        + if same_seed_file { 0.32 } else { 0.0 }
+        + if same_dominant_file { 0.16 } else { 0.0 }
+        - helper_penalty
+}
+
+fn codebase_map_same_file_score(
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+    concept_tokens: &HashSet<String>,
+    targets_product_surface: bool,
+    connectivity_bias: f64,
+) -> f64 {
+    let base = codebase_map_intra_file_relevance_score(
+        node,
+        normalized_query,
+        query_tokens,
+        targets_product_surface,
+    );
+    let concept_overlap = codebase_map_symbol_concept_overlap(node, concept_tokens) as f64;
+    let exact_name_bonus = if node
+        .name
+        .to_ascii_lowercase()
+        .contains(normalized_query)
+    {
+        0.2
+    } else {
+        0.0
+    };
+    base
+        + connectivity_bias
+        + concept_overlap.min(4.0) * 0.22
+        + 0.20
+        + exact_name_bonus
+}
+
+fn should_keep_codebase_map_neighbor(
+    node: &UniversalNode,
+    query_terms: &HashSet<String>,
+    dominant_file: Option<&str>,
+    seed_file: &str,
+) -> bool {
+    let query_overlap = codebase_map_concept_overlap(node, query_terms);
+    if is_codebase_map_meta_helper_symbol(&node.name) && query_overlap < 2 {
+        return false;
+    }
+    if query_overlap > 0 {
+        return true;
+    }
+
+    let same_seed_file = node.location.file_path == seed_file;
+    let same_dominant_file = dominant_file
+        .map(|file| node.location.file_path == file)
+        .unwrap_or(false);
+
+    !(same_seed_file || same_dominant_file) || !is_codebase_map_generic_helper_symbol(&node.name)
+}
+
+fn should_keep_same_file_codebase_map_candidate(
+    node: &UniversalNode,
+    query_terms: &HashSet<String>,
+    dominant_concepts: &HashSet<String>,
+) -> bool {
+    let query_overlap = codebase_map_symbol_concept_overlap(node, query_terms);
+    if is_codebase_map_meta_helper_symbol(&node.name) && query_overlap < 2 {
+        return false;
+    }
+    if query_overlap > 0 {
+        return true;
+    }
+
+    let dominant_overlap = codebase_map_symbol_concept_overlap(node, dominant_concepts);
+    dominant_overlap >= 3 && !is_codebase_map_meta_helper_symbol(&node.name)
+}
+
+fn detect_dominant_codebase_map_file(
+    hits: &[CodebaseMapHit],
+    graph: &CodeGraph,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+) -> Option<String> {
+    #[derive(Clone, Copy, Default)]
+    struct FileStats {
+        hit_count: usize,
+        total_score: f64,
+        concept_overlap: usize,
+        product_surface_hits: usize,
+    }
+
+    let mut file_scores: HashMap<&str, FileStats> = HashMap::new();
+    let concept_terms: HashSet<String> = query_tokens.iter().cloned().collect();
+
+    for hit in hits.iter().take(12) {
+        let entry = file_scores.entry(hit.source_file.as_str()).or_default();
+        entry.hit_count += 1;
+        entry.total_score += hit.score;
+        if let Some(node) = graph.get_node(&hit.node_id) {
+            entry.concept_overlap += codebase_map_concept_overlap(&node, &concept_terms);
+            if targets_product_surface && is_probable_codebase_map_product_surface_node(&node) {
+                entry.product_surface_hits += 1;
+            }
+        }
+    }
+
+    let mut ranked_files: Vec<(&str, f64, FileStats)> = file_scores
+        .iter()
+        .map(|(file, stats)| {
+            let weighted_score = stats.total_score
+                + stats.hit_count as f64 * 0.22
+                + stats.concept_overlap.min(8) as f64 * 0.08
+                + if targets_product_surface {
+                    stats.product_surface_hits as f64 * 0.10
+                } else {
+                    0.0
+                };
+            (*file, weighted_score, *stats)
+        })
+        .collect();
+    ranked_files.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| b.2.hit_count.cmp(&a.2.hit_count))
+            .then_with(|| a.0.cmp(b.0))
+    });
+
+    match ranked_files.as_slice() {
+        [(file, weighted_score, stats), (.., second_score, _)]
+            if stats.hit_count >= 3 && *weighted_score >= *second_score + 0.40 =>
+        {
+            Some((*file).to_string())
+        }
+        [(file, _, stats)] if stats.hit_count >= 3 => Some((*file).to_string()),
+        _ => None,
+    }
+}
+
+fn codebase_map_query_prefers_subsystem_closure(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.is_empty()
+        && trimmed.split_whitespace().count() >= 3
+        && !codebase_map_query_targets_tests(query)
+}
+
+fn apply_dominant_file_focus(
+    hits: &mut Vec<CodebaseMapHit>,
+    graph: &CodeGraph,
+    dominant_file: &str,
+    dominant_concepts: &HashSet<String>,
+) {
+    let dominant_scores: Vec<f64> = hits
+        .iter()
+        .filter(|hit| hit.source_file == dominant_file)
+        .map(|hit| hit.score)
+        .collect();
+    let same_file_hits = dominant_scores.len();
+    if same_file_hits < 4 {
+        return;
+    }
+
+    let dominant_top_score = dominant_scores
+        .iter()
+        .copied()
+        .fold(0.0_f64, f64::max);
+    let dominant_floor = dominant_scores
+        .iter()
+        .copied()
+        .reduce(f64::min)
+        .unwrap_or(0.0);
+
+    hits.retain(|hit| {
+        if hit.source_file == dominant_file {
+            return true;
+        }
+
+        let Some(node) = graph.get_node(&hit.node_id) else {
+            return false;
+        };
+        let concept_overlap = codebase_map_concept_overlap(&node, dominant_concepts);
+        let near_dominant = hit.score >= dominant_top_score * 0.90;
+        let solid_floor = hit.score >= dominant_floor + 0.12;
+
+        concept_overlap >= 3 && near_dominant && solid_floor
+    });
+}
+
+fn codebase_map_concept_overlap(node: &UniversalNode, concept_tokens: &HashSet<String>) -> usize {
+    let candidate_tokens = codebase_map_candidate_tokens(node);
+    concept_tokens
+        .iter()
+        .filter(|term| {
+            candidate_tokens.iter().any(|candidate| {
+                candidate == *term
+                    || candidate.contains(term.as_str())
+                    || term.contains(candidate.as_str())
+            })
+        })
+        .count()
+}
+
+fn codebase_map_symbol_concept_overlap(
+    node: &UniversalNode,
+    concept_tokens: &HashSet<String>,
+) -> usize {
+    let candidate_tokens = codebase_map_symbol_candidate_tokens(node);
+    concept_tokens
+        .iter()
+        .filter(|term| {
+            candidate_tokens.iter().any(|candidate| {
+                candidate == *term
+                    || candidate.contains(term.as_str())
+                    || term.contains(candidate.as_str())
+            })
+        })
+        .count()
+}
+
+fn codebase_map_candidate_tokens(node: &UniversalNode) -> HashSet<String> {
+    codebase_map_candidate_tokens_with_path(node, true)
+}
+
+fn codebase_map_symbol_candidate_tokens(node: &UniversalNode) -> HashSet<String> {
+    codebase_map_candidate_tokens_with_path(node, false)
+}
+
+fn codebase_map_candidate_tokens_with_path(
+    node: &UniversalNode,
+    include_file_path: bool,
+) -> HashSet<String> {
+    let qualified_name = node
+        .parent
+        .as_ref()
+        .map(|parent| format!("{parent}.{}", node.name))
+        .unwrap_or_else(|| node.name.clone());
+    let mut tokens: HashSet<String> = [
+        node.name.as_str(),
+        qualified_name.as_str(),
+        node.content.as_str(),
+        node.docstring.as_deref().unwrap_or(""),
+    ]
+    .into_iter()
+    .flat_map(tokenize_codebase_map_text)
+    .collect();
+    if include_file_path {
+        tokens.extend(tokenize_codebase_map_text(&node.location.file_path));
+    }
+    tokens
+}
+
+fn codebase_map_exact_query_match(
+    node: &UniversalNode,
+    normalized_query: &str,
+    include_file_path: bool,
+) -> bool {
+    let qualified_name = node
+        .parent
+        .as_ref()
+        .map(|parent| format!("{parent}.{}", node.name))
+        .unwrap_or_else(|| node.name.clone());
+    let mut fields = vec![
+        node.name.as_str(),
+        qualified_name.as_str(),
+        node.content.as_str(),
+        node.docstring.as_deref().unwrap_or(""),
+    ];
+    if include_file_path {
+        fields.push(node.location.file_path.as_str());
+    }
+    fields
+        .into_iter()
+        .any(|field| field.to_ascii_lowercase().contains(normalized_query))
+}
+
+fn is_codebase_map_generic_helper_symbol(symbol_name: &str) -> bool {
+    let symbol_name = symbol_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(symbol_name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(symbol_name)
+        .to_ascii_lowercase();
+
+    symbol_name.starts_with("resolve_")
+        || symbol_name.starts_with("normalize_")
+        || symbol_name.starts_with("tokenize_")
+        || symbol_name.starts_with("collect_")
+        || symbol_name.ends_with("_by_degree")
+}
+
+fn is_codebase_map_meta_helper_symbol(symbol_name: &str) -> bool {
+    let symbol_name = symbol_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(symbol_name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(symbol_name)
+        .to_ascii_lowercase();
+
+    symbol_name.starts_with("query_targets_")
+        || symbol_name.starts_with("confidence_")
+        || symbol_name == "accumulate_result"
+        || symbol_name == "fuse_results"
+        || symbol_name == "rerank_result_limit"
+}
+
+fn codebase_map_subsystem_role_bias(node: &UniversalNode, targets_product_surface: bool) -> f64 {
+    if !targets_product_surface {
+        return 0.0;
+    }
+
+    let symbol_name = node
+        .name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&node.name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(&node.name)
+        .to_ascii_lowercase();
+
+    if is_codebase_map_meta_helper_symbol(&symbol_name) {
+        -0.45
+    } else if symbol_name.starts_with("handle_") {
+        0.18
+    } else if matches!(
+        symbol_name.as_str(),
+        "rerank_natural_language_results"
+            | "drop_low_confidence_noise"
+            | "is_symbol_lookup_query"
+            | "result_matches_symbol_query"
+            | "vector_candidate_limit"
+    ) {
+        0.16
+    } else {
+        0.0
+    }
+}
+
+fn codebase_map_local_meta_helper_penalty(
+    node: &UniversalNode,
+    targets_product_surface: bool,
+) -> f64 {
+    let symbol_name = node
+        .name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&node.name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(&node.name)
+        .to_ascii_lowercase();
+
+    if is_codebase_map_meta_helper_symbol(&symbol_name) {
+        if targets_product_surface { 0.72 } else { 0.42 }
+    } else {
+        0.0
+    }
+}
+
+fn codebase_map_local_connectivity_bias(graph: &CodeGraph, node: &UniversalNode) -> f64 {
+    let (callers, callees) = graph.get_node_degree(&node.id);
+    let total_degree = callers + callees;
+    let shared_flow_bonus = if callers > 0 && callees > 0 { 0.08 } else { 0.0 };
+
+    total_degree.min(4) as f64 * 0.07 + shared_flow_bonus
+}
+
+fn codebase_map_query_targets_product_surface(query: &str) -> bool {
+    let lowered = query.to_ascii_lowercase();
+    lowered.contains("how does")
+        || lowered.contains("how do")
+        || [
+            "mcp",
+            "noise",
+            "output",
+            "persist",
+            "persistence",
+            "ranking",
+            "response",
+            "surface",
+            "tool",
+            "workflow",
+            "work",
+        ]
+        .iter()
+        .any(|token| lowered.contains(token))
+}
+
+fn codebase_map_surface_bias(node: &UniversalNode) -> f64 {
+    if is_probable_codebase_map_product_surface_node(node) {
+        0.45
+    } else if is_probable_codebase_map_engine_internal_node(node) {
+        -0.18
+    } else {
+        0.0
+    }
+}
+
+fn is_probable_codebase_map_product_surface_node(node: &UniversalNode) -> bool {
+    let path = node.location.file_path.to_ascii_lowercase();
+    let symbol_name = node.name.to_ascii_lowercase();
+
+    symbol_name.starts_with("handle_")
+        || path.contains("/contextro-tools/")
+        || path.contains("/contextro-server/")
+        || path.contains("/tools/")
+        || path.contains("/server/")
+}
+
+fn is_probable_codebase_map_engine_internal_node(node: &UniversalNode) -> bool {
+    let path = node.location.file_path.to_ascii_lowercase();
+    let symbol_name = node.name.to_ascii_lowercase();
+
+    path.contains("/contextro-engines/")
+        || path.contains("/engines/")
+        || matches!(
+            symbol_name.as_str(),
+            "execute_search" | "fuse" | "adaptive_weights" | "make_result" | "search"
+        )
+}
+
 fn required_codebase_map_matches(token_count: usize) -> usize {
     match token_count {
         0 => 0,
         1 => 1,
-        2 => 2,
-        _ => token_count.div_ceil(2),
+        2 => 1,
+        3 => 2,
+        _ => 2,
     }
 }
 
@@ -680,11 +1478,18 @@ fn tokenize_codebase_map_text(text: &str) -> Vec<String> {
         }
     }
 
-    normalized
-        .split_whitespace()
-        .filter(|token| token.len() >= 3)
-        .map(String::from)
-        .collect()
+    let mut tokens = Vec::new();
+    let mut seen = HashSet::new();
+
+    for token in normalized.split_whitespace() {
+        for variant in codebase_map_token_variants(token) {
+            if seen.insert(variant.clone()) {
+                tokens.push(variant);
+            }
+        }
+    }
+
+    tokens
 }
 
 fn codebase_map_query_targets_tests(query: &str) -> bool {
@@ -715,6 +1520,21 @@ fn get_document_path_arg(args: &Value) -> Option<&str> {
         .or_else(|| args.get("file_path"))
         .and_then(|value| value.as_str())
         .filter(|path| !path.is_empty())
+}
+
+fn resolve_search_target(path: Option<&str>, codebase: Option<&str>) -> Result<PathBuf, Value> {
+    if let Some(path) = path.filter(|path| !path.is_empty()) {
+        return resolve_existing_path(path, codebase);
+    }
+
+    let base = codebase
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    if base.exists() {
+        Ok(base.canonicalize().unwrap_or(base))
+    } else {
+        Err(json!({"error": format!("Path not found: {}", base.to_string_lossy())}))
+    }
 }
 
 fn resolve_existing_path(path: &str, codebase: Option<&str>) -> Result<PathBuf, Value> {
@@ -751,6 +1571,238 @@ fn pattern_to_regex(pattern: &str) -> String {
     let result = result.replace("\\$\\$\\$", ".*");
     let re = regex_lite::Regex::new(r"\\\$[A-Z_]+").unwrap();
     re.replace_all(&result, r"[^\s(),]+").to_string()
+}
+
+fn codebase_map_token_variants(token: &str) -> Vec<String> {
+    let token = token.trim().to_ascii_lowercase();
+    if token.len() < 3 || is_codebase_map_stopword(&token) {
+        return Vec::new();
+    }
+
+    let mut variants = vec![token.clone()];
+    if let Some(stemmed) = stem_codebase_map_token(&token) {
+        if stemmed != token {
+            variants.push(stemmed);
+        }
+    }
+    variants
+}
+
+fn stem_codebase_map_token(token: &str) -> Option<String> {
+    let stemmed = if token.ends_with("ing") && token.len() > 5 {
+        token[..token.len() - 3].to_string()
+    } else if token.ends_with("ers") && token.len() > 5 {
+        token[..token.len() - 3].to_string()
+    } else if token.ends_with("er") && token.len() > 4 {
+        token[..token.len() - 2].to_string()
+    } else if token.ends_with("ed") && token.len() > 4 {
+        token[..token.len() - 2].to_string()
+    } else if token.ends_with("es") && token.len() > 4 {
+        token[..token.len() - 2].to_string()
+    } else if token.ends_with('s') && token.len() > 4 {
+        token[..token.len() - 1].to_string()
+    } else {
+        token.to_string()
+    };
+
+    (stemmed.len() >= 3).then_some(stemmed)
+}
+
+fn is_codebase_map_stopword(token: &str) -> bool {
+    matches!(
+        token,
+        "and"
+            | "are"
+            | "does"
+            | "for"
+            | "from"
+            | "how"
+            | "into"
+            | "the"
+            | "this"
+            | "that"
+            | "what"
+            | "when"
+            | "where"
+            | "which"
+            | "with"
+            | "work"
+            | "works"
+    )
+}
+
+fn resolve_edit_plan_primary_symbols(
+    symbol_name: Option<&str>,
+    goal: &str,
+    graph: &CodeGraph,
+) -> Vec<UniversalNode> {
+    if let Some(symbol_name) = symbol_name.filter(|name| !name.is_empty()) {
+        let matches = graph.find_nodes_by_name(symbol_name, false);
+        if !matches.is_empty() {
+            return matches.into_iter().take(3).collect();
+        }
+    }
+
+    infer_edit_plan_symbols_from_goal(goal, graph)
+}
+
+fn infer_edit_plan_symbols_from_goal(goal: &str, graph: &CodeGraph) -> Vec<UniversalNode> {
+    let all_nodes = graph.find_nodes_by_name("", false);
+    let mut resolved = Vec::new();
+    let mut seen = HashSet::new();
+
+    for candidate in extract_goal_symbol_candidates(goal) {
+        let mut matches = graph.find_nodes_by_name(&candidate, true);
+        if matches.is_empty() {
+            matches = graph.find_nodes_by_name(&candidate, false);
+        }
+        if matches.is_empty() {
+            let candidate_tokens = tokenize_codebase_map_text(&candidate);
+            matches = all_nodes
+                .iter()
+                .filter(|node| {
+                    let name = node.name.to_ascii_lowercase();
+                    candidate_tokens.iter().any(|token| {
+                        name.contains(token.as_str()) || token.contains(name.as_str())
+                    })
+                })
+                .cloned()
+                .collect();
+        }
+
+        matches.sort_by(|a, b| {
+            let a_name = a.name.to_ascii_lowercase();
+            let b_name = b.name.to_ascii_lowercase();
+            let candidate_lower = candidate.to_ascii_lowercase();
+            b_name
+                .eq(&candidate_lower)
+                .cmp(&a_name.eq(&candidate_lower))
+                .then_with(|| a_name.len().cmp(&b_name.len()))
+                .then_with(|| a.location.start_line.cmp(&b.location.start_line))
+        });
+
+        for node in matches {
+            if seen.insert(node.id.clone()) {
+                resolved.push(node);
+            }
+            if resolved.len() >= 3 {
+                return resolved;
+            }
+        }
+    }
+
+    resolved
+}
+
+fn extract_goal_symbol_candidates(goal: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+
+    for token in goal.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == ':')) {
+        let token = token.trim_matches(':').trim_matches('_');
+        if token.len() < 3 {
+            continue;
+        }
+        let lower = token.to_ascii_lowercase();
+        if is_edit_plan_stopword(&lower) {
+            continue;
+        }
+        if seen.insert(lower) {
+            candidates.push(token.to_string());
+        }
+    }
+
+    candidates
+}
+
+fn is_edit_plan_stopword(token: &str) -> bool {
+    matches!(
+        token,
+        "add"
+            | "change"
+            | "extract"
+            | "file"
+            | "function"
+            | "goal"
+            | "into"
+            | "move"
+            | "plan"
+            | "refactor"
+            | "rename"
+            | "replace"
+            | "separate"
+            | "the"
+            | "this"
+            | "update"
+    )
+}
+
+fn add_edit_plan_symbol(
+    affected_symbols: &mut Vec<Value>,
+    seen_symbol_ids: &mut HashSet<String>,
+    graph: &CodeGraph,
+    node: &UniversalNode,
+    codebase: Option<&str>,
+    role: &str,
+) {
+    if !seen_symbol_ids.insert(node.id.clone()) {
+        return;
+    }
+    let (callers, callees) = graph.get_node_degree(&node.id);
+    affected_symbols.push(json!({
+        "name": node.name,
+        "file": strip_base(&node.location.file_path, codebase),
+        "line": node.location.start_line,
+        "callers": callers,
+        "callees": callees,
+        "role": role,
+    }));
+}
+
+fn add_edit_plan_neighbors(
+    affected_symbols: &mut Vec<Value>,
+    seen_symbol_ids: &mut HashSet<String>,
+    target_files: &mut Vec<String>,
+    risks: &mut Vec<String>,
+    graph: &CodeGraph,
+    node: &UniversalNode,
+    codebase: Option<&str>,
+) {
+    let mut neighbors: Vec<UniversalNode> = graph
+        .get_callers(&node.id)
+        .into_iter()
+        .chain(graph.get_callees(&node.id).into_iter())
+        .collect();
+    neighbors.sort_by(|a, b| {
+        let a_same_file = a.location.file_path == node.location.file_path;
+        let b_same_file = b.location.file_path == node.location.file_path;
+        b_same_file
+            .cmp(&a_same_file)
+            .then_with(|| a.location.start_line.cmp(&b.location.start_line))
+    });
+
+    for neighbor in neighbors.into_iter().take(4) {
+        let file = strip_base(&neighbor.location.file_path, codebase);
+        if !target_files.contains(&file) {
+            target_files.push(file.clone());
+        }
+        add_edit_plan_symbol(
+            affected_symbols,
+            seen_symbol_ids,
+            graph,
+            &neighbor,
+            codebase,
+            "neighbor",
+        );
+
+        let (callers, _) = graph.get_node_degree(&neighbor.id);
+        if callers > 5 {
+            risks.push(format!(
+                "{} has {} callers — high blast radius",
+                neighbor.name, callers
+            ));
+        }
+    }
 }
 
 /// Collect files from a path, optionally filtered by language extension.
@@ -806,7 +1858,9 @@ fn collect_files(path: &str, language: Option<&str>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use contextro_core::graph::{UniversalLocation, UniversalNode};
+    use contextro_core::graph::{
+        RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
+    };
     use contextro_core::NodeType;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -818,6 +1872,35 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("contextro-code-{unique}-{name}"));
         let _ = std::fs::create_dir_all(&dir);
         dir
+    }
+
+    fn test_node(id: &str, name: &str, file_path: &str, start_line: u32, content: &str) -> UniversalNode {
+        UniversalNode {
+            id: id.into(),
+            name: name.into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file_path.into(),
+                start_line,
+                end_line: start_line + 1,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            content: content.into(),
+            language: "rust".into(),
+            ..Default::default()
+        }
+    }
+
+    fn add_call(graph: &CodeGraph, source_id: &str, target_id: &str) {
+        graph.add_relationship(UniversalRelationship {
+            id: format!("{source_id}->{target_id}"),
+            source_id: source_id.into(),
+            target_id: target_id.into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
     }
 
     #[test]
@@ -979,6 +2062,52 @@ mod tests {
     }
 
     #[test]
+    fn test_pattern_search_accepts_repo_relative_directory_path() {
+        let dir = temp_dir("pattern-search-relative-dir");
+        let nested = dir.join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("lib.rs"), "fn handle_alpha() {}\nfn beta() {}\n").unwrap();
+
+        let result = pattern_search(
+            &json!({
+                "pattern":"fn handle_",
+                "path":"src",
+                "language":"rust"
+            }),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 1);
+        assert_eq!(result["matches"][0]["file"], "src/lib.rs");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_pattern_rewrite_accepts_repo_relative_file_path() {
+        let dir = temp_dir("pattern-rewrite-relative-file");
+        let nested = dir.join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+        let file = nested.join("lib.rs");
+        std::fs::write(&file, "fn handle_search() {}\n").unwrap();
+
+        let result = pattern_rewrite(
+            &json!({
+                "pattern":"handle_search",
+                "replacement":"handle_lookup",
+                "path":"src/lib.rs",
+                "dry_run":true
+            }),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total_files"], 1);
+        assert_eq!(result["changes"][0]["file"], "src/lib.rs");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn test_lookup_symbols_rejects_empty_array_explicitly() {
         let graph = CodeGraph::new();
         let result = lookup_symbols(&json!({"symbols":[]}), &graph, None);
@@ -1023,6 +2152,409 @@ mod tests {
         );
 
         assert_eq!(result["related_tests"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_edit_plan_infers_scope_from_goal_only() {
+        let graph = CodeGraph::new();
+        let file = "/tmp/contextro/crates/contextro-tools/src/search.rs";
+        graph.add_node(test_node(
+            "handle-search",
+            "handle_search",
+            file,
+            17,
+            "pub fn handle_search() { rerank_natural_language_results(); drop_low_confidence_noise(); }",
+        ));
+        graph.add_node(test_node(
+            "rerank",
+            "rerank_natural_language_results",
+            file,
+            21,
+            "fn rerank_natural_language_results() {}",
+        ));
+        graph.add_node(test_node(
+            "drop-noise",
+            "drop_low_confidence_noise",
+            file,
+            130,
+            "fn drop_low_confidence_noise() {}",
+        ));
+        add_call(&graph, "handle-search", "rerank");
+        add_call(&graph, "handle-search", "drop-noise");
+
+        let result = edit_plan(
+            &json!({"goal":"refactor handle_search to extract reranking into a separate function"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let affected = result["affected_symbols"].as_array().unwrap();
+        let names: Vec<&str> = affected
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+
+        assert_eq!(result["confidence"], "high");
+        assert_eq!(result["target_files"][0], "crates/contextro-tools/src/search.rs");
+        assert!(names.contains(&"handle_search"));
+        assert!(names.contains(&"rerank_natural_language_results"));
+        assert!(names.contains(&"drop_low_confidence_noise"));
+        assert!(result["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|step| step.as_str() != Some("Review the diff preview before applying")));
+    }
+
+    #[test]
+    fn test_edit_plan_reports_low_confidence_for_empty_scope() {
+        let graph = CodeGraph::new();
+        let result = edit_plan(
+            &json!({"goal":"refactor impossible_missing_symbol to extract helper"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["confidence"], "low");
+        assert_eq!(result["affected_symbols"].as_array().unwrap().len(), 0);
+        assert_eq!(result["target_files"].as_array().unwrap().len(), 0);
+        assert!(result["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step.as_str() == Some("Resolve the target symbol or file before editing")));
+    }
+
+    #[test]
+    fn test_search_codebase_map_surfaces_conceptual_cluster() {
+        let graph = CodeGraph::new();
+        let file = "/tmp/contextro/crates/contextro-tools/src/search.rs";
+        graph.add_node(test_node(
+            "handle-search",
+            "handle_search",
+            file,
+            17,
+            "pub fn handle_search() { rerank_natural_language_results(); }",
+        ));
+        graph.add_node(test_node(
+            "rerank",
+            "rerank_natural_language_results",
+            file,
+            21,
+            "fn rerank_natural_language_results() { score search ranking candidates }",
+        ));
+        graph.add_node(test_node(
+            "drop-noise",
+            "drop_low_confidence_noise",
+            file,
+            130,
+            "fn drop_low_confidence_noise() { filter weak ranking results }",
+        ));
+        graph.add_node(test_node(
+            "lookup-query",
+            "is_symbol_lookup_query",
+            file,
+            386,
+            "fn is_symbol_lookup_query() { detect symbol search queries }",
+        ));
+        graph.add_node(test_node(
+            "vector-limit",
+            "vector_candidate_limit",
+            file,
+            552,
+            "fn vector_candidate_limit() -> usize { ranking search candidates.len() }",
+        ));
+        graph.add_node(test_node(
+            "symbol-match",
+            "result_matches_symbol_query",
+            file,
+            398,
+            "fn result_matches_symbol_query() { score whether search results match the symbol query }",
+        ));
+        graph.add_node(test_node(
+            "resolve-targets",
+            "resolve_refactor_targets",
+            "/tmp/contextro/crates/contextro-tools/src/refactor.rs",
+            80,
+            "fn resolve_refactor_targets() { resolve targets for edit plans }",
+        ));
+        graph.add_node(test_node(
+            "rank-degree",
+            "rank_nodes_by_degree",
+            "/tmp/contextro/crates/contextro-engines/src/graph.rs",
+            44,
+            "fn rank_nodes_by_degree() { rank graph nodes by degree }",
+        ));
+        add_call(&graph, "handle-search", "rerank");
+        add_call(&graph, "handle-search", "drop-noise");
+        add_call(&graph, "handle-search", "lookup-query");
+        add_call(&graph, "drop-noise", "lookup-query");
+        add_call(&graph, "drop-noise", "symbol-match");
+        add_call(&graph, "rerank", "vector-limit");
+        add_call(&graph, "rank-degree", "rerank");
+
+        let result = search_codebase_map(
+            &json!({"query":"how does search ranking work"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["total_files"], 1);
+        assert!(result["total_symbols"].as_u64().unwrap_or(0) >= 3);
+        let names: Vec<&str> = result["files"][0]["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        assert_eq!(result["files"][0]["file"], "crates/contextro-tools/src/search.rs");
+        assert!(names.contains(&"handle_search"));
+        assert!(names.contains(&"rerank_natural_language_results"));
+        assert!(names.contains(&"drop_low_confidence_noise"));
+        assert!(names.contains(&"is_symbol_lookup_query"));
+        assert!(names.contains(&"result_matches_symbol_query"));
+        assert!(names.contains(&"vector_candidate_limit"));
+        assert!(!names.contains(&"resolve_refactor_targets"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"rank_nodes_by_degree"), "unexpected names: {:?}", names);
+    }
+
+    #[test]
+    fn test_search_codebase_map_prefers_product_surface_over_engine_internals() {
+        let graph = CodeGraph::new();
+        let tool_file = "/tmp/contextro/crates/contextro-tools/src/search.rs";
+        let engine_file = "/tmp/contextro/crates/contextro-engines/src/search.rs";
+
+        graph.add_node(test_node(
+            "tool-handle-search",
+            "handle_search",
+            tool_file,
+            17,
+            "pub fn handle_search() { rerank_natural_language_results(); drop_low_confidence_noise(); }",
+        ));
+        graph.add_node(test_node(
+            "tool-rerank",
+            "rerank_natural_language_results",
+            tool_file,
+            216,
+            "fn rerank_natural_language_results() { improve search ranking for product responses }",
+        ));
+        graph.add_node(test_node(
+            "tool-noise",
+            "drop_low_confidence_noise",
+            tool_file,
+            130,
+            "fn drop_low_confidence_noise() { prune weak ranking results from tool output }",
+        ));
+        graph.add_node(test_node(
+            "engine-execute",
+            "execute_search",
+            engine_file,
+            61,
+            "pub fn execute_search() { fuse(); }",
+        ));
+        graph.add_node(test_node(
+            "engine-fuse",
+            "fuse",
+            "/tmp/contextro/crates/contextro-engines/src/fusion.rs",
+            29,
+            "fn fuse() { adaptive_weights(); }",
+        ));
+        graph.add_node(test_node(
+            "engine-adaptive",
+            "adaptive_weights",
+            "/tmp/contextro/crates/contextro-engines/src/fusion.rs",
+            85,
+            "fn adaptive_weights() { rank vector and bm25 search inputs }",
+        ));
+        add_call(&graph, "tool-handle-search", "tool-rerank");
+        add_call(&graph, "tool-handle-search", "tool-noise");
+        add_call(&graph, "engine-execute", "engine-fuse");
+        add_call(&graph, "engine-fuse", "engine-adaptive");
+
+        let result = search_codebase_map(
+            &json!({"query":"how does search ranking work"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["files"][0]["file"], "crates/contextro-tools/src/search.rs");
+        let names: Vec<&str> = result["files"][0]["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        assert!(names.contains(&"handle_search"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"rerank_natural_language_results"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"drop_low_confidence_noise"), "unexpected names: {:?}", names);
+    }
+
+    #[test]
+    fn test_search_codebase_map_prefers_dominant_same_file_subsystem_closure() {
+        let graph = CodeGraph::new();
+        let search_file = "/tmp/contextro/crates/contextro-tools/src/search.rs";
+
+        graph.add_node(test_node(
+            "handle-search",
+            "handle_search",
+            search_file,
+            17,
+            "pub fn handle_search() { rerank_natural_language_results(); drop_low_confidence_noise(); }",
+        ));
+        graph.add_node(test_node(
+            "rerank",
+            "rerank_natural_language_results",
+            search_file,
+            99,
+            "fn rerank_natural_language_results() { search ranking response output rerank results }",
+        ));
+        graph.add_node(test_node(
+            "drop-noise",
+            "drop_low_confidence_noise",
+            search_file,
+            130,
+            "fn drop_low_confidence_noise() { search ranking noise output response filtering }",
+        ));
+        graph.add_node(test_node(
+            "lookup-query",
+            "is_symbol_lookup_query",
+            search_file,
+            386,
+            "fn is_symbol_lookup_query() -> bool { detect search symbol query before ranking }",
+        ));
+        graph.add_node(test_node(
+            "symbol-match",
+            "result_matches_symbol_query",
+            search_file,
+            398,
+            "fn result_matches_symbol_query() { keep search ranking results that match the symbol query }",
+        ));
+        graph.add_node(test_node(
+            "vector-limit",
+            "vector_candidate_limit",
+            search_file,
+            552,
+            "fn vector_candidate_limit() -> usize { choose search ranking candidate limits for result reranking }",
+        ));
+        graph.add_node(test_node(
+            "query-targets",
+            "query_targets_product_surface",
+            search_file,
+            304,
+            "fn query_targets_product_surface(query: &str) -> bool { detect whether search asks about product surface output }",
+        ));
+        graph.add_node(test_node(
+            "fuse-results",
+            "fuse_results",
+            search_file,
+            479,
+            "fn fuse_results(query: &str) { accumulate_result(query); }",
+        ));
+        graph.add_node(test_node(
+            "accumulate-result",
+            "accumulate_result",
+            search_file,
+            565,
+            "fn accumulate_result() { update fused score maps }",
+        ));
+
+        graph.add_node(test_node(
+            "resolve-targets",
+            "resolve_refactor_targets",
+            "/tmp/contextro/crates/contextro-tools/src/refactor.rs",
+            80,
+            "fn resolve_refactor_targets() { resolve targets for edit plan changes }",
+        ));
+        graph.add_node(test_node(
+            "rank-degree",
+            "rank_nodes_by_degree",
+            "/tmp/contextro/crates/contextro-engines/src/graph.rs",
+            44,
+            "fn rank_nodes_by_degree() { graph ranking nodes by degree for connectivity }",
+        ));
+        graph.add_node(test_node(
+            "query-targets",
+            "query_targets_product_surface",
+            "/tmp/contextro/crates/contextro-tools/src/code.rs",
+            80,
+            "fn query_targets_product_surface() -> bool { detect whether the query asks about tool output }",
+        ));
+
+        add_call(&graph, "handle-search", "rerank");
+        add_call(&graph, "handle-search", "drop-noise");
+        add_call(&graph, "handle-search", "lookup-query");
+        add_call(&graph, "drop-noise", "lookup-query");
+        add_call(&graph, "drop-noise", "symbol-match");
+        add_call(&graph, "rerank", "vector-limit");
+        add_call(&graph, "rerank", "fuse-results");
+        add_call(&graph, "fuse-results", "accumulate-result");
+        add_call(&graph, "query-targets", "handle-search");
+        add_call(&graph, "rank-degree", "rerank");
+        add_call(&graph, "query-targets", "handle-search");
+
+        let result = search_codebase_map(
+            &json!({"query":"how does search ranking work"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["total_files"], 1, "unexpected result: {result}");
+        assert_eq!(result["files"][0]["file"], "crates/contextro-tools/src/search.rs");
+
+        let names: Vec<&str> = result["files"][0]["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+
+        assert!(names.contains(&"handle_search"), "unexpected names: {:?}", names);
+        assert!(
+            names.contains(&"rerank_natural_language_results"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"drop_low_confidence_noise"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"is_symbol_lookup_query"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"result_matches_symbol_query"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"vector_candidate_limit"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"resolve_refactor_targets"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"rank_nodes_by_degree"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"query_targets_product_surface"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(!names.contains(&"fuse_results"), "unexpected names: {:?}", names);
+        assert!(
+            !names.contains(&"accumulate_result"),
+            "unexpected names: {:?}",
+            names
+        );
     }
 
     #[test]
