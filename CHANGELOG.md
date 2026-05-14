@@ -16,6 +16,16 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.11] - 2026-05-14
+
+### Fixed
+
+- **Semantic chunk text is more retrieval-friendly without bloating embeddings** — chunk generation now emits structured symbol metadata, semantic aliases from identifiers and paths, bounded summaries/imports/calls, and a capped code section so retrieval quality improves while staying within the configured chunk budget.
+- **Rust heuristic parsing carries better doc context into indexed symbols** — item docs now support `///` and block comments, module-level `//!` / `/*! ... */` context is merged into short item docs, and regression tests lock in the restored doc extraction behavior.
+- **Knowledge state reload is more truthful after restart-sensitive QA flows** — legacy blank-scope data is normalized, the sole repo scope is restored when persisted active scope is missing, and ambiguous multi-repo state avoids guessing the wrong active scope.
+- **Vector search nonsense repro now stays empty instead of surfacing weak tail hits** — vector-mode low-confidence filtering now applies relative score floors and requires literal grounding for digit-bearing one-token nonsense queries, matching the passing release-candidate repro.
+- **Release candidate validation passed before cut** — the full MCP QA pass exercised all 37 tools over real transport, the vector nonsense repro returned empty, knowledge restart visibility/removal passed without re-index, and the installed-binary smoke on the local package path passed.
+
 ## [1.6.10] - 2026-05-14
 
 ### Fixed
