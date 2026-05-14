@@ -1145,12 +1145,26 @@ fn build_graph(graph: &CodeGraph, symbols: &[Symbol]) {
                 language: symbol.language.clone(),
             },
             language: symbol.language.clone(),
+            content: if symbol.code_snippet.is_empty() {
+                symbol.signature.clone()
+            } else {
+                symbol.code_snippet.clone()
+            },
             line_count: symbol.line_count(),
             docstring: if symbol.docstring.is_empty() {
                 None
             } else {
                 Some(symbol.docstring.clone())
             },
+            visibility: if symbol.signature.trim_start().starts_with("pub ")
+                || symbol.signature.trim_start().starts_with("pub(")
+            {
+                "public".into()
+            } else {
+                String::new()
+            },
+            is_async: symbol.signature.contains("async fn"),
+            parent: symbol.parent.clone(),
             ..Default::default()
         });
     }

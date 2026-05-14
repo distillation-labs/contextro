@@ -102,12 +102,25 @@ impl AppState {
                     language: sym.language.clone(),
                 },
                 language: sym.language.clone(),
+                content: if sym.code_snippet.is_empty() {
+                    sym.signature.clone()
+                } else {
+                    sym.code_snippet.clone()
+                },
                 line_count: sym.line_count(),
                 docstring: if sym.docstring.is_empty() {
                     None
                 } else {
                     Some(sym.docstring.clone())
                 },
+                visibility: if sym.signature.trim_start().starts_with("pub ")
+                    || sym.signature.trim_start().starts_with("pub(")
+                {
+                    "public".into()
+                } else {
+                    String::new()
+                },
+                is_async: sym.signature.contains("async fn"),
                 parent: sym.parent.clone(),
                 ..Default::default()
             };

@@ -789,6 +789,9 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
             {
                 if !name.is_empty() {
                     let end_line = find_block_end_braces(&lines, i);
+                    if current_impl.is_some() && end_line > i {
+                        apply_brace_depth_delta(&lines, i + 1, end_line, &mut impl_depth);
+                    }
                     let calls = collect_calls_heuristic(&lines, i + 1, end_line);
                     let st = if current_impl.is_some() {
                         SymbolType::Method
@@ -827,7 +830,11 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
                 .and_then(|s| s.split(&['{', '<', '(', ' ', ';', ':'][..]).next())
             {
                 if !name.is_empty() {
-                    let end_line = find_block_end_braces(&lines, i);
+                    let end_line = if trimmed.ends_with(';') {
+                        i
+                    } else {
+                        find_block_end_braces(&lines, i)
+                    };
                     symbols.push(Symbol {
                         name: name.to_string(),
                         symbol_type: SymbolType::Class,
@@ -891,26 +898,39 @@ fn extract_rust_impl_name(line: &str) -> Option<String> {
 
 fn find_block_end_braces(lines: &[&str], start: usize) -> usize {
     let mut depth = 0i32;
+    let mut saw_open_brace = false;
     for (i, line) in lines.iter().enumerate().skip(start) {
         for ch in line.chars() {
             if ch == '{' {
                 depth += 1;
+                saw_open_brace = true;
             }
-            if ch == '}' {
+            if ch == '}' && saw_open_brace {
                 depth -= 1;
             }
         }
-        if depth < 0 {
-            return i;
-        } // closed before opened (shouldn't happen)
-        if depth == 0 && i == start && line.contains('{') {
-            return i;
-        } // single-line block
-        if depth <= 0 && i > start {
+        if !saw_open_brace {
+            continue;
+        }
+        if depth <= 0 {
             return i;
         }
     }
     lines.len() - 1
+}
+
+fn apply_brace_depth_delta(lines: &[&str], start: usize, end: usize, depth: &mut i32) {
+    let upper = end.min(lines.len().saturating_sub(1));
+    for line in lines.iter().take(upper + 1).skip(start) {
+        for ch in line.chars() {
+            if ch == '{' {
+                *depth += 1;
+            }
+            if ch == '}' {
+                *depth -= 1;
+            }
+        }
+    }
 }
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -1516,6 +1536,98 @@ trait Drawable { fn draw(&self); }
         let names: Vec<&str> = result.symbols.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"hello"));
         assert!(names.contains(&"Foo"));
+        std::fs::remove_file(tmp).ok();
+    }
+
+    #[test]
+    fn test_rust_heuristic_handles_multiline_function_signatures() {
+        let parser = TreeSitterParser::new();
+        let tmp = std::env::temp_dir().join("test_rust_multiline_signature.rs");
+        std::fs::write(
+            &tmp,
+            r#"
+fn execute_search() {}
+fn vector_search() {}
+
+pub fn handle_search(
+    query: &str,
+    limit: usize,
+) -> usize {
+    let results = execute_search();
+    if query.is_empty() {
+        return limit;
+    }
+    vector_search();
+    results.len()
+}
+"#,
+        )
+        .unwrap();
+        let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
+        let handle_search = result
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "handle_search")
+            .unwrap();
+
+        assert!(handle_search.line_end > handle_search.line_start);
+        assert!(
+            handle_search.calls.contains(&"execute_search".to_string()),
+            "calls: {:?}",
+            handle_search.calls
+        );
+        assert!(
+            handle_search.calls.contains(&"vector_search".to_string()),
+            "calls: {:?}",
+            handle_search.calls
+        );
+
+        std::fs::remove_file(tmp).ok();
+    }
+
+    #[test]
+    fn test_rust_heuristic_resets_impl_scope_after_skipped_method_bodies() {
+        let parser = TreeSitterParser::new();
+        let tmp = std::env::temp_dir().join("test_rust_impl_scope_reset.rs");
+        std::fs::write(
+            &tmp,
+            r#"
+struct SearchOptions;
+
+impl SearchOptions {
+    fn helper(&self) {
+        nested();
+    }
+}
+
+fn nested() {}
+
+pub fn execute_search() {
+    nested();
+}
+"#,
+        )
+        .unwrap();
+        let result = parser.parse_file(tmp.to_str().unwrap()).unwrap();
+        let names: Vec<&str> = result
+            .symbols
+            .iter()
+            .map(|symbol| symbol.name.as_str())
+            .collect();
+        let helper = result
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "helper")
+            .unwrap_or_else(|| panic!("missing helper symbol in {:?}", names));
+        let execute_search = result
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "execute_search")
+            .unwrap_or_else(|| panic!("missing execute_search symbol in {:?}", names));
+
+        assert_eq!(helper.parent.as_deref(), Some("SearchOptions"));
+        assert_eq!(execute_search.parent, None);
+
         std::fs::remove_file(tmp).ok();
     }
 

@@ -16,6 +16,16 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.8] - 2026-05-14
+
+### Fixed
+
+- **Rust heuristic parsing is more truthful for real MCP graph work** — multiline function signatures no longer terminate before the opening brace, impl scope is reset correctly after skipped method bodies, and unit-style `struct Foo;` declarations no longer swallow following methods. This restores live call edges for handlers like `handle_search` and removes bogus parent qualification on free functions such as `execute_search`.
+- **`search_codebase_map` now handles real developer queries instead of literal symbol substrings only** — matching now scores qualified names, file paths, docstrings, and stored code snippets, so queries like `repo add persistence` and `search ranking noise` surface implementation files instead of returning empty results.
+- **Code-map results are less test-noisy by default** — for non-test queries, test-only matches are dropped whenever real implementation hits exist, which makes grouped file maps much easier to use during live debugging.
+- **Search ranking now keeps more room for the reranker and favors tool-surface answers on quality/debug queries** — hybrid fusion keeps a deeper candidate set for natural-language queries, overlap scoring uses signatures and code snippets, and product-surface quality queries boost handler-style entrypoints while demoting lower-level engine search internals. Live release-binary probes now put `handle_search` first for `hybrid search ranking` and `semantic search ranking noise`.
+- **Release validation was rerun on the shipping binary before cut** — the full Rust/package gates stayed green, and a fresh release-binary HTTP regression audit passed `18/18` across discovery, graph, code-map, search, memory, knowledge, commit history, impact, and repo-registry flows.
+
 ## [1.6.7] - 2026-05-14
 
 ### Fixed

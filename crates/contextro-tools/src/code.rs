@@ -1,7 +1,11 @@
 //! Code tool: AST operations dispatch.
 
+use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use crate::analysis::is_test_file;
+use contextro_core::graph::UniversalNode;
 use contextro_core::traits::Parser;
 use contextro_engines::graph::CodeGraph;
 use contextro_parsing::TreeSitterParser;
@@ -432,11 +436,20 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
 /// Return a symbol-level map of the codebase grouped by file.
 /// Accepts an optional `query` to filter by symbol name and an optional `path` prefix.
 fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let query = args
+    struct CodebaseMapHit {
+        file: String,
+        score: f64,
+        is_test_like: bool,
+        symbol: Value,
+    }
+
+    let raw_query = args
         .get("query")
         .and_then(|v| v.as_str())
         .unwrap_or("")
-        .to_lowercase();
+        .trim();
+    let normalized_query = raw_query.to_ascii_lowercase();
+    let query_tokens = tokenize_codebase_map_text(raw_query);
     let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
     let resolved_filter = if path_filter.is_empty() {
         None
@@ -452,35 +465,91 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         .unwrap_or(false);
 
     let all_nodes = graph.find_nodes_by_name("", false);
-
-    let mut file_map: std::collections::BTreeMap<String, Vec<Value>> =
-        std::collections::BTreeMap::new();
+    let mut hits = Vec::new();
     for node in &all_nodes {
         if let Some(filter_path) = resolved_filter.as_ref() {
             if !path_matches(&node.location.file_path, filter_path, filter_is_dir) {
                 continue;
             }
         }
-        // Filter by query
-        if !query.is_empty() && !node.name.to_lowercase().contains(&query) {
+        let score = codebase_map_match_score(node, &normalized_query, &query_tokens);
+        if !normalized_query.is_empty() && score <= 0.0 {
             continue;
         }
         let rel = strip_base(&node.location.file_path, codebase);
         let (callers, callees) = graph.get_node_degree(&node.id);
-        file_map.entry(rel).or_default().push(json!({
-            "name": node.name,
-            "type": node.node_type.to_string(),
-            "line": node.location.start_line,
-            "callers": callers,
-            "callees": callees,
-        }));
+        hits.push(CodebaseMapHit {
+            is_test_like: is_test_file(&node.location.file_path)
+                || is_probable_codebase_map_test_symbol(&node.name),
+            file: rel,
+            score,
+            symbol: json!({
+                "name": node.name,
+                "type": node.node_type.to_string(),
+                "line": node.location.start_line,
+                "callers": callers,
+                "callees": callees,
+            }),
+        });
     }
 
-    let files: Vec<Value> = file_map
+    if !codebase_map_query_targets_tests(raw_query) && hits.iter().any(|hit| !hit.is_test_like) {
+        hits.retain(|hit| !hit.is_test_like);
+    }
+
+    hits.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.file.cmp(&b.file))
+            .then_with(|| {
+                a.symbol["line"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .cmp(&b.symbol["line"].as_u64().unwrap_or(0))
+            })
+    });
+
+    let mut grouped: Vec<(String, Vec<CodebaseMapHit>, f64)> = Vec::new();
+    for hit in hits {
+        if let Some((_, symbols, top_score)) =
+            grouped.iter_mut().find(|(file, _, _)| *file == hit.file)
+        {
+            *top_score = top_score.max(hit.score);
+            symbols.push(hit);
+        } else {
+            let top_score = hit.score;
+            grouped.push((hit.file.clone(), vec![hit], top_score));
+        }
+    }
+
+    if normalized_query.is_empty() {
+        grouped.sort_by(|a, b| a.0.cmp(&b.0));
+    } else {
+        grouped.sort_by(|a, b| {
+            b.2.partial_cmp(&a.2)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+    }
+
+    let files: Vec<Value> = grouped
         .into_iter()
-        .map(|(file, symbols)| {
+        .map(|(file, mut symbols, _)| {
+            if normalized_query.is_empty() {
+                symbols.sort_by(|a, b| {
+                    a.symbol["line"]
+                        .as_u64()
+                        .unwrap_or(0)
+                        .cmp(&b.symbol["line"].as_u64().unwrap_or(0))
+                });
+            }
             let total = symbols.len();
-            json!({"file": file, "symbols": symbols, "total": total})
+            json!({
+                "file": file,
+                "symbols": symbols.into_iter().map(|hit| hit.symbol).collect::<Vec<_>>(),
+                "total": total
+            })
         })
         .collect();
 
@@ -495,7 +564,11 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         } else {
             json!(".")
         },
-        "query": if query.is_empty() { Value::Null } else { json!(query) },
+        "query": if raw_query.is_empty() {
+            Value::Null
+        } else {
+            json!(raw_query)
+        },
         "files": files,
         "total_files": files.len(),
         "total_symbols": total_symbols,
@@ -509,6 +582,123 @@ fn strip_base(file: &str, codebase: Option<&str>) -> String {
         .and_then(|b| Path::new(file).strip_prefix(b).ok())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| file.to_string())
+}
+
+fn codebase_map_match_score(
+    node: &UniversalNode,
+    normalized_query: &str,
+    query_tokens: &[String],
+) -> f64 {
+    if normalized_query.is_empty() {
+        return 1.0;
+    }
+
+    let qualified_name = node
+        .parent
+        .as_ref()
+        .map(|parent| format!("{parent}.{}", node.name))
+        .unwrap_or_else(|| node.name.clone());
+    let fields = [
+        node.name.as_str(),
+        qualified_name.as_str(),
+        node.location.file_path.as_str(),
+        node.content.as_str(),
+        node.docstring.as_deref().unwrap_or(""),
+    ];
+
+    let exact_match = fields
+        .iter()
+        .any(|field| field.to_ascii_lowercase().contains(normalized_query));
+    let candidate_tokens: HashSet<String> = fields
+        .iter()
+        .flat_map(|field| tokenize_codebase_map_text(field))
+        .collect();
+    let matched_terms = query_tokens
+        .iter()
+        .filter(|term| {
+            candidate_tokens.iter().any(|candidate| {
+                candidate == *term
+                    || candidate.contains(term.as_str())
+                    || term.contains(candidate.as_str())
+            })
+        })
+        .count();
+
+    if !exact_match && matched_terms < required_codebase_map_matches(query_tokens.len()) {
+        return 0.0;
+    }
+
+    let overlap = if query_tokens.is_empty() {
+        0.0
+    } else {
+        matched_terms as f64 / query_tokens.len() as f64
+    };
+    let exact_bonus = if exact_match { 1.0 } else { 0.0 };
+    let content_bonus = if !node.content.is_empty()
+        && node.content.to_ascii_lowercase().contains(normalized_query)
+    {
+        0.2
+    } else {
+        0.0
+    };
+
+    exact_bonus + overlap + content_bonus
+}
+
+fn required_codebase_map_matches(token_count: usize) -> usize {
+    match token_count {
+        0 => 0,
+        1 => 1,
+        2 => 2,
+        _ => token_count.div_ceil(2),
+    }
+}
+
+fn tokenize_codebase_map_text(text: &str) -> Vec<String> {
+    let mut normalized = String::with_capacity(text.len() * 2);
+    let mut prev_was_lower_or_digit = false;
+
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if ch.is_ascii_uppercase() && prev_was_lower_or_digit {
+                normalized.push(' ');
+            }
+            normalized.push(ch.to_ascii_lowercase());
+            prev_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        } else {
+            normalized.push(' ');
+            prev_was_lower_or_digit = false;
+        }
+    }
+
+    normalized
+        .split_whitespace()
+        .filter(|token| token.len() >= 3)
+        .map(String::from)
+        .collect()
+}
+
+fn codebase_map_query_targets_tests(query: &str) -> bool {
+    let lowered = query.to_ascii_lowercase();
+    ["test", "tests", "pytest", "spec", "fixture"]
+        .iter()
+        .any(|token| lowered.contains(token))
+}
+
+fn is_probable_codebase_map_test_symbol(symbol_name: &str) -> bool {
+    let symbol_name = symbol_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(symbol_name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(symbol_name)
+        .to_ascii_lowercase();
+
+    symbol_name == "tests"
+        || symbol_name.starts_with("test_")
+        || symbol_name.ends_with("_test")
+        || symbol_name.starts_with("bench_")
 }
 
 fn get_document_path_arg(args: &Value) -> Option<&str> {
@@ -675,6 +865,64 @@ mod tests {
         assert_eq!(result["total_symbols"], 1);
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_search_codebase_map_matches_natural_language_queries() {
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "repo-add".into(),
+            name: "handle_repo_add".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "/tmp/contextro/crates/contextro-tools/src/git_tools.rs".into(),
+                start_line: 10,
+                end_line: 20,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            content: "pub fn handle_repo_add(path: &str) { registry.add(path); }".into(),
+            language: "rust".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "repo-registry-add".into(),
+            name: "add".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "/tmp/contextro/crates/contextro-tools/src/git_tools.rs".into(),
+                start_line: 30,
+                end_line: 45,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            content: "pub fn add(&self, path: &str) { self.persist_repos(); }".into(),
+            language: "rust".into(),
+            parent: Some("RepoRegistry".into()),
+            ..Default::default()
+        });
+
+        let result = search_codebase_map(
+            &json!({"query":"repo add persistence"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["total_files"], 1);
+        assert!(result["total_symbols"].as_u64().unwrap_or(0) >= 1);
+        let names: Vec<&str> = result["files"][0]["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        assert!(
+            names.contains(&"handle_repo_add") || names.contains(&"add"),
+            "unexpected matches: {:?}",
+            names
+        );
     }
 
     #[test]

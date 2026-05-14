@@ -41,6 +41,7 @@ pub fn handle_search(
         "vector" => vector_search(query, limit, vector_index),
         "hybrid" => {
             let candidate_limit = hybrid_candidate_limit(query, limit);
+            let rerank_limit = rerank_result_limit(query, limit);
             let core_results = {
                 let options = SearchOptions {
                     query: query.into(),
@@ -55,7 +56,7 @@ pub fn handle_search(
             if vec_results.is_empty() {
                 core_results
             } else {
-                fuse_results(query, core_results, vec_results, limit)
+                fuse_results(query, core_results, vec_results, rerank_limit)
             }
         }
         _ => {
@@ -97,6 +98,7 @@ pub fn handle_search(
 
     results = apply_symbol_query_guard(query, results);
     results = rerank_natural_language_results(query, results);
+    results.truncate(limit);
 
     let confidence = confidence_label(&results);
 
@@ -152,6 +154,7 @@ fn rerank_natural_language_results(
     }
 
     let query_terms = tokenize_identifier(query);
+    let targets_product_surface = query_targets_product_surface(query);
     for result in &mut results {
         let overlap = result_query_overlap(&query_terms, result);
         let agreement_bonus = 1.0 + (result.match_sources.len().saturating_sub(1) as f64 * 0.05);
@@ -169,7 +172,22 @@ fn rerank_natural_language_results(
             } else {
                 1.03
             };
-        result.score *= agreement_bonus * overlap_bonus * helper_multiplier * quality_multiplier;
+        let surface_multiplier = if targets_product_surface {
+            if is_probable_product_surface_result(result) {
+                1.35
+            } else if is_probable_engine_internal_search_result(result) {
+                0.65
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
+        result.score *= agreement_bonus
+            * overlap_bonus
+            * helper_multiplier
+            * quality_multiplier
+            * surface_multiplier;
     }
 
     results.sort_by(|a, b| {
@@ -181,14 +199,7 @@ fn rerank_natural_language_results(
 }
 
 fn is_probable_test_symbol(symbol_name: &str) -> bool {
-    let symbol_name = symbol_name
-        .rsplit("::")
-        .next()
-        .unwrap_or(symbol_name)
-        .rsplit('.')
-        .next()
-        .unwrap_or(symbol_name)
-        .to_ascii_lowercase();
+    let symbol_name = terminal_symbol_name(symbol_name);
 
     symbol_name == "tests"
         || symbol_name.starts_with("test_")
@@ -197,14 +208,7 @@ fn is_probable_test_symbol(symbol_name: &str) -> bool {
 }
 
 fn is_probable_internal_helper_symbol(symbol_name: &str) -> bool {
-    let symbol_name = symbol_name
-        .rsplit("::")
-        .next()
-        .unwrap_or(symbol_name)
-        .rsplit('.')
-        .next()
-        .unwrap_or(symbol_name)
-        .to_ascii_lowercase();
+    let symbol_name = terminal_symbol_name(symbol_name);
 
     symbol_name.starts_with("make_")
         || symbol_name.starts_with("normalize_")
@@ -222,15 +226,75 @@ fn is_public_signature(signature: &str) -> bool {
     trimmed.starts_with("pub ") || trimmed.starts_with("pub(")
 }
 
+fn query_targets_product_surface(query: &str) -> bool {
+    let lowered = query.to_ascii_lowercase();
+    [
+        "alias",
+        "contract",
+        "developer",
+        "mcp",
+        "noise",
+        "output",
+        "persistence",
+        "persist",
+        "ranking",
+        "response",
+        "surface",
+        "tool",
+        "workflow",
+    ]
+    .iter()
+    .any(|token| lowered.contains(token))
+}
+
+fn is_probable_product_surface_result(result: &SearchResult) -> bool {
+    let path = result.filepath.to_ascii_lowercase();
+    let symbol_name = terminal_symbol_name(&result.symbol_name);
+
+    symbol_name.starts_with("handle_")
+        || path.contains("/tools/")
+        || path.contains("/server/")
+        || path.contains("/routes/")
+        || path.contains("/handlers/")
+        || path.contains("/commands/")
+}
+
+fn is_probable_engine_internal_search_result(result: &SearchResult) -> bool {
+    let path = result.filepath.to_ascii_lowercase();
+    let symbol_name = terminal_symbol_name(&result.symbol_name);
+
+    symbol_name == "execute_search"
+        || symbol_name == "search"
+        || ((path.contains("/engines/")
+            || path.ends_with("/memory.rs")
+            || path.ends_with("/archive.rs"))
+            && (symbol_name.contains("search")
+                || symbol_name.ends_with("_weights")
+                || symbol_name.ends_with("_consensus")))
+}
+
+fn terminal_symbol_name(symbol_name: &str) -> String {
+    symbol_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(symbol_name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(symbol_name)
+        .to_ascii_lowercase()
+}
+
 fn result_query_overlap(query_terms: &[String], result: &SearchResult) -> f64 {
     if query_terms.is_empty() {
         return 0.0;
     }
 
-    let result_terms: HashSet<String> =
-        tokenize_identifier(&format!("{} {}", result.symbol_name, result.filepath))
-            .into_iter()
-            .collect();
+    let result_terms: HashSet<String> = tokenize_identifier(&format!(
+        "{} {} {} {}",
+        result.symbol_name, result.filepath, result.signature, result.code
+    ))
+    .into_iter()
+    .collect();
     let matched = query_terms
         .iter()
         .filter(|term| {
@@ -410,6 +474,14 @@ fn hybrid_candidate_limit(query: &str, limit: usize) -> usize {
     limit.saturating_mul(multiplier).min(100)
 }
 
+fn rerank_result_limit(query: &str, limit: usize) -> usize {
+    if query.split_whitespace().count() >= 3 && !is_symbol_lookup_query(query) {
+        limit.saturating_mul(3).min(50)
+    } else {
+        limit
+    }
+}
+
 fn accumulate_result(
     metadata: &mut HashMap<String, SearchResult>,
     scores: &mut HashMap<String, f64>,
@@ -534,6 +606,12 @@ mod tests {
     fn test_hybrid_candidate_limit_expands_for_natural_language_queries() {
         assert_eq!(hybrid_candidate_limit("knowledge search milestones", 5), 20);
         assert_eq!(hybrid_candidate_limit("BrowserSession", 5), 10);
+    }
+
+    #[test]
+    fn test_rerank_result_limit_expands_for_natural_language_queries() {
+        assert_eq!(rerank_result_limit("semantic search ranking noise", 5), 15);
+        assert_eq!(rerank_result_limit("BrowserSession", 5), 5);
     }
 
     #[test]
@@ -720,6 +798,75 @@ mod tests {
 
         let reranked =
             rerank_natural_language_results("hybrid search ranking", vec![helper, entrypoint]);
+
+        assert_eq!(reranked[0].symbol_name, "handle_search");
+    }
+
+    #[test]
+    fn test_natural_language_reranker_uses_code_overlap_to_demote_engine_noise() {
+        let mut engine = make_named_result(
+            "engine-hit",
+            "Bm25Engine.search",
+            "crates/contextro-engines/src/bm25.rs",
+            0.74,
+            &["bm25"],
+        );
+        engine.signature = "pub fn search(&self, query: &str) -> Vec<SearchResult>".into();
+        engine.code =
+            "pub fn search(&self, query: &str) -> Vec<SearchResult> { self.index.search(query) }"
+                .into();
+
+        let mut handler = make_named_result(
+            "handler-hit",
+            "handle_search",
+            "crates/contextro-tools/src/search.rs",
+            0.68,
+            &["bm25", "vector"],
+        );
+        handler.signature = "pub fn handle_search(args: &Value) -> Value".into();
+        handler.code = r#"match mode.as_str() {
+    "hybrid" => fuse_results(query, core_results, vec_results, limit),
+    _ => execute_search(&options, bm25, graph, cache, &fusion).results,
+}"#
+        .into();
+
+        let reranked =
+            rerank_natural_language_results("hybrid search ranking", vec![engine, handler]);
+
+        assert_eq!(reranked[0].symbol_name, "handle_search");
+    }
+
+    #[test]
+    fn test_natural_language_reranker_prefers_tool_surface_for_quality_queries() {
+        let mut engine = make_named_result(
+            "engine-hit",
+            "execute_search",
+            "crates/contextro-engines/src/search.rs",
+            0.80,
+            &["bm25", "graph"],
+        );
+        engine.signature =
+            "pub fn execute_search(options: &SearchOptions) -> SearchResponse".into();
+        engine.code =
+            "let results = fusion.fuse(&ranked_lists); apply_graph_consensus(&mut results, graph);"
+                .into();
+
+        let mut handler = make_named_result(
+            "handler-hit",
+            "handle_search",
+            "crates/contextro-tools/src/search.rs",
+            0.58,
+            &["bm25", "vector"],
+        );
+        handler.signature = "pub fn handle_search(args: &Value) -> Value".into();
+        handler.code = r#"match mode.as_str() {
+    "hybrid" => fuse_results(query, core_results, vec_results, limit),
+    _ => execute_search(&options, bm25, graph, cache, &fusion).results,
+}"#
+        .into();
+
+        let reranked =
+            rerank_natural_language_results("semantic search ranking noise", vec![engine, handler]);
 
         assert_eq!(reranked[0].symbol_name, "handle_search");
     }
