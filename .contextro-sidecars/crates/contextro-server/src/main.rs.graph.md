@@ -1,0 +1,41 @@
+# main.rs
+
+## Symbols
+
+- `call_tool` (function) L960 — 0 callers, 0 callees
+- `ContextroServer` (class) L21 — 0 callers, 0 callees
+- `strip_codebase` (function) L743 — 2 callers, 0 callees
+- `handle_find_symbol` (function) L352 — 1 callers, 4 callees
+- `new` (function) L26 — 0 callers, 0 callees
+- `strip_absolute_paths` (function) L717 — 2 callers, 1 callees
+- `resolve_refactor_targets` (function) L978 — 2 callers, 0 callees
+- `list_tools` (function) L894 — 0 callers, 0 callees
+- `truncate_response_json` (function) L612 — 1 callers, 4 callees
+- `handle_refactor_check` (function) L382 — 1 callers, 9 callees
+- `test_resolve_refactor_targets_supports_qualified_method_names` (function) L1063 — 0 callers, 5 callees
+- `is_empty_value` (function) L706 — 1 callers, 1 callees
+- `sanitize_tool_args` (function) L779 — 2 callers, 2 callees
+- `handle_index` (function) L232 — 1 callers, 24 callees
+- `test_format_response_truncation_stays_valid_json` (function) L1039 — 0 callers, 2 callees
+- `format_response` (function) L592 — 2 callers, 3 callees
+- `can_skip_reindex` (function) L32 — 2 callers, 0 callees
+- `summarize_tool_call` (function) L750 — 1 callers, 5 callees
+- `normalize_repo_dir` (function) L971 — 0 callers, 0 callees
+- `truncation_hint` (function) L644 — 2 callers, 0 callees
+- `dispatch` (function) L50 — 0 callers, 49 callees
+- `get_info` (function) L882 — 0 callers, 0 callees
+- `handle_status` (function) L211 — 1 callers, 4 callees
+- `default` (function) L845 — 0 callers, 0 callees
+- `truncate_json_strings` (function) L788 — 1 callers, 1 callees
+- `rank_nodes_by_degree` (function) L989 — 0 callers, 0 callees
+- `handle_health` (function) L224 — 1 callers, 0 callees
+- `main` (function) L1127 — 0 callers, 0 callees
+- `auto_populate_knowledge` (function) L852 — 1 callers, 3 callees
+- `tool_definitions` (function) L495 — 0 callers, 8 callees
+- `summarize_value` (function) L812 — 1 callers, 1 callees
+- `edit_distance` (function) L823 — 1 callers, 1 callees
+- `shrink_json_value` (function) L651 — 1 callers, 2 callees
+- `shrink_text` (function) L677 — 1 callers, 1 callees
+- `add_truncation_metadata` (function) L629 — 1 callers, 2 callees
+- `strip_empty_nested` (function) L689 — 1 callers, 1 callees
+- `test_can_skip_reindex_only_for_same_loaded_repo` (function) L1012 — 0 callers, 1 callees
