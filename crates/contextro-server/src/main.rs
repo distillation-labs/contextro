@@ -192,7 +192,7 @@ impl ContextroServer {
                                 )
                             })
                             .collect();
-                        json!({"error": err_text, "did_you_mean": sugg, "hint": format!("Try: find_symbol(symbol_name=\"{}\", exact=false)", &sym[..sym.len().min(4)])})
+                        json!({"error": err_text, "did_you_mean": sugg, "hint": format!("Try: find_symbol(symbol_name=\"{}\", exact=false)", take_chars(sym, 4))})
                     } else {
                         result
                     }
@@ -564,9 +564,9 @@ impl ContextroServer {
             Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
             Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
             Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
-            Tool::new("forget",   "Delete memories. Args: memory_id | tags | memory_type (at least one required)",
-                mk(r#"{"type":"object","properties":{"memory_id":{"type":"string","description":"ID of a specific memory to delete"},"tags":{"type":"string","description":"Delete all memories with this tag"},"memory_type":{"type":"string","description":"Delete all memories of this type"}}}"#)),
-            Tool::new("knowledge", "Index and search project docs/notes. Args: command (add|search|show|remove), name, query, value", knowledge_schema),
+            Tool::new("forget",   "Delete memories. Args: id | memory_id | tags | memory_type (at least one required)",
+                mk(r#"{"type":"object","properties":{"id":{"type":"string","description":"ID returned by remember()"},"memory_id":{"type":"string","description":"Legacy alias for the memory ID"},"tags":{"type":"string","description":"Delete all memories with this tag"},"memory_type":{"type":"string","description":"Delete all memories of this type"}}}"#)),
+            Tool::new("knowledge", "Index and search project docs/notes within the active indexed repo scope. Args: command (add|search|show|remove), name, query, value", knowledge_schema),
             Tool::new("compact",   "Archive session content and get a ref_id for later retrieval. Args: content (required)",
                 mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Session content to archive"}},"required":["content"]}"#)),
             Tool::new("session_snapshot", "Show recent tool calls with arguments — useful after compaction", empty.clone()),
@@ -574,7 +574,7 @@ impl ContextroServer {
             Tool::new("retrieve", "Fetch previously archived content by ref_id. Args: ref_id (required)", ref_schema),
             Tool::new("commit_search",  "Semantic search over git commit messages. Args: query (required), limit, author", commit_schema),
             Tool::new("commit_history", "Recent git commits with author and timestamp. Args: limit", hist_schema),
-            Tool::new("repo_add",    "Register an additional repository for multi-repo analysis. Args: path", required_path_schema.clone()),
+            Tool::new("repo_add",    "Register and auto-index an additional repository for multi-repo analysis; this becomes the active repo scope. Args: path", required_path_schema.clone()),
             Tool::new("repo_remove", "Unregister a repository. Args: path or name", 
                 mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Registered repository path"},"name":{"type":"string","description":"Registered repository name"}}}"#)),
             Tool::new("repo_status", "Show all registered repositories", empty.clone()),
@@ -688,6 +688,10 @@ fn shrink_text(mut text: String) -> String {
     text = text.chars().take(target.saturating_sub(1)).collect();
     text.push('…');
     text
+}
+
+fn take_chars(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
 }
 
 fn strip_empty_nested(value: &Value, is_top_level: bool) -> Value {
@@ -1034,7 +1038,10 @@ fn rank_nodes_by_degree(
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use super::{format_response, resolve_refactor_targets, strip_response_paths, ContextroServer};
+    use super::{
+        format_response, resolve_refactor_targets, strip_response_paths, take_chars,
+        ContextroServer,
+    };
     use contextro_core::graph::{
         RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
     };
@@ -1175,6 +1182,12 @@ mod tests {
         assert_eq!(stripped["repos"][0]["path"], base);
         assert_eq!(stripped["file"], "src/lib.rs");
         assert_eq!(stripped["nested"]["file"], "src/main.rs");
+    }
+
+    #[test]
+    fn test_take_chars_handles_unicode_boundaries() {
+        assert_eq!(take_chars("─alpha", 1), "─");
+        assert_eq!(take_chars("hello", 4), "hell");
     }
 }
 
