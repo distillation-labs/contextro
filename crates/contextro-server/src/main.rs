@@ -78,7 +78,7 @@ impl ContextroServer {
                 s.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
                 s.vector_index.len(),
             ),
-            "architecture" => contextro_tools::analysis::handle_architecture(&s.graph, cb),
+            "architecture" => contextro_tools::analysis::handle_architecture(&args, &s.graph, cb),
             "analyze" => contextro_tools::analysis::handle_analyze(&args, &s.graph, cb),
             "focus" => contextro_tools::analysis::handle_focus(&args, &s.graph, cb),
             "dead_code" => contextro_tools::analysis::handle_dead_code(&args, &s.graph, cb),
@@ -121,6 +121,9 @@ impl ContextroServer {
                         combined["graph_relationships"] =
                             index_result["graph_relationships"].clone();
                         combined["total_symbols"] = index_result["total_symbols"].clone();
+                    } else if let Some(error) = index_result.get("error") {
+                        combined["indexed"] = json!(false);
+                        combined["index_error"] = error.clone();
                     }
                     combined
                 }
@@ -162,7 +165,16 @@ impl ContextroServer {
         if result.get("error").is_some() {
             // #8: Actionable errors — add fuzzy suggestions for symbol-not-found
             let err_text = result["error"].as_str().unwrap_or("");
-            let enhanced = if err_text.contains("not found") {
+            let enhanced = if err_text.contains("not found")
+                && matches!(
+                    name,
+                    "find_symbol"
+                        | "find_callers"
+                        | "find_callees"
+                        | "explain"
+                        | "impact"
+                        | "refactor_check"
+                ) {
                 if let Some(sym) = err_text.split('\'').nth(1) {
                     // Try fuzzy graph search first, then edit distance
                     let mut suggestions = s.graph.find_nodes_by_name(sym, false);
@@ -227,6 +239,10 @@ impl ContextroServer {
             "status": "healthy",
             "uptime_seconds": (self.state.started_at.elapsed().as_secs_f64() * 10.0).round() / 10.0,
             "indexed": *self.state.indexed.read(),
+            "version": env!("CARGO_PKG_VERSION"),
+            "graph_nodes": self.state.graph.node_count(),
+            "graph_relationships": self.state.graph.relationship_count(),
+            "memories": self.state.memory_store.count(),
         })
     }
 
@@ -367,9 +383,30 @@ impl ContextroServer {
         }
 
         let cb = self.state.codebase_path.read().clone();
-        let matches = self.state.graph.find_nodes_by_name(name, exact);
+        let matches = if exact {
+            self.state.graph.find_nodes_by_name(name, true)
+        } else {
+            resolve_refactor_targets(name, &self.state.graph)
+        };
         if matches.is_empty() {
-            return json!({"error": format!("Symbol '{}' not found.", name)});
+            let mut result = json!({"error": format!("Symbol '{}' not found.", name)});
+            if exact {
+                result["hint"] = json!("Try exact=false for fuzzy/prefix matching if you are not sure about the full symbol name.");
+                let fuzzy = self.state.graph.find_nodes_by_name(name, false);
+                if !fuzzy.is_empty() {
+                    result["did_you_mean"] = json!(fuzzy
+                        .iter()
+                        .take(3)
+                        .map(|node| format!(
+                            "{} ({}:{})",
+                            node.name,
+                            strip_codebase(&node.location.file_path, cb.as_deref()),
+                            node.location.start_line
+                        ))
+                        .collect::<Vec<_>>());
+                }
+            }
+            return result;
         }
 
         let symbols: Vec<Value> = matches.iter().take(20).map(|node| {
@@ -511,10 +548,10 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"exact":{"type":"boolean","description":"true=exact match, false=fuzzy (default: true)"}}}"#,
         );
         let sym_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"}}}"#,
+            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"limit":{"type":"integer","description":"Maximum results to return (default: 50)"}}}"#,
         );
         let query_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"}},"required":["query"]}"#,
+            r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"},"context_files":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}],"description":"Optional file list to boost nearby matches"}},"required":["query"]}"#,
         );
         let impact_schema = mk(
             r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"max_depth":{"type":"integer","description":"BFS depth (default: 5; smaller values intentionally narrow the blast radius)"}}}"#,
@@ -523,7 +560,7 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"path":{"type":"string","description":"Optional file or directory filter"},"exclude_paths":{"type":"array","items":{"type":"string"},"description":"Optional file or directory paths to exclude"},"limit":{"type":"integer","description":"Max results (default: 50)"},"include_public_api":{"type":"boolean","description":"Include likely public API methods/functions in the output (default: false)"},"include_tests":{"type":"boolean","description":"Include test files in the output (default: false)"}}}"#,
         );
         let code_schema = mk(
-            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
+            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
         );
         let mem_schema = mk(
             r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
@@ -548,15 +585,15 @@ impl ContextroServer {
             Tool::new("status",  "Show indexing state, graph stats, memory count, uptime", empty.clone()),
             Tool::new("health",  "Health check — returns healthy/unhealthy", empty.clone()),
             Tool::new("index",   "Index a codebase: builds symbol graph, BM25 index, and vector index. Args: path (required)", required_path_schema.clone()),
-            Tool::new("search",  "Hybrid/vector/BM25 code search. Args: query (required), limit, mode (hybrid|vector|bm25), language", query_schema),
+            Tool::new("search",  "Hybrid/vector/BM25 code search. Args: query (required), limit, mode (hybrid|vector|bm25), language, context_files", query_schema),
             Tool::new("find_symbol",  "Find where a symbol is defined. Args: symbol_name (preferred), name/symbol aliases, exact", name_schema),
             Tool::new("find_callers", "Who calls this function? Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
             Tool::new("find_callees", "What does this function call? Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
             Tool::new("explain",      "Natural-language symbol summary plus callers/callees/docstring. Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
             Tool::new("impact",       "Transitive blast radius of changing a symbol. Args: symbol_name (preferred), name/symbol aliases, max_depth", impact_schema),
             Tool::new("overview",     "Project overview: totals, languages, symbol types, top files/directories", empty.clone()),
-            Tool::new("architecture", "Architectural layers, entry points, hub symbols by connectivity", empty.clone()),
-            Tool::new("analyze",      "Code complexity and hotspots for a file or directory. Args: path", path_schema.clone()),
+            Tool::new("architecture", "Architectural layers, entry points, hub symbols by connectivity. Args: limit", mk(r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum hub symbols to return (default: 10)"}}}"#)),
+            Tool::new("analyze",      "Code complexity and hotspots for a file or directory. Args: path, min_connections, top_n", mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file or directory path"},"min_connections":{"type":"integer","description":"Minimum connectivity threshold for hotspot reporting (default: 6)"},"top_n":{"type":"integer","description":"Maximum hotspot symbols to return (default: 10)"}}}"#)),
             Tool::new("focus",        "Per-symbol callers/callees for a file or directory. Args: path", path_schema.clone()),
             Tool::new("dead_code",    "Static dead-code heuristic with optional path/exclude filters. Args: path, exclude_paths, limit, include_public_api, include_tests", dead_code_schema),
             Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
@@ -567,7 +604,7 @@ impl ContextroServer {
             Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
             Tool::new("forget",   "Delete memories. Args: id | memory_id | tags | memory_type (at least one required)",
                 mk(r#"{"type":"object","properties":{"id":{"type":"string","description":"ID returned by remember()"},"memory_id":{"type":"string","description":"Legacy alias for the memory ID"},"tags":{"type":"string","description":"Delete all memories with this tag"},"memory_type":{"type":"string","description":"Delete all memories of this type"}}}"#)),
-            Tool::new("knowledge", "Index and search project docs/notes within the active indexed repo scope. Args: command (add|search|show|remove), name, query, value", knowledge_schema),
+            Tool::new("knowledge", "Index and search project docs/notes within the active indexed repo scope. Args: command (add|search|show|list|remove|update|clear), name, query, value, path", knowledge_schema),
             Tool::new("compact",   "Archive session content and get a ref_id for later retrieval. Args: content (required)",
                 mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Session content to archive"},"metadata":{"type":"object","description":"Optional metadata stored with the archive entry"},"ttl":{"type":"string","description":"Requested visibility TTL: permanent | session | day | week | month"}},"required":["content"]}"#)),
             Tool::new("session_snapshot", "Show recent tool calls with arguments — useful after compaction",
@@ -583,8 +620,8 @@ impl ContextroServer {
             Tool::new("audit",        "Code quality audit report with recommendations", empty.clone()),
             Tool::new("docs_bundle",  "Generate Markdown docs bundle from the current indexed graph. Args: output_dir",
                 mk(r#"{"type":"object","properties":{"output_dir":{"type":"string","description":"Output directory for generated docs (default: .contextro-docs)"}}}"#)),
-            Tool::new("sidecar_export", "Export graph sidecar files alongside source. Args: path",
-                mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Directory to write .graph.* sidecar files"}}}"#)),
+            Tool::new("sidecar_export", "Export graph sidecar files alongside source. Args: path, output_dir",
+                mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Indexed source file or directory to export"},"output_dir":{"type":"string","description":"Directory to write .graph.* sidecar files (default: .contextro-sidecars)"}}}"#)),
             Tool::new("skill_prompt", "Return the agent bootstrap block plus parameter conventions for use in system prompts", empty.clone()),
             Tool::new("introspect",   "Find the right Contextro tool for a task. Args: query or tool",
                 mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"},"tool":{"type":"string","description":"Exact tool name for parameter docs and examples"}}}"#)),
@@ -1204,6 +1241,38 @@ mod tests {
                 schema
             );
         }
+    }
+
+    #[test]
+    fn test_find_symbol_missing_exact_match_suggests_fuzzy_lookup() {
+        let server = ContextroServer::new();
+        server
+            .state
+            .graph
+            .add_node(contextro_core::graph::UniversalNode {
+                id: "browser-session".into(),
+                name: "BrowserSession".into(),
+                node_type: contextro_core::NodeType::Class,
+                location: contextro_core::graph::UniversalLocation {
+                    file_path: "/tmp/repo/src/browser/session.py".into(),
+                    start_line: 1,
+                    end_line: 20,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "python".into(),
+                },
+                language: "python".into(),
+                ..Default::default()
+            });
+        *server.state.indexed.write() = true;
+        let result = server.handle_find_symbol(&json!({"symbol_name":"Browser","exact":true}));
+
+        assert_eq!(result["error"], "Symbol 'Browser' not found.");
+        assert!(result["hint"]
+            .as_str()
+            .unwrap_or("")
+            .contains("exact=false"));
+        assert!(result["did_you_mean"].is_array());
     }
 }
 
