@@ -38,7 +38,7 @@ pub fn handle_search(
         .map(String::from);
 
     let mut results = match mode.as_str() {
-        "vector" => vector_search(query, limit, vector_index),
+        "vector" => vector_search(query, vector_candidate_limit(query, limit), vector_index),
         "hybrid" => {
             let candidate_limit = hybrid_candidate_limit(query, limit);
             let rerank_limit = rerank_result_limit(query, limit);
@@ -64,7 +64,7 @@ pub fn handle_search(
                 query: query.into(),
                 limit,
                 language,
-                mode,
+                mode: mode.clone(),
             };
             let fusion = ReciprocalRankFusion::default();
             execute_search(&options, bm25, graph, cache, &fusion).results
@@ -98,7 +98,9 @@ pub fn handle_search(
 
     results = apply_symbol_query_guard(query, results);
     results = rerank_natural_language_results(query, results);
-    results = drop_low_confidence_noise(query, results);
+    if mode != "vector" {
+        results = drop_low_confidence_noise(query, results);
+    }
     let total = results.len();
     results.truncate(limit);
 
@@ -493,6 +495,11 @@ fn hybrid_candidate_limit(query: &str, limit: usize) -> usize {
         2
     };
     limit.saturating_mul(multiplier).min(100)
+}
+
+fn vector_candidate_limit(query: &str, limit: usize) -> usize {
+    let multiplier = if is_symbol_lookup_query(query) { 20 } else { 10 };
+    limit.saturating_mul(multiplier).clamp(limit, 200)
 }
 
 fn rerank_result_limit(query: &str, limit: usize) -> usize {
