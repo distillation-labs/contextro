@@ -107,9 +107,15 @@ const TOOL_DOCS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "dead_code",
-        description: "List symbols that appear unreachable from parsed entry points.",
-        parameters: &[],
-        example: r#"dead_code({})"#,
+        description: "List symbols that appear unreachable from parsed entry points, with optional filters to reduce noise.",
+        parameters: &[
+            "path: optional file or directory filter",
+            "exclude_paths: optional file or directory paths to skip",
+            "limit: maximum results, default 50",
+            "include_public_api: include likely public API methods/functions (default false)",
+            "include_tests: include test files (default false)",
+        ],
+        example: r#"dead_code({"path":"src","exclude_paths":["src/generated"],"limit":20})"#,
     },
     ToolDoc {
         name: "circular_dependencies",

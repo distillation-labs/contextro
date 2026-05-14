@@ -81,7 +81,7 @@ impl ContextroServer {
             "architecture" => contextro_tools::analysis::handle_architecture(&s.graph, cb),
             "analyze" => contextro_tools::analysis::handle_analyze(&args, &s.graph, cb),
             "focus" => contextro_tools::analysis::handle_focus(&args, &s.graph, cb),
-            "dead_code" => contextro_tools::analysis::handle_dead_code(&s.graph, cb),
+            "dead_code" => contextro_tools::analysis::handle_dead_code(&args, &s.graph, cb),
             "circular_dependencies" => {
                 contextro_tools::analysis::handle_circular_dependencies(&s.graph, cb)
             }
@@ -318,6 +318,7 @@ impl ContextroServer {
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(path.to_string());
                 self.state.query_cache.invalidate();
+                self.state.knowledge.set_active_scope(Some(path));
 
                 // Auto-populate knowledge base with project docs
                 let kb_populated = auto_populate_knowledge(path, &self.state.knowledge);
@@ -517,6 +518,9 @@ impl ContextroServer {
         let impact_schema = mk(
             r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"max_depth":{"type":"integer","description":"BFS depth (default: 5; smaller values intentionally narrow the blast radius)"}}}"#,
         );
+        let dead_code_schema = mk(
+            r#"{"type":"object","properties":{"path":{"type":"string","description":"Optional file or directory filter"},"exclude_paths":{"type":"array","items":{"type":"string"},"description":"Optional file or directory paths to exclude"},"limit":{"type":"integer","description":"Max results (default: 50)"},"include_public_api":{"type":"boolean","description":"Include likely public API methods/functions in the output (default: false)"},"include_tests":{"type":"boolean","description":"Include test files in the output (default: false)"}}}"#,
+        );
         let code_schema = mk(
             r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Filter query (search_codebase_map)"},"language":{"type":"string","description":"Language filter for pattern_search"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
         );
@@ -553,7 +557,7 @@ impl ContextroServer {
             Tool::new("architecture", "Architectural layers, entry points, hub symbols by connectivity", empty.clone()),
             Tool::new("analyze",      "Code complexity and hotspots for a file or directory. Args: path", path_schema.clone()),
             Tool::new("focus",        "Per-symbol callers/callees for a file or directory. Args: path", path_schema.clone()),
-            Tool::new("dead_code",    "Symbols with no callers (unreachable from entry points)", empty.clone()),
+            Tool::new("dead_code",    "Static dead-code heuristic with optional path/exclude filters. Args: path, exclude_paths, limit, include_public_api, include_tests", dead_code_schema),
             Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
             Tool::new("test_coverage_map",     "Static heuristic test coverage bounds (not runtime coverage)", empty.clone()),
             Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path), search_symbols(symbol_name), lookup_symbols(symbols:[]), list_symbols(path), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),

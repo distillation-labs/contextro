@@ -306,14 +306,55 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
 }
 
 /// Dead code analysis: find symbols with zero callers that aren't entry points.
-pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
+pub fn handle_dead_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let nodes = graph.find_nodes_by_name("", false);
     let mut dead: Vec<Value> = Vec::new();
     let mut file_cache: HashMap<String, Option<String>> = HashMap::new();
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+    let include_public_api = args
+        .get("include_public_api")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let include_tests = args
+        .get("include_tests")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let path_filter = match args.get("path").and_then(|v| v.as_str()) {
+        Some(path) if !path.is_empty() => {
+            let abs_path = match resolve_existing_path(path, codebase) {
+                Ok(path) => path,
+                Err(error) => return error,
+            };
+            Some((abs_path.clone(), abs_path.is_dir()))
+        }
+        _ => None,
+    };
+    let excluded_paths = match parse_path_filters(args.get("exclude_paths"), codebase) {
+        Ok(paths) => paths,
+        Err(error) => return error,
+    };
+    let mut skipped_public_api = 0usize;
+    let mut skipped_tests = 0usize;
+    let mut skipped_excluded = 0usize;
 
     for node in &nodes {
         // Skip classes and variables — focus on functions/methods
         if node.node_type != NodeType::Function {
+            continue;
+        }
+        if let Some((target_path, is_dir)) = &path_filter {
+            if !path_matches(&node.location.file_path, target_path, *is_dir) {
+                continue;
+            }
+        }
+        if excluded_paths.iter().any(|(target_path, is_dir)| {
+            path_matches(&node.location.file_path, target_path, *is_dir)
+        }) {
+            skipped_excluded += 1;
+            continue;
+        }
+        if !include_tests && is_test_file(&node.location.file_path) {
+            skipped_tests += 1;
             continue;
         }
         let (in_degree, _) = graph.get_node_degree(&node.id);
@@ -325,6 +366,10 @@ pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
                 || name_lower == "setup"
                 || name_lower == "teardown";
             let is_noise = is_generic_symbol_name(&node.name);
+            if !include_public_api && is_probable_public_api(node) {
+                skipped_public_api += 1;
+                continue;
+            }
             if !is_entry && !is_noise && !is_pytest_fixture(node, &mut file_cache) {
                 dead.push(json!({
                     "name": node.name,
@@ -336,9 +381,33 @@ pub fn handle_dead_code(graph: &CodeGraph, codebase: Option<&str>) -> Value {
         }
     }
     dead.sort_by(|a, b| a["file"].as_str().cmp(&b["file"].as_str()));
-    dead.truncate(50);
+    dead.truncate(limit);
 
-    json!({"dead_symbols": dead, "total": dead.len(), "note": "Symbols with zero callers that aren't entry points"})
+    let mut result = json!({
+        "dead_symbols": dead,
+        "total": dead.len(),
+        "limit": limit,
+        "note": "Static heuristic: zero parsed callers after filtering entry points, test files, and public API surface by default",
+    });
+    if skipped_public_api > 0 {
+        result["skipped_public_api"] = json!(skipped_public_api);
+    }
+    if skipped_tests > 0 {
+        result["skipped_tests"] = json!(skipped_tests);
+    }
+    if skipped_excluded > 0 {
+        result["skipped_excluded"] = json!(skipped_excluded);
+    }
+    if let Some((target_path, _)) = path_filter {
+        result["path"] = json!(strip_base(&target_path.to_string_lossy(), codebase));
+    }
+    if !excluded_paths.is_empty() {
+        result["excluded_paths"] = json!(excluded_paths
+            .iter()
+            .map(|(path, _)| strip_base(&path.to_string_lossy(), codebase))
+            .collect::<Vec<_>>());
+    }
+    result
 }
 
 /// Circular dependency detection at the file/module import level.
@@ -643,6 +712,50 @@ fn has_probable_test_signal(
     strong_overlap >= 1 || overlap.iter().filter(|token| token.len() >= 4).count() >= 2
 }
 
+fn is_probable_public_api(node: &contextro_core::UniversalNode) -> bool {
+    if node.name.starts_with('_') {
+        return false;
+    }
+    if node.parent.is_some() {
+        return true;
+    }
+    Path::new(&node.location.file_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        == Some("__init__.py")
+}
+
+fn parse_path_filters(
+    value: Option<&Value>,
+    codebase: Option<&str>,
+) -> Result<Vec<(PathBuf, bool)>, Value> {
+    let raw_paths: Vec<String> = match value {
+        Some(Value::Array(values)) => values
+            .iter()
+            .filter_map(|value| value.as_str().map(str::trim))
+            .filter(|value| !value.is_empty())
+            .map(String::from)
+            .collect(),
+        Some(Value::String(value)) => value
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    raw_paths
+        .into_iter()
+        .map(|path| {
+            resolve_existing_path(&path, codebase).map(|resolved| {
+                let is_dir = resolved.is_dir();
+                (resolved, is_dir)
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn is_test_file(fp: &str) -> bool {
     let basename = Path::new(fp)
         .file_name()
@@ -868,8 +981,105 @@ mod tests {
             ..Default::default()
         });
 
-        let result = handle_dead_code(&graph, Some(dir.to_string_lossy().as_ref()));
+        let result = handle_dead_code(&json!({}), &graph, Some(dir.to_string_lossy().as_ref()));
         assert_eq!(result["total"], 0);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_dead_code_skips_public_methods_unless_requested() {
+        let dir = temp_dir("public-api");
+        let file = dir.join("actor.py");
+        std::fs::write(
+            &file,
+            "class BrowserSession:\n    def click(self):\n        pass\n",
+        )
+        .unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "click".into(),
+            name: "click".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 2,
+                end_line: 3,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            parent: Some("BrowserSession".into()),
+            ..Default::default()
+        });
+
+        let default_result =
+            handle_dead_code(&json!({}), &graph, Some(dir.to_string_lossy().as_ref()));
+        let include_public_api = handle_dead_code(
+            &json!({"include_public_api": true}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(default_result["total"], 0);
+        assert_eq!(default_result["skipped_public_api"], 1);
+        assert_eq!(include_public_api["total"], 1);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_dead_code_supports_path_and_exclude_filters() {
+        let dir = temp_dir("filters");
+        let src = dir.join("src");
+        let vendor = dir.join("vendor");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&vendor).unwrap();
+        let src_file = src.join("app.py");
+        let vendor_file = vendor.join("shim.py");
+        std::fs::write(&src_file, "def alpha():\n    pass\n").unwrap();
+        std::fs::write(&vendor_file, "def beta():\n    pass\n").unwrap();
+
+        let graph = CodeGraph::new();
+        for (id, name, file_path) in [
+            ("alpha", "alpha", src_file.to_string_lossy().to_string()),
+            ("beta", "beta", vendor_file.to_string_lossy().to_string()),
+        ] {
+            graph.add_node(UniversalNode {
+                id: id.into(),
+                name: name.into(),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path,
+                    start_line: 1,
+                    end_line: 2,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "python".into(),
+                },
+                language: "python".into(),
+                ..Default::default()
+            });
+        }
+
+        let scoped = handle_dead_code(
+            &json!({"path": src.to_string_lossy(), "limit": 10}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+        let excluded = handle_dead_code(
+            &json!({"exclude_paths": [vendor.to_string_lossy().to_string()]}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(scoped["total"], 1);
+        assert_eq!(scoped["dead_symbols"][0]["name"], "alpha");
+        assert_eq!(excluded["total"], 1);
+        assert_eq!(excluded["dead_symbols"][0]["name"], "alpha");
+        assert_eq!(excluded["skipped_excluded"], 1);
 
         let _ = std::fs::remove_dir_all(dir);
     }

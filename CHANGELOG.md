@@ -16,6 +16,18 @@ All notable changes to this project are tracked here.
 - **Typo suggestions may return unrelated symbols** — edit distance matching within 2 can surface many `fetch*` functions for a typo like `fetchGitHubIsue`. Weighted scoring by symbol relevance is planned.
 - **Tool consolidation deferred** — 37 tools remain (OpenAI recommends <20). Consolidation to ~15 tools via operation enums is planned as a breaking change in a future major version.
 
+## [1.6.5] - 2026-05-13
+
+### Fixed
+
+- **`knowledge` now survives process restarts and keeps repo scopes separate** — manual `knowledge add` docs and auto-indexed project docs are persisted under `CTX_STORAGE_DIR`, reloaded on startup, and kept under the active indexed repo scope so restart-sensitive searches work without cross-repo collisions.
+- **Auto-indexed docs are visible and searchable after restart** — `knowledge list`, `knowledge show`, and `knowledge search` no longer drop README / AGENTS-style docs between sessions, so project guidance remains available like a real developer expects.
+- **`dead_code` is much less noisy by default** — public API methods and test files are filtered unless explicitly requested, and the tool now accepts `path`, `exclude_paths`, `limit`, `include_public_api`, and `include_tests` for tighter real-world audits.
+- **`impact` now exposes the expected top-level `total` field** — agents no longer need to manually count the `impacted` array, while `total_impacted` remains for compatibility.
+- **Short-query `commit_search` ranking is more informative** — prefix/exact subtoken matches now outrank looser suffix-only matches on small result sets, reducing flat tied scores for queries like `fix bug`.
+- **Live docs stayed in sync with the shipped surface** — `AGENTS.md` and package metadata now reflect the 37-tool MCP surface instead of stale 35-tool wording.
+- **The eval5 release candidate passed a broad live audit before release** — a fresh RC completed a 129-check end-to-end audit across the 37-tool surface, restart-sensitive flows, and targeted external-repo regressions, plus a separate clean restart repro proving `knowledge` persistence.
+
 ## [1.6.4] - 2026-05-13
 
 ### Fixed

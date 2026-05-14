@@ -1,7 +1,7 @@
 # Contextro Agent Guidelines
 
 ## Architecture
-Single compiled Rust binary. 35 MCP tools, <50MB RAM at idle.
+Single compiled Rust binary. 37 MCP tools, <50MB RAM at idle.
 
 ## Stack
 - **rmcp**: Official Rust MCP SDK (stdio + HTTP transports)
@@ -24,7 +24,7 @@ crates/
 ├── contextro-engines/    # BM25, graph, fusion, cache, sandbox
 ├── contextro-memory/     # SQLite memory store, compaction archive
 ├── contextro-git/        # Commit indexer, branch watcher
-├── contextro-tools/      # All 35 tool implementations
+├── contextro-tools/      # All 37 tool implementations
 └── contextro-server/     # MCP server binary (rmcp + axum)
 ```
 

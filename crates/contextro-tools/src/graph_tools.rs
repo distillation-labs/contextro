@@ -208,6 +208,7 @@ pub fn handle_impact(args: &Value, graph: &CodeGraph, codebase: Option<&str>) ->
         "max_depth": max_depth,
         "default_depth": DEFAULT_IMPACT_DEPTH,
         "impacted": impacted,
+        "total": impacted.len(),
         "total_impacted": impacted.len(),
     });
 
@@ -351,7 +352,9 @@ mod tests {
             Some("/tmp/repo"),
         );
 
+        assert_eq!(depth_one["total"], 1);
         assert_eq!(depth_one["total_impacted"], 1);
+        assert_eq!(depth_three["total"], 2);
         assert_eq!(depth_three["total_impacted"], 2);
 
         let shallow = depth_one["impacted"]
@@ -404,8 +407,10 @@ mod tests {
         );
 
         assert_eq!(default_result["default_depth"], 5);
+        assert_eq!(default_result["total"], 0);
         assert!(default_result.get("depth_hint").is_none());
         assert_eq!(explicit_result["default_depth"], 5);
+        assert_eq!(explicit_result["total"], 0);
         assert!(explicit_result["depth_hint"]
             .as_str()
             .unwrap_or("")

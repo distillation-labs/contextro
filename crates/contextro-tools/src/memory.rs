@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
+use contextro_config::get_settings;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use contextro_core::models::{Memory, MemoryTtl, MemoryType};
@@ -131,16 +133,24 @@ pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct KnowledgeChunk {
     content: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct KnowledgeDocument {
     chunks: Vec<KnowledgeChunk>,
     metadata_text: String,
     source_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct PersistedKnowledgeState {
+    #[serde(default = "default_knowledge_scope")]
+    active_scope: String,
+    #[serde(default)]
+    scopes: HashMap<String, HashMap<String, KnowledgeDocument>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -153,14 +163,32 @@ pub struct KnowledgeDocSummary {
 
 /// Knowledge base: lightweight in-memory doc store with metadata-aware search.
 pub struct KnowledgeStore {
-    docs: RwLock<HashMap<String, KnowledgeDocument>>,
+    state: RwLock<PersistedKnowledgeState>,
+    file_path: PathBuf,
 }
 
 impl KnowledgeStore {
     pub fn new() -> Self {
+        let storage_dir = get_settings().read().storage_dir.clone();
+        Self::with_path(PathBuf::from(storage_dir).join("knowledge-store.json"))
+    }
+
+    pub fn with_path<P: Into<PathBuf>>(file_path: P) -> Self {
+        let file_path = file_path.into();
         Self {
-            docs: RwLock::new(HashMap::new()),
+            state: RwLock::new(load_knowledge_state(&file_path)),
+            file_path,
         }
+    }
+
+    pub fn set_active_scope(&self, scope: Option<&str>) {
+        let scope = normalize_knowledge_scope(scope);
+        let mut state = self.state.write();
+        if state.active_scope == scope {
+            return;
+        }
+        state.active_scope = scope;
+        self.save_locked(&state);
     }
 
     /// Index content under `name`. Returns the number of chunks stored.
@@ -180,7 +208,9 @@ impl KnowledgeStore {
                 .collect()
         };
         let count = chunks.len();
-        self.docs.write().insert(
+        let mut state = self.state.write();
+        let docs = active_docs_mut(&mut state);
+        docs.insert(
             name.to_string(),
             KnowledgeDocument {
                 chunks,
@@ -188,6 +218,7 @@ impl KnowledgeStore {
                 source_path: source_path.map(|path| path.to_string_lossy().to_string()),
             },
         );
+        self.save_locked(&state);
         count
     }
 
@@ -199,10 +230,14 @@ impl KnowledgeStore {
             .filter(|w| w.len() >= 3)
             .collect();
 
-        let docs = self.docs.read();
+        let state = self.state.read();
         let mut results: Vec<(String, String, usize)> = Vec::new();
 
-        for (name, doc) in docs.iter() {
+        let Some(docs) = active_docs(&state) else {
+            return Vec::new();
+        };
+
+        for (name, doc) in docs {
             let metadata_lower = doc.metadata_text.to_lowercase();
             for chunk in &doc.chunks {
                 let chunk_lower = chunk.content.to_lowercase();
@@ -244,9 +279,12 @@ impl KnowledgeStore {
     }
 
     pub fn show(&self) -> Vec<KnowledgeDocSummary> {
-        let mut summaries: Vec<KnowledgeDocSummary> = self
-            .docs
-            .read()
+        let state = self.state.read();
+        let Some(docs) = active_docs(&state) else {
+            return Vec::new();
+        };
+
+        let mut summaries: Vec<KnowledgeDocSummary> = docs
             .iter()
             .map(|(name, doc)| KnowledgeDocSummary {
                 name: name.clone(),
@@ -263,7 +301,33 @@ impl KnowledgeStore {
     }
 
     pub fn remove(&self, name: &str) -> bool {
-        self.docs.write().remove(name).is_some()
+        let mut state = self.state.write();
+        let scope = state.active_scope.clone();
+        let mut removed = false;
+        let mut scope_empty = false;
+        if let Some(docs) = state.scopes.get_mut(&scope) {
+            removed = docs.remove(name).is_some();
+            scope_empty = docs.is_empty();
+        }
+        if removed {
+            if scope_empty {
+                state.scopes.remove(&scope);
+            }
+            self.save_locked(&state);
+        }
+        removed
+    }
+
+    fn save_locked(&self, state: &PersistedKnowledgeState) {
+        if let Some(parent) = self.file_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let tmp_path = self.file_path.with_extension("json.tmp");
+        if let Ok(bytes) = serde_json::to_vec_pretty(state) {
+            if std::fs::write(&tmp_path, bytes).is_ok() {
+                let _ = std::fs::rename(&tmp_path, &self.file_path);
+            }
+        }
     }
 }
 
@@ -271,6 +335,38 @@ impl Default for KnowledgeStore {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn default_knowledge_scope() -> String {
+    "__global__".to_string()
+}
+
+fn normalize_knowledge_scope(scope: Option<&str>) -> String {
+    let scope = scope.unwrap_or("").trim();
+    if scope.is_empty() {
+        return default_knowledge_scope();
+    }
+    std::fs::canonicalize(scope)
+        .unwrap_or_else(|_| PathBuf::from(scope))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn active_docs_mut(state: &mut PersistedKnowledgeState) -> &mut HashMap<String, KnowledgeDocument> {
+    let scope = state.active_scope.clone();
+    state.scopes.entry(scope).or_default()
+}
+
+fn active_docs(state: &PersistedKnowledgeState) -> Option<&HashMap<String, KnowledgeDocument>> {
+    state.scopes.get(&state.active_scope)
+}
+
+fn load_knowledge_state(path: &Path) -> PersistedKnowledgeState {
+    let Ok(bytes) = std::fs::read(path) else {
+        return PersistedKnowledgeState::default();
+    };
+
+    serde_json::from_slice::<PersistedKnowledgeState>(&bytes).unwrap_or_default()
 }
 
 fn read_knowledge_source(path: &Path) -> String {
@@ -503,15 +599,26 @@ mod tests {
         std::env::temp_dir().join(format!("contextro-knowledge-{unique}-{name}"))
     }
 
+    fn temp_file(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("contextro-knowledge-{unique}-{name}.json"))
+    }
+
     #[test]
     fn test_knowledge_list_alias_returns_indexed_bases() {
-        let knowledge = KnowledgeStore::new();
+        let store_path = temp_file("list");
+        let knowledge = KnowledgeStore::with_path(&store_path);
         assert_eq!(knowledge.add("docs", "chunk one\nchunk two", None), 1);
 
         let result = handle_knowledge(&json!({"command":"list"}), &knowledge);
         assert_eq!(result["total"], 1);
         assert_eq!(result["knowledge_bases"][0]["name"], "docs");
         assert_eq!(result["knowledge_bases"][0]["chunks"], 1);
+
+        let _ = std::fs::remove_file(store_path);
     }
 
     #[test]
@@ -525,7 +632,9 @@ mod tests {
         )
         .unwrap();
 
-        let knowledge = KnowledgeStore::new();
+        let store_path = temp_file("nested");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        knowledge.set_active_scope(Some(root.to_string_lossy().as_ref()));
         let add_result = handle_knowledge(
             &json!({"command":"add","name":"nested-docs","value": root.to_string_lossy()}),
             &knowledge,
@@ -540,6 +649,7 @@ mod tests {
         assert_eq!(search_result["results"][0]["source"], "nested-docs");
 
         let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
     }
 
     #[test]
@@ -553,7 +663,9 @@ mod tests {
         )
         .unwrap();
 
-        let knowledge = KnowledgeStore::new();
+        let store_path = temp_file("roadmap");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        knowledge.set_active_scope(Some(root.to_string_lossy().as_ref()));
         let add_result = handle_knowledge(
             &json!({"command":"add","name":"ROADMAP.md","value": roadmap.to_string_lossy()}),
             &knowledge,
@@ -568,6 +680,7 @@ mod tests {
         assert_eq!(search_result["results"][0]["source"], "ROADMAP.md");
 
         let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
     }
 
     #[test]
@@ -577,7 +690,9 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(&note, "Guide preview text for knowledge show details.").unwrap();
 
-        let knowledge = KnowledgeStore::new();
+        let store_path = temp_file("show");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        knowledge.set_active_scope(Some(root.to_string_lossy().as_ref()));
         handle_knowledge(
             &json!({"command":"add","name":"guide","value": note.to_string_lossy()}),
             &knowledge,
@@ -601,5 +716,84 @@ mod tests {
             .is_none());
 
         let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_persists_active_scope_across_reloads() {
+        let store_path = temp_file("persist");
+        let root = temp_dir("persist-root");
+        let roadmap = root.join("ROADMAP.md");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            &roadmap,
+            "Roadmap priorities: developer trust and milestone discipline.",
+        )
+        .unwrap();
+
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        knowledge.set_active_scope(Some(root.to_string_lossy().as_ref()));
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"ROADMAP.md","value": roadmap.to_string_lossy()}),
+            &knowledge,
+        );
+        assert_eq!(add_result["status"], "indexed");
+        drop(knowledge);
+
+        let reloaded = KnowledgeStore::with_path(&store_path);
+        let list_result = handle_knowledge(&json!({"command":"list"}), &reloaded);
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"roadmap priorities","limit":5}),
+            &reloaded,
+        );
+
+        assert_eq!(list_result["total"], 1);
+        assert_eq!(list_result["knowledge_bases"][0]["name"], "ROADMAP.md");
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "ROADMAP.md");
+
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_scopes_isolate_same_named_docs() {
+        let store_path = temp_file("scopes");
+        let root_a = temp_dir("scope-a");
+        let root_b = temp_dir("scope-b");
+        std::fs::create_dir_all(&root_a).unwrap();
+        std::fs::create_dir_all(&root_b).unwrap();
+
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        knowledge.set_active_scope(Some(root_a.to_string_lossy().as_ref()));
+        assert_eq!(
+            knowledge.add("README.md", "alpha release checklist", None),
+            1
+        );
+
+        knowledge.set_active_scope(Some(root_b.to_string_lossy().as_ref()));
+        assert_eq!(knowledge.add("README.md", "beta browser workflow", None), 1);
+
+        let scope_b = handle_knowledge(
+            &json!({"command":"search","query":"browser workflow","limit":5}),
+            &knowledge,
+        );
+        assert_eq!(scope_b["total"], 1);
+
+        knowledge.set_active_scope(Some(root_a.to_string_lossy().as_ref()));
+        let scope_a = handle_knowledge(
+            &json!({"command":"search","query":"release checklist","limit":5}),
+            &knowledge,
+        );
+        let scope_a_miss = handle_knowledge(
+            &json!({"command":"search","query":"browser workflow","limit":5}),
+            &knowledge,
+        );
+        assert_eq!(scope_a["total"], 1);
+        assert_eq!(scope_a_miss["total"], 0);
+
+        let _ = std::fs::remove_dir_all(root_a);
+        let _ = std::fs::remove_dir_all(root_b);
+        let _ = std::fs::remove_file(store_path);
     }
 }

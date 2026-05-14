@@ -289,13 +289,18 @@ fn token_overlap_score(
     }
 
     let unique_doc_tokens: HashSet<&str> = doc_tokens.iter().map(|token| token.as_str()).collect();
-    let matched_tokens = query_tokens
+    let token_qualities: Vec<f64> = query_tokens
         .iter()
-        .filter(|query_token| {
-            doc_tokens.iter().any(|doc_token| {
-                doc_token.contains(query_token.as_str()) || query_token.contains(doc_token.as_str())
-            })
+        .map(|query_token| {
+            doc_tokens
+                .iter()
+                .map(|doc_token| token_match_quality(query_token, doc_token))
+                .fold(0.0, f64::max)
         })
+        .collect();
+    let matched_tokens = token_qualities
+        .iter()
+        .filter(|quality| **quality > 0.0)
         .count();
     if matched_tokens == 0 {
         return 0.0;
@@ -313,6 +318,7 @@ fn token_overlap_score(
         .max(1);
     let coverage = matched_tokens as f64 / query_tokens.len() as f64;
     let exact_ratio = exact_matches as f64 / query_tokens.len() as f64;
+    let quality_ratio = token_qualities.iter().sum::<f64>() / query_tokens.len() as f64;
     let density = matched_tokens as f64 / doc_term_count as f64;
     let phrase_bonus = if document_lower.contains(&query.to_lowercase()) {
         0.1
@@ -325,8 +331,29 @@ fn token_overlap_score(
         0.0
     };
 
-    (coverage * 0.4 + exact_ratio * 0.15 + density * 0.25 + phrase_bonus + starts_with_bonus)
+    (coverage * 0.3
+        + exact_ratio * 0.15
+        + quality_ratio * 0.2
+        + density * 0.2
+        + phrase_bonus
+        + starts_with_bonus)
         .min(1.0)
+}
+
+fn token_match_quality(query_token: &str, doc_token: &str) -> f64 {
+    if doc_token == query_token {
+        1.0
+    } else if doc_token.starts_with(query_token) {
+        0.8
+    } else if doc_token.ends_with(query_token) {
+        0.65
+    } else if doc_token.contains(query_token) {
+        0.55
+    } else if query_token.contains(doc_token) {
+        0.4
+    } else {
+        0.0
+    }
 }
 
 #[cfg(test)]
@@ -408,6 +435,27 @@ mod tests {
         assert!(
             partial > diluted,
             "denser partial match should outrank diluted overlap"
+        );
+    }
+
+    #[test]
+    fn test_token_overlap_score_prefers_prefix_subtoken_matches() {
+        let bug_prefix = token_overlap_score(
+            "fix bug",
+            &tokenize("fix bug"),
+            "add issue template bug_report",
+            &tokenize("add issue template bug_report"),
+        );
+        let bug_suffix = token_overlap_score(
+            "fix bug",
+            &tokenize("fix bug"),
+            "add issue template element_detection_bug",
+            &tokenize("add issue template element_detection_bug"),
+        );
+
+        assert!(
+            bug_prefix > bug_suffix,
+            "prefix matches should outrank looser suffix-only matches for short queries"
         );
     }
 
