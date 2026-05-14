@@ -172,7 +172,8 @@ pub fn handle_overview(
     })
 }
 
-pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
+pub fn handle_architecture(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
     let nodes = graph.find_nodes_by_name("", false);
     let mut scored: Vec<(String, String, usize)> = nodes
         .iter()
@@ -187,18 +188,23 @@ pub fn handle_architecture(graph: &CodeGraph, codebase: Option<&str>) -> Value {
 
     let hubs: Vec<Value> = scored
         .iter()
-        .take(10)
+        .take(limit)
         .map(|(name, file, degree)| {
             let fp = strip_base(file, codebase);
             json!({"name": name, "file": fp, "degree": degree})
         })
         .collect();
 
-    json!({"hub_symbols": hubs, "total_nodes": graph.node_count(), "total_edges": graph.relationship_count()})
+    json!({"hub_symbols": hubs, "total_nodes": graph.node_count(), "total_edges": graph.relationship_count(), "limit": limit})
 }
 
 pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let min_connections = args
+        .get("min_connections")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(6) as usize;
+    let top_n = args.get("top_n").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
     let all_nodes = graph.find_nodes_by_name("", false);
 
     // Filter nodes to the requested path prefix if specified
@@ -227,12 +233,12 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
             continue;
         }
         let (in_d, out_d) = graph.get_node_degree(&node.id);
-        if in_d + out_d > 5 {
+        if in_d + out_d >= min_connections {
             complex_fns.push(json!({"name": node.name, "file": strip_base(&node.location.file_path, codebase), "connections": in_d + out_d}));
         }
     }
     complex_fns.sort_by_key(|v| std::cmp::Reverse(v["connections"].as_u64().unwrap_or(0)));
-    complex_fns.truncate(10);
+    complex_fns.truncate(top_n);
 
     let mut large_files: Vec<Value> = file_sizes
         .iter()
@@ -241,7 +247,14 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         .collect();
     large_files.sort_by_key(|v| std::cmp::Reverse(v["symbols"].as_u64().unwrap_or(0)));
 
-    json!({"path": if path_filter.is_empty() { Value::Null } else { json!(path_filter) }, "high_connectivity_symbols": complex_fns, "large_files": large_files, "total_symbols": nodes.len()})
+    json!({
+        "path": if path_filter.is_empty() { Value::Null } else { json!(path_filter) },
+        "high_connectivity_symbols": complex_fns,
+        "large_files": large_files,
+        "total_symbols": nodes.len(),
+        "min_connections": min_connections,
+        "top_n": top_n
+    })
 }
 
 /// Low-token context slice for a single file.
@@ -1194,7 +1207,7 @@ mod tests {
             strength: 1.0,
         });
 
-        let result = handle_architecture(&graph, None);
+        let result = handle_architecture(&json!({}), &graph, None);
         let names = result["hub_symbols"]
             .as_array()
             .expect("hub symbols")
@@ -1205,6 +1218,89 @@ mod tests {
         assert!(names.contains(&"BrowserSession"));
         assert!(!names.contains(&"append"));
         assert!(!names.contains(&"__init__"));
+    }
+
+    #[test]
+    fn test_architecture_respects_limit() {
+        let graph = CodeGraph::new();
+        for idx in 0..3 {
+            graph.add_node(UniversalNode {
+                id: format!("node-{idx}"),
+                name: format!("Symbol{idx}"),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: "/tmp/repo/src/lib.rs".into(),
+                    start_line: idx + 1,
+                    end_line: idx + 1,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "rust".into(),
+                },
+                language: "rust".into(),
+                ..Default::default()
+            });
+        }
+
+        let result = handle_architecture(&json!({"limit":2}), &graph, None);
+        assert_eq!(result["limit"], 2);
+        assert_eq!(result["hub_symbols"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_analyze_respects_min_connections_and_top_n() {
+        let graph = CodeGraph::new();
+        let file = "/tmp/repo/src/lib.rs";
+        graph.add_node(UniversalNode {
+            id: "dispatch".into(),
+            name: "dispatch".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.into(),
+                start_line: 1,
+                end_line: 1,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            ..Default::default()
+        });
+        for idx in 0..3 {
+            graph.add_node(UniversalNode {
+                id: format!("caller-{idx}"),
+                name: format!("caller_{idx}"),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: file.into(),
+                    start_line: (idx + 2) as u32,
+                    end_line: (idx + 2) as u32,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "rust".into(),
+                },
+                language: "rust".into(),
+                ..Default::default()
+            });
+            graph.add_relationship(UniversalRelationship {
+                id: format!("rel-{idx}"),
+                source_id: format!("caller-{idx}"),
+                target_id: "dispatch".into(),
+                relationship_type: RelationshipType::Calls,
+                strength: 1.0,
+            });
+        }
+
+        let result = handle_analyze(&json!({"min_connections":3,"top_n":1}), &graph, None);
+        assert_eq!(result["min_connections"], 3);
+        assert_eq!(result["top_n"], 1);
+        assert_eq!(
+            result["high_connectivity_symbols"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(result["high_connectivity_symbols"][0]["name"], "dispatch");
     }
 
     #[test]
