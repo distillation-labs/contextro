@@ -17,6 +17,7 @@ fn get_symbol_name(args: &Value) -> &str {
 
 pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let name = get_symbol_name(args);
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
     if name.is_empty() {
         return json!({"error": "Missing required parameter: symbol_name"});
     }
@@ -34,10 +35,17 @@ pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&st
                 "{} ({}:{})",
                 caller.name, fp, caller.location.start_line
             ));
+            if callers.len() >= limit {
+                break;
+            }
+        }
+        if callers.len() >= limit {
+            break;
         }
     }
 
-    let mut result = json!({"symbol": name, "callers": callers, "total": callers.len()});
+    let mut result =
+        json!({"symbol": name, "callers": callers, "total": callers.len(), "limit": limit});
     if callers.is_empty() {
         let is_type = matches.iter().any(|n| {
             matches!(
@@ -59,6 +67,7 @@ pub fn handle_find_callers(args: &Value, graph: &CodeGraph, codebase: Option<&st
 
 pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let name = get_symbol_name(args);
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
     if name.is_empty() {
         return json!({"error": "Missing required parameter: symbol_name"});
     }
@@ -76,10 +85,17 @@ pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&st
                 "{} ({}:{})",
                 callee.name, fp, callee.location.start_line
             ));
+            if callees.len() >= limit {
+                break;
+            }
+        }
+        if callees.len() >= limit {
+            break;
         }
     }
 
-    let mut result = json!({"symbol": name, "callees": callees, "total": callees.len()});
+    let mut result =
+        json!({"symbol": name, "callees": callees, "total": callees.len(), "limit": limit});
     if callees.is_empty() {
         let is_type = matches.iter().any(|n| {
             matches!(
@@ -299,6 +315,24 @@ mod tests {
     };
     use contextro_core::NodeType;
 
+    fn sample_node(id: &str, name: &str, file: &str, line: u32) -> UniversalNode {
+        UniversalNode {
+            id: id.into(),
+            name: name.into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.into(),
+                start_line: line,
+                end_line: line,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn test_impact_results_are_monotonic_with_depth() {
         let graph = CodeGraph::new();
@@ -415,5 +449,69 @@ mod tests {
             .as_str()
             .unwrap_or("")
             .contains("narrower impact set"));
+    }
+
+    #[test]
+    fn test_find_callers_respects_limit() {
+        let graph = CodeGraph::new();
+        let file = "/tmp/repo/src/lib.rs";
+        graph.add_node(sample_node("target", "dispatch", file, 10));
+        graph.add_node(sample_node("caller-1", "call_one", file, 20));
+        graph.add_node(sample_node("caller-2", "call_two", file, 30));
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-1".into(),
+            source_id: "caller-1".into(),
+            target_id: "target".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-2".into(),
+            source_id: "caller-2".into(),
+            target_id: "target".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+
+        let result = handle_find_callers(
+            &json!({"symbol_name":"dispatch","limit":1}),
+            &graph,
+            Some("/tmp/repo"),
+        );
+
+        assert_eq!(result["limit"], 1);
+        assert_eq!(result["total"], 1);
+    }
+
+    #[test]
+    fn test_find_callees_respects_limit() {
+        let graph = CodeGraph::new();
+        let file = "/tmp/repo/src/lib.rs";
+        graph.add_node(sample_node("target", "dispatch", file, 10));
+        graph.add_node(sample_node("callee-1", "handle_one", file, 20));
+        graph.add_node(sample_node("callee-2", "handle_two", file, 30));
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-1".into(),
+            source_id: "target".into(),
+            target_id: "callee-1".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+        graph.add_relationship(UniversalRelationship {
+            id: "rel-2".into(),
+            source_id: "target".into(),
+            target_id: "callee-2".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+
+        let result = handle_find_callees(
+            &json!({"symbol_name":"dispatch","limit":1}),
+            &graph,
+            Some("/tmp/repo"),
+        );
+
+        assert_eq!(result["limit"], 1);
+        assert_eq!(result["total"], 1);
     }
 }
