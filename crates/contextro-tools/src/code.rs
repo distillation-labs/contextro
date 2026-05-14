@@ -112,7 +112,7 @@ fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
         .and_then(|v| v.as_str())
         .unwrap_or("");
     if name.is_empty() {
-        return json!({"error": "Missing required parameter: symbol_name"});
+        return json!({"error": "Missing required parameter: symbol_name", "hint": "Use symbol_name (preferred) or query for the search_symbols operation."});
     }
 
     let matches = graph.find_nodes_by_name(name, false);
@@ -142,7 +142,7 @@ fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
         }
     };
     if names.is_empty() {
-        return json!({"error": "Missing required parameter: symbols"});
+        return json!({"error": "Parameter 'symbols' must contain at least one symbol name."});
     }
 
     let include_source = args
@@ -231,6 +231,10 @@ fn pattern_search(args: &Value, codebase: Option<&str>) -> Value {
             }
         })
         .unwrap_or_else(|| base.to_string());
+    if !Path::new(&target).exists() {
+        let missing = file_path.or(search_path).unwrap_or(&target);
+        return json!({"error": format!("Path not found: {}", missing)});
+    }
 
     // If the pattern contains ast-grep metavariables ($NAME, $$$), convert them.
     // Otherwise, treat the pattern as a regex first; fall back to literal string
@@ -301,6 +305,10 @@ fn pattern_rewrite(args: &Value, codebase: Option<&str>) -> Value {
             }
         })
         .unwrap_or_else(|| base.to_string());
+    if !Path::new(&target).exists() {
+        let missing = file_path.or(search_path).unwrap_or(&target);
+        return json!({"error": format!("Path not found: {}", missing)});
+    }
 
     let regex_pattern = pattern_to_regex(pattern);
     let re = match regex_lite::Regex::new(&regex_pattern) {
@@ -406,7 +414,8 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
         .filter_map(|f| {
             let stem = Path::new(f).file_stem()?.to_string_lossy().to_string();
             let test_name = format!("test_{}", stem);
-            if graph.find_nodes_by_name(&test_name, false).is_empty() {
+            let matches = graph.find_nodes_by_name(&test_name, false);
+            if matches.is_empty() || matches.iter().all(|node| node.name != test_name) {
                 None
             } else {
                 Some(test_name)
@@ -737,11 +746,11 @@ fn path_matches(file_path: &str, target_path: &Path, target_is_dir: bool) -> boo
 /// $NAME -> captures a word, $$$ -> captures anything.
 fn pattern_to_regex(pattern: &str) -> String {
     let escaped = regex_lite::escape(pattern);
-    // Replace escaped $$$  with .+
-    let result = escaped.replace("\\$\\$\\$", ".+");
-    // Replace escaped $WORD with \\w+
+    let triple_re = regex_lite::Regex::new(r"\\\$\\\$\\\$[A-Z_]+").unwrap();
+    let result = triple_re.replace_all(&escaped, ".*").to_string();
+    let result = result.replace("\\$\\$\\$", ".*");
     let re = regex_lite::Regex::new(r"\\\$[A-Z_]+").unwrap();
-    re.replace_all(&result, r"\w+").to_string()
+    re.replace_all(&result, r"[^\s(),]+").to_string()
 }
 
 /// Collect files from a path, optionally filtered by language extension.
@@ -923,6 +932,97 @@ mod tests {
             "unexpected matches: {:?}",
             names
         );
+    }
+
+    #[test]
+    fn test_pattern_search_errors_on_missing_path() {
+        let result = pattern_search(
+            &json!({"pattern":"truncate_chars","path":"does/not/exist.rs"}),
+            None,
+        );
+
+        assert_eq!(result["error"], "Path not found: does/not/exist.rs");
+    }
+
+    #[test]
+    fn test_pattern_rewrite_errors_on_missing_path() {
+        let result = pattern_rewrite(
+            &json!({
+                "pattern":"truncate_chars",
+                "replacement":"truncate_text",
+                "path":"does/not/exist.rs",
+                "dry_run":true
+            }),
+            None,
+        );
+
+        assert_eq!(result["error"], "Path not found: does/not/exist.rs");
+    }
+
+    #[test]
+    fn test_pattern_search_supports_metavariables() {
+        let dir = temp_dir("pattern-search-metavars");
+        let file = dir.join("lib.rs");
+        std::fs::write(&file, "fn truncate_chars(text: &str, max_chars: usize) -> String {\n    text.to_string()\n}\n").unwrap();
+
+        let result = pattern_search(
+            &json!({
+                "pattern":"fn $NAME($$$ARGS)",
+                "language":"rust",
+                "path": file.to_string_lossy().to_string()
+            }),
+            None,
+        );
+
+        assert_eq!(result["total"], 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_lookup_symbols_rejects_empty_array_explicitly() {
+        let graph = CodeGraph::new();
+        let result = lookup_symbols(&json!({"symbols":[]}), &graph, None);
+
+        assert_eq!(
+            result["error"],
+            "Parameter 'symbols' must contain at least one symbol name."
+        );
+    }
+
+    #[test]
+    fn test_search_symbols_missing_input_mentions_query_alias() {
+        let graph = CodeGraph::new();
+        let result = search_symbols(&json!({}), &graph, None);
+
+        assert!(result["hint"].as_str().unwrap_or("").contains("query"));
+    }
+
+    #[test]
+    fn test_edit_plan_only_returns_exact_related_test_matches() {
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "truncate-chars".into(),
+            name: "truncate_chars".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "/tmp/contextro/crates/contextro-tools/src/code.rs".into(),
+                start_line: 14,
+                end_line: 21,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            ..Default::default()
+        });
+
+        let result = edit_plan(
+            &json!({"goal":"rename truncate_chars to truncate_text","symbol_name":"truncate_chars"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["related_tests"].as_array().unwrap().len(), 0);
     }
 
     #[test]
