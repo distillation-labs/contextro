@@ -93,9 +93,10 @@ pub fn handle_tags(store: &MemoryStore) -> Value {
 }
 
 pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
-    // Accept `memory_id` (current) or first element of `ids` array (v0.4.0 alias)
+    // Accept `id` from remember(), `memory_id` (current), or first element of `ids` (v0.4.0 alias)
     let id_owned: Option<String> = args
-        .get("memory_id")
+        .get("id")
+        .or_else(|| args.get("memory_id"))
         .and_then(|v| v.as_str())
         .map(String::from)
         .or_else(|| match args.get("ids") {
@@ -124,7 +125,7 @@ pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     let memory_type = args.get("memory_type").and_then(|v| v.as_str());
 
     if id.is_none() && tags.is_none() && memory_type.is_none() {
-        return json!({"error": "Provide memory_id, tags, or memory_type to forget"});
+        return json!({"error": "Provide id, memory_id, tags, or memory_type to forget"});
     }
 
     match store.forget(id, tags, memory_type) {
@@ -472,6 +473,16 @@ fn summarize_preview(text: &str, max_chars: usize) -> Option<String> {
     }
 }
 
+fn truncate_text(text: &str, max_chars: usize) -> String {
+    let mut chars = text.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
+
 pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
     // If `query` is provided without `command`, default to search (backward compat)
     let command = args
@@ -530,9 +541,11 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
                 return json!({"error": "Missing required parameter: query"});
             }
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
-            let results: Vec<Value> = knowledge.search(query, limit).iter().map(|(name, chunk)| {
-                json!({"source": name, "content": &chunk[..chunk.len().min(500)]})
-            }).collect();
+            let results: Vec<Value> = knowledge
+                .search(query, limit)
+                .iter()
+                .map(|(name, chunk)| json!({"source": name, "content": truncate_text(chunk, 500)}))
+                .collect();
             json!({"query": query, "results": results, "total": results.len()})
         }
         "remove" => {
@@ -589,6 +602,7 @@ fn parse_ttl_arg(s: &str) -> MemoryTtl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -605,6 +619,32 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("contextro-knowledge-{unique}-{name}.json"))
+    }
+
+    fn temp_db(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("contextro-memory-{unique}-{name}.db"))
+    }
+
+    #[test]
+    fn test_forget_accepts_id_alias_from_remember() {
+        let db_path = temp_db("forget-id");
+        let store = MemoryStore::new(db_path.to_string_lossy().as_ref()).unwrap();
+
+        let remember_result =
+            handle_remember(&json!({"content":"remember forget id alias"}), &store);
+        let id = remember_result["id"].as_str().unwrap().to_string();
+
+        let forget_result = handle_forget(&json!({"id": id}), &store);
+        assert_eq!(forget_result["deleted"], 1);
+
+        let recall_result = handle_recall(&json!({"query":"remember forget id alias"}), &store);
+        assert_eq!(recall_result["total"], 0);
+
+        let _ = fs::remove_file(db_path);
     }
 
     #[test]
@@ -714,6 +754,36 @@ mod tests {
         assert!(list_result["knowledge_bases"][0]
             .get("source_path")
             .is_none());
+
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_search_truncates_unicode_safely() {
+        let root = temp_dir("unicode");
+        let note = root.join("guide.md");
+        std::fs::create_dir_all(&root).unwrap();
+        let unicode_text = format!("{}match token", "─".repeat(600));
+        std::fs::write(&note, &unicode_text).unwrap();
+
+        let store_path = temp_file("unicode");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        knowledge.set_active_scope(Some(root.to_string_lossy().as_ref()));
+        handle_knowledge(
+            &json!({"command":"add","name":"guide","value": note.to_string_lossy()}),
+            &knowledge,
+        );
+
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"match token","limit":5}),
+            &knowledge,
+        );
+
+        assert_eq!(search_result["total"], 1);
+        let content = search_result["results"][0]["content"].as_str().unwrap();
+        assert!(content.ends_with("..."));
+        assert!(content.chars().count() <= 503);
 
         let _ = std::fs::remove_dir_all(root);
         let _ = std::fs::remove_file(store_path);
