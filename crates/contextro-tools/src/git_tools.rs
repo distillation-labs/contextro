@@ -158,17 +158,51 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
         Err(_) => return json!({"error": "Not a git repository"}),
     };
 
+    let query_tokens: Vec<String> = tokenize(query);
+    let initial_scan_limit = get_settings().read().commit_history_limit.max(500);
+    let fallback_scan_limit = initial_scan_limit.max(5000);
+
+    let mut scored_commits = score_commits(
+        &repo,
+        query,
+        &query_tokens,
+        author_filter,
+        initial_scan_limit,
+    );
+    if scored_commits.is_empty() && fallback_scan_limit > initial_scan_limit {
+        scored_commits = score_commits(
+            &repo,
+            query,
+            &query_tokens,
+            author_filter,
+            fallback_scan_limit,
+        );
+    }
+
+    scored_commits.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored_commits.truncate(limit);
+
+    let commits: Vec<Value> = scored_commits.into_iter().map(|(_, v)| v).collect();
+    json!({"query": query, "commits": commits, "total": commits.len()})
+}
+
+fn score_commits(
+    repo: &git2::Repository,
+    query: &str,
+    query_tokens: &[String],
+    author_filter: Option<&str>,
+    scan_limit: usize,
+) -> Vec<(f64, Value)> {
     let mut revwalk = match repo.revwalk() {
         Ok(r) => r,
-        Err(_) => return json!({"error": "Failed to walk commits"}),
+        Err(_) => return Vec::new(),
     };
-    revwalk.push_head().ok();
+    if revwalk.push_head().is_err() {
+        return Vec::new();
+    }
 
-    // Tokenize query for fuzzy matching
-    let query_tokens: Vec<String> = tokenize(query);
-
-    let mut scored_commits: Vec<(f64, Value)> = revwalk
-        .take(500)
+    revwalk
+        .take(scan_limit)
         .filter_map(|oid| {
             let oid = oid.ok()?;
             let commit = repo.find_commit(oid).ok()?;
@@ -176,16 +210,14 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
             let sig = commit.author();
             let author = sig.name().unwrap_or("").to_string();
 
-            // Author filter
             if let Some(af) = author_filter {
                 if !author.to_lowercase().contains(&af.to_lowercase()) {
                     return None;
                 }
             }
 
-            // Score by token overlap plus exact-match and density signals.
             let msg_tokens = tokenize(&msg);
-            let score = token_overlap_score(query, &query_tokens, &msg, &msg_tokens);
+            let score = token_overlap_score(query, query_tokens, &msg, &msg_tokens);
             if score > 0.0 {
                 Some((
                     score,
@@ -200,13 +232,7 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
                 None
             }
         })
-        .collect();
-
-    scored_commits.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    scored_commits.truncate(limit);
-
-    let commits: Vec<Value> = scored_commits.into_iter().map(|(_, v)| v).collect();
-    json!({"query": query, "commits": commits, "total": commits.len()})
+        .collect()
 }
 
 pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
@@ -563,6 +589,88 @@ mod tests {
         assert_eq!(commits[0]["message"], "Release v1.6.3");
         assert!(commits[0]["score"].as_f64().unwrap() > commits[1]["score"].as_f64().unwrap());
         assert!(commits[1]["score"].as_f64().unwrap() > commits[2]["score"].as_f64().unwrap());
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_handle_commit_search_falls_back_beyond_initial_scan_limit() {
+        let repo_dir = temp_file("commit-search-fallback-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+        let mut parent: Option<git2::Oid> = None;
+
+        for (idx, message) in [
+            "fix persistence regression in knowledge store",
+            "knowledge persistence retrospective",
+        ]
+        .iter()
+        .enumerate()
+        {
+            std::fs::write(repo_dir.join("tracked.txt"), format!("seed-{idx}\n")).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parents = parent
+                .map(|oid| vec![repo.find_commit(oid).unwrap()])
+                .unwrap_or_default();
+            let parent_refs = parents.iter().collect::<Vec<_>>();
+            let oid = repo
+                .commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    message,
+                    &tree,
+                    &parent_refs,
+                )
+                .unwrap();
+            parent = Some(oid);
+        }
+
+        for idx in 0..505 {
+            std::fs::write(repo_dir.join("tracked.txt"), format!("filler-{idx}\n")).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parents = parent
+                .map(|oid| vec![repo.find_commit(oid).unwrap()])
+                .unwrap_or_default();
+            let parent_refs = parents.iter().collect::<Vec<_>>();
+            let oid = repo
+                .commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    &format!("chore filler commit {idx}"),
+                    &tree,
+                    &parent_refs,
+                )
+                .unwrap();
+            parent = Some(oid);
+        }
+
+        let fix_result = handle_commit_search(
+            &json!({"query":"fix","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+        let knowledge_result = handle_commit_search(
+            &json!({"query":"knowledge","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(fix_result["total"], 1);
+        assert_eq!(
+            fix_result["commits"][0]["message"],
+            "fix persistence regression in knowledge store"
+        );
+        assert_eq!(knowledge_result["total"], 2);
 
         let _ = std::fs::remove_dir_all(repo_dir);
     }
