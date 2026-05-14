@@ -87,17 +87,20 @@ pub fn handle_recall(args: &Value, store: &MemoryStore) -> Value {
 
     match store.recall(query, limit, memory_type, tags, None) {
         Ok(memories) => {
-            let results: Vec<Value> = memories.iter().map(|m| {
-                json!({
-                    "id": m.id,
-                    "content": m.content,
-                    "type": m.memory_type.to_string(),
-                    "tags": m.tags,
-                    "created_at": m.created_at,
-                    "ttl": ttl_name(m.ttl),
-                    "expires_at": ttl_expires_at(&m.created_at, m.ttl),
+            let results: Vec<Value> = memories
+                .iter()
+                .map(|m| {
+                    json!({
+                        "id": m.id,
+                        "content": m.content,
+                        "type": m.memory_type.to_string(),
+                        "tags": m.tags,
+                        "created_at": m.created_at,
+                        "ttl": ttl_name(m.ttl),
+                        "expires_at": ttl_expires_at(&m.created_at, m.ttl),
+                    })
                 })
-            }).collect();
+                .collect();
             json!({
                 "query": if query.is_empty() { Value::Null } else { json!(query) },
                 "memories": results,
@@ -153,7 +156,9 @@ pub fn handle_forget(args: &Value, store: &MemoryStore) -> Value {
     }
 
     match store.forget(id, tags, memory_type) {
-        Ok(0) if id.is_some() => json!({"error": format!("Memory '{}' not found.", id.unwrap_or_default())}),
+        Ok(0) if id.is_some() => {
+            json!({"error": format!("Memory '{}' not found.", id.unwrap_or_default())})
+        }
         Ok(n) => json!({"deleted": n}),
         Err(e) => json!({"error": format!("Forget failed: {}", e)}),
     }
@@ -368,7 +373,11 @@ impl KnowledgeStore {
     pub fn clear(&self) -> usize {
         let mut state = self.state.write();
         let scope = state.active_scope.clone();
-        let removed = state.scopes.remove(&scope).map(|docs| docs.len()).unwrap_or(0);
+        let removed = state
+            .scopes
+            .remove(&scope)
+            .map(|docs| docs.len())
+            .unwrap_or(0);
         if removed > 0 {
             self.save_locked(&state);
         }
@@ -538,9 +547,9 @@ fn knowledge_terms(text: &str) -> Vec<String> {
 }
 
 fn knowledge_terms_match(doc_terms: &[String], query_term: &str) -> bool {
-    doc_terms.iter().any(|doc_term| {
-        doc_term == query_term || doc_term.contains(query_term)
-    })
+    doc_terms
+        .iter()
+        .any(|doc_term| doc_term == query_term || doc_term.contains(query_term))
 }
 
 fn summarize_preview(text: &str, max_chars: usize) -> Option<String> {
@@ -837,7 +846,10 @@ mod tests {
             &store,
         );
 
-        assert!(result["error"].as_str().unwrap().contains("Invalid memory_type"));
+        assert!(result["error"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid memory_type"));
         let _ = fs::remove_file(db_path);
     }
 
@@ -1103,7 +1115,10 @@ mod tests {
 
         let knowledge = KnowledgeStore::with_path(&store_path);
         knowledge.set_active_scope(Some(root_a.to_string_lossy().as_ref()));
-        assert_eq!(knowledge.add("README.md", "alpha release checklist", None), 1);
+        assert_eq!(
+            knowledge.add("README.md", "alpha release checklist", None),
+            1
+        );
 
         knowledge.set_active_scope(Some(root_b.to_string_lossy().as_ref()));
         assert_eq!(knowledge.add("README.md", "beta browser workflow", None), 1);
@@ -1142,7 +1157,10 @@ mod tests {
         );
 
         assert!(result["error"].as_str().unwrap().contains("Path not found"));
-        assert_eq!(handle_knowledge(&json!({"command":"list"}), &knowledge)["total"], 0);
+        assert_eq!(
+            handle_knowledge(&json!({"command":"list"}), &knowledge)["total"],
+            0
+        );
 
         let _ = std::fs::remove_file(store_path);
     }
@@ -1180,7 +1198,10 @@ mod tests {
 
         assert_eq!(result["status"], "cleared");
         assert_eq!(result["removed"], 1);
-        assert_eq!(handle_knowledge(&json!({"command":"list"}), &knowledge)["total"], 0);
+        assert_eq!(
+            handle_knowledge(&json!({"command":"list"}), &knowledge)["total"],
+            0
+        );
 
         let _ = std::fs::remove_file(store_path);
     }
