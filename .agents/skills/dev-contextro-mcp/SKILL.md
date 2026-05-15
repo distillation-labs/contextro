@@ -6,13 +6,13 @@ description: >
   Trigger when the user asks to index or search a codebase, find a symbol or usage,
   explain how code works, trace callers/callees, assess what breaks before a change,
   inspect recent commits, recover after compaction, search across repos, or retrieve
-  sandboxed results. Do not use for general programming questions, writing new code
+  archived session context. Do not use for general programming questions, writing new code
   from scratch, or reading a single known file when direct file inspection is cheaper.
 when_to_use: >
   Prefer Contextro before file-by-file reads for unfamiliar codebases and multi-file
   questions. Especially useful for: who calls, what calls, what breaks, find usages,
   explain this class, git history, pattern search, add repo, remember or recall,
-  compact or archive, retrieve sandbox results.
+  compact or archive, retrieve archived context.
 metadata:
   version: "0.1.0"
   mcp-server: contextro
@@ -27,7 +27,7 @@ Use Contextro as the default discovery layer for unfamiliar or multi-file code w
 It is best for semantic search, symbol lookup, call graphs, impact analysis, commit
 history, memory recovery, cross-repo search, and AST-aware search or rewrite.
 
-Pure Rust binary. No Python. No interpreter. Cold start <25ms.
+Pure Rust binary. No Python. No interpreter.
 
 ## Use It For
 
@@ -36,7 +36,7 @@ Pure Rust binary. No Python. No interpreter. Cold start <25ms.
 - Checking refactor blast radius before rename, delete, or signature changes.
 - Investigating regressions with code search plus commit history.
 - Recovering after compaction or searching archived session context.
-- Searching across multiple repos or retrieving sandboxed large results.
+- Searching across multiple repos or retrieving archived session context.
 
 ## Do Not Use It For
 
@@ -49,11 +49,11 @@ Pure Rust binary. No Python. No interpreter. Cold start <25ms.
 
 ```text
 1. index("/absolute/path/to/project")
-2. status()
-3. Wait for indexed: true before search/find_symbol/explain/impact
+2. If the response returns `status: "done"`, start using search/find_symbol/explain/impact
+3. Use `status()` only when readiness is uncertain or you are recovering session state
 ```
 
-Index persists. Do not re-index before every call. Use `status()` to check readiness.
+Index persists. Do not re-index before every call. A successful `index()` response is a sufficient readiness signal.
 
 ## Routing
 
@@ -65,19 +65,20 @@ Index persists. Do not re-index before every call. Use `status()` to check readi
 | Find callers | `find_callers(symbol_name="Symbol")` | Returns `{callers: [...]}` |
 | Find callees | `find_callees(symbol_name="Symbol")` | Returns `{callees: [...]}` |
 | Understand one symbol | `explain(symbol_name="Symbol")` | Start here before file reads |
+| Map a subsystem or architecture slice | `code(operation="search_codebase_map", query="...")` | Strong for architecture or subsystem mapping; prefer `find_symbol` + `focus`/`explain` for narrow questions |
 | Orient in a new codebase | `overview()` then `architecture()` | High-signal orientation path |
 | Check refactor impact | `impact(symbol_name="Symbol")` | Mandatory before rename/delete/signature changes |
 | Batch lookup several symbols | `code(operation="lookup_symbols", symbols="A,B,C")` | Avoid serial `find_symbol` calls |
 | List symbols in a file | `code(operation="get_document_symbols", file_path="...")` | Better than reading for structure |
 | Structural search | `code(operation="pattern_search", pattern="fn $F($$$)", language="rust")` | Use for AST-shaped queries |
 | Structural rewrite | `code(operation="pattern_rewrite", ..., dry_run=true)` | Preview first, then apply |
-| Plan an edit | `code(operation="edit_plan", goal="...", symbol_name="...")` | Returns ordered edit steps |
-| Search commit history | `commit_search(query="...")` or `commit_history(limit=N)` | Prefer over shell `git log` |
+| Plan an edit | `code(operation="edit_plan", goal="...", symbol_name="...")` | Heuristic planning aid: affected symbols/files, risks, next steps |
+| Search commit history | `commit_search(query="...")` or `commit_history(limit=N)` | `commit_search` works best with descriptive commit subjects; use `commit_history` when they are terse |
 | Add/search another repo | `repo_add(path="...", name="...")`, `repo_status()`, `search(...)` | Use for cross-repo flows |
 | Store a durable decision | `remember(content="...", memory_type="decision")` | Persistent memory |
-| Archive pre-compaction context | `compact(content="...")` | Not `remember()` |
-| Recover after compaction | `session_snapshot()` then `recall(query="...", memory_type="archive")` | Search archive |
-| Expand sandboxed large output | `retrieve(ref_id="arc_...")` | Use when `sandbox_ref` is present |
+| Archive pre-compaction context | `compact(content="...")` | Archive path; returns `ref_id` |
+| Recover archived context | `retrieve(ref_id="arc_...")` | Retrieves `{ ref_id, content }` |
+| Recover durable memory | `recall(query="...")` | Memory path for `remember()` content |
 
 ## Parameter Reference
 
@@ -95,20 +96,12 @@ Key parameter names that differ from intuition:
 
 ## Response Format
 
-Search results use compact keys to minimise token usage:
+Current search responses use full keys:
 
-| Key | Meaning |
-|---|---|
-| `n` | symbol name |
-| `f` | file path (relative) |
-| `l` | start line |
-| `c` | code snippet (top result only) |
-| `t` | type (omitted when `function`) |
-| `lc` | line count |
-| `doc` | docstring (first sentence) |
-
-`confidence` is omitted when high (the default). `sandboxed` is omitted — presence
-of `sandbox_ref` implies sandboxing.
+- Top-level search response includes `query`, `confidence`, `results`, `total`, and usually `limit` plus `truncated`.
+- Each search result uses `name`, `file`, `line`, `type`, and `score`.
+- Symbol lookup responses use `{ symbols: [...], total: N }`.
+- `retrieve(ref_id="...")` returns `{ ref_id, content }`.
 
 ## Mandatory Workflows
 
@@ -139,7 +132,7 @@ This is the default orientation path. Do not start with broad file reads.
 ```text
 1. search(query="error message or symptom")
 2. explain(symbol_name="relevant symbol") or find_callers/find_callees
-3. commit_search(query="recent changes related to symptom")
+3. Prefer `commit_search(query="recent changes related to symptom")` when commit subjects are descriptive; otherwise use `commit_history(limit=N)`
 ```
 
 ### AST Rewrite
@@ -154,9 +147,9 @@ This is the default orientation path. Do not start with broad file reads.
 ### Recovery After Compaction
 
 ```text
-1. session_snapshot()
-2. recall(query="topic", memory_type="archive")
-3. recall(query="topic")
+1. retrieve(ref_id="arc_...") if you have the archive ref from `compact()`
+2. Use `recall(query="topic")` only for durable memory stored via `remember()`
+3. Use `session_snapshot()` or `status()` only if you need session re-entry help
 ```
 
 ## Output Rules
@@ -164,18 +157,18 @@ This is the default orientation path. Do not start with broad file reads.
 - Read `content[0].text` first. Treat it as the primary output.
 - Use `structuredContent` only as a supplement.
 - If `confidence: low` is present, narrow the query or switch to `find_symbol`.
-- If the response includes `sandbox_ref`, call `retrieve(ref_id="arc_...")` before claiming you have the full result set.
 - Keep default search limits unless the user explicitly wants exhaustive output.
-- If the user mentions a tight context budget, pass `context_budget` to `search()`.
+- For narrower responses, lower `limit`; for server-side response budgeting, use `max_tokens` when that wrapper is available.
 
 ## Anti-Patterns
 
-- Do not call `search()` immediately after `index()`; wait for `status()` to show `indexed: true`.
+- Do not call `status()` after every successful `index()`; `index()` returning `status: "done"` is already enough.
 - Do not re-index the same repo repeatedly.
 - Do not use three separate `find_symbol` calls when `lookup_symbols` fits.
-- Do not ignore `sandbox_ref` in responses.
 - Do not use `remember()` for pre-compaction archival; use `compact()`.
+- Do not claim `recall(memory_type="archive")` retrieves compacted archives; use `retrieve(ref_id)` for archives and `recall()` for memories.
 - Do not use `overview()` to find one symbol; use `search()` or `find_symbol()`.
+- Do not use `search_codebase_map` for narrow single-symbol questions when `find_symbol()` plus `focus()` or `explain()` is more direct.
 - Do not replace exact-history questions with shell `git log` when `commit_search()` or `commit_history()` is available.
 - Do not pass `name=` to `find_callers/find_callees/explain/impact`; use `symbol_name=`.
 
@@ -186,34 +179,22 @@ or symbol, direct file reads are acceptable if the full implementation body is n
 
 ## Benchmarks
 
-Token efficiency (measured on 8,498-file production codebase, v0.1.0):
+Current study-backed evidence to cite safely:
 
-| Tool | Approx tokens |
-|---|---|
-| `search` (5 results) | ~300 |
-| `explain` | ~60 |
-| `find_symbol` | ~200 |
-| `find_callers` | ~17 |
-| `status` | ~30 |
+| Study | Contextro success | Baseline success | Contextro tokens | Baseline tokens | Reduction | Tool calls/task | Files read |
+|---|---|---|---|---|---|---|---|
+| Contextro repo, 100 tasks | 100% | 99% | 9,905 | 109,067 | 90.9% | 1.0 | 0 |
+| Contextro repo, 200 tasks | 100% | 99% | 23,447 | 222,646 | 89.5% | 1.0 | 0 |
+| Production TypeScript monorepo, 1,000 tasks | 100% | 99.5% | 93,819 | 941,748 | 90.0% | 1.0 | 0 |
 
-Performance:
+Useful category notes from the 200-task Contextro repo study:
 
-| Metric | Value |
-|---|---|
-| Search latency | ~50µs avg |
-| Throughput | 21,000+ ops/sec |
-| Graph exact lookup | 29ns |
-| Graph callers/callees | 30–42ns |
-| Cold start | <25ms |
-| Memory idle | 1.4MB |
-| Binary size | 11MB (arm64) |
+- `batch_lookup`: 94.4% token reduction
+- `document_symbols`: 83.1% token reduction
+- `exact_search`: 87.2% token reduction
+- `symbol_discovery`: 94.9% token reduction
 
-Indexing (8,498 files / 11,534 symbols):
-
-| Metric | Value |
-|---|---|
-| Full index | ~310ms |
-| Re-index (no changes) | <1s |
+Use these study numbers instead of older per-tool token estimates or compact-key claims.
 
 ## References
 
