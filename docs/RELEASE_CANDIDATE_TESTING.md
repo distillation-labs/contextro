@@ -67,12 +67,18 @@ For each external repo in the matrix, verify:
    - `focus(path=...)`
    - `analyze(path=...)`
    - `code(operation="get_document_symbols", path=...)`
-3. restart-sensitive flows survive a restart:
+   - `code(operation="list_symbols", path=...)`
+3. symbol-listing payload contracts are truthful, not just successful:
+   - `code(operation="get_document_symbols", path=...)` on a file returns `{ file, columns, symbols, total }`
+   - `code(operation="get_document_symbols", path=..., include_signature=true)` adds a `signature` column with truncated values
+   - `code(operation="list_symbols", path=<file>)` matches the same columnar file contract
+   - `code(operation="list_symbols", path=<dir>)` returns object rows with `name`, `type`, `file`, `line`, `callers`, `callees`
+4. restart-sensitive flows survive a restart:
    - `compact(...)` -> restart -> `retrieve(...)`
    - `repo_add(...)` -> restart -> `repo_status()`
-4. `search_codebase_map(...)` returns useful results
-5. search ranking looks sane for real code
-6. `dead_code()` skips pytest fixtures on Python repos
+5. `search_codebase_map(...)` returns useful results
+6. search ranking looks sane for real code
+7. `dead_code()` skips pytest fixtures on Python repos
 
 If any tool returns a silent empty result, loses state across restart, or gives misleading output, block the release.
 
