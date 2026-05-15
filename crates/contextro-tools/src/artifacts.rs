@@ -146,8 +146,9 @@ const TOOL_DOCS: &[ToolDoc] = &[
             "pattern / replacement / dry_run: rewrite and search parameters",
             "goal: refactoring objective for edit_plan",
             "include_source: include source bodies for lookup_symbols",
+            "include_signature: include truncated signatures in get_document_symbols or file-path list_symbols output",
         ],
-        example: r#"code({"operation":"get_document_symbols","path":"crates/contextro-tools/src/search.rs"})"#,
+        example: r#"code({"operation":"get_document_symbols","path":"crates/contextro-tools/src/search.rs"}) // returns {file, columns, symbols, total}"#,
     },
     ToolDoc {
         name: "remember",
@@ -382,6 +383,21 @@ const AUDIT_CONNECTION_THRESHOLD: usize = 10;
 const AUDIT_FILE_SYMBOL_THRESHOLD: usize = 30;
 const AUDIT_EVIDENCE_LIMIT: usize = 3;
 
+fn audit_quality_score(
+    recommendation_count: usize,
+    max_connection_overage: usize,
+    max_file_overage: usize,
+) -> usize {
+    if recommendation_count == 0 {
+        95
+    } else {
+        85usize
+            .saturating_sub(recommendation_count * 5)
+            .saturating_sub(max_connection_overage / AUDIT_CONNECTION_THRESHOLD)
+            .saturating_sub(max_file_overage / AUDIT_FILE_SYMBOL_THRESHOLD)
+    }
+}
+
 fn is_audit_noise_file(file_path: &str) -> bool {
     is_test_file(file_path)
         || file_path.starts_with("tests/")
@@ -548,11 +564,19 @@ pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
         }));
     }
 
-    let quality_score = if recommendations.is_empty() {
-        95
-    } else {
-        85 - recommendations.len() * 5
-    };
+    let max_connection_overage = high_conn
+        .first()
+        .map(|(_, _, connections)| connections.saturating_sub(AUDIT_CONNECTION_THRESHOLD))
+        .unwrap_or(0);
+    let max_file_overage = large_files
+        .first()
+        .map(|(_, symbols)| symbols.saturating_sub(AUDIT_FILE_SYMBOL_THRESHOLD))
+        .unwrap_or(0);
+    let quality_score = audit_quality_score(
+        recommendations.len(),
+        max_connection_overage,
+        max_file_overage,
+    );
 
     json!({
         "status": "complete",
@@ -1214,6 +1238,7 @@ mod tests {
         }
 
         let result = handle_audit(&graph, None);
+        assert_eq!(result["quality_score"], 80);
         let complexity = result["recommendations"]
             .as_array()
             .unwrap()
@@ -1239,12 +1264,9 @@ mod tests {
                 .iter()
                 .any(|step| step.as_str().unwrap_or("").contains("explain"))
         }));
-        assert!(evidence.iter().all(|item| {
-            !item["file"]
-                .as_str()
-                .unwrap_or("")
-                .starts_with("tests/")
-        }));
+        assert!(evidence
+            .iter()
+            .all(|item| { !item["file"].as_str().unwrap_or("").starts_with("tests/") }));
     }
 
     #[test]
@@ -1288,6 +1310,7 @@ mod tests {
         }
 
         let result = handle_audit(&graph, None);
+        assert_eq!(result["quality_score"], 80);
         let structure = result["recommendations"]
             .as_array()
             .unwrap()
@@ -1308,5 +1331,142 @@ mod tests {
             .unwrap()
             .iter()
             .any(|step| step.as_str().unwrap_or("").contains("analyze")));
+    }
+
+    #[test]
+    fn test_audit_quality_score_drops_with_worse_hotspots_even_when_categories_are_unchanged() {
+        let baseline_graph = CodeGraph::new();
+        baseline_graph.add_node(UniversalNode {
+            id: "hub".into(),
+            name: "Hub".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "src/core.rs".into(),
+                start_line: 1,
+                end_line: 10,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            ..Default::default()
+        });
+        for idx in 0..11 {
+            let leaf_id = format!("baseline-leaf-{idx}");
+            baseline_graph.add_node(UniversalNode {
+                id: leaf_id.clone(),
+                name: format!("BaselineLeaf{idx}"),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: format!("src/leaf_{idx}.rs"),
+                    start_line: 1,
+                    end_line: 5,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "rust".into(),
+                },
+                language: "rust".into(),
+                ..Default::default()
+            });
+            baseline_graph.add_relationship(UniversalRelationship {
+                id: format!("baseline-rel-{idx}"),
+                source_id: "hub".into(),
+                target_id: leaf_id,
+                relationship_type: RelationshipType::Calls,
+                strength: 1.0,
+            });
+        }
+        for idx in 0..31 {
+            baseline_graph.add_node(UniversalNode {
+                id: format!("baseline-big-{idx}"),
+                name: format!("BaselineBig{idx}"),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: "src/big.rs".into(),
+                    start_line: idx + 1,
+                    end_line: idx + 1,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "rust".into(),
+                },
+                language: "rust".into(),
+                ..Default::default()
+            });
+        }
+
+        let baseline = handle_audit(&baseline_graph, None);
+        assert_eq!(baseline["quality_score"], 75);
+
+        let worse_graph = CodeGraph::new();
+        worse_graph.add_node(UniversalNode {
+            id: "hub".into(),
+            name: "Hub".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: "src/core.rs".into(),
+                start_line: 1,
+                end_line: 10,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            ..Default::default()
+        });
+        for idx in 0..31 {
+            let leaf_id = format!("worse-leaf-{idx}");
+            worse_graph.add_node(UniversalNode {
+                id: leaf_id.clone(),
+                name: format!("WorseLeaf{idx}"),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: format!("src/worse_leaf_{idx}.rs"),
+                    start_line: 1,
+                    end_line: 5,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "rust".into(),
+                },
+                language: "rust".into(),
+                ..Default::default()
+            });
+            worse_graph.add_relationship(UniversalRelationship {
+                id: format!("worse-rel-{idx}"),
+                source_id: "hub".into(),
+                target_id: leaf_id,
+                relationship_type: RelationshipType::Calls,
+                strength: 1.0,
+            });
+        }
+        for idx in 0..61 {
+            worse_graph.add_node(UniversalNode {
+                id: format!("worse-big-{idx}"),
+                name: format!("WorseBig{idx}"),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: "src/big.rs".into(),
+                    start_line: idx + 1,
+                    end_line: idx + 1,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "rust".into(),
+                },
+                language: "rust".into(),
+                ..Default::default()
+            });
+        }
+
+        let worse = handle_audit(&worse_graph, None);
+        assert_eq!(worse["quality_score"], 72);
+        let recommendations = worse["recommendations"].as_array().unwrap();
+        assert!(recommendations
+            .iter()
+            .any(|item| item["category"] == "complexity"));
+        assert!(recommendations
+            .iter()
+            .any(|item| item["category"] == "structure"));
+        assert!(recommendations
+            .iter()
+            .all(|item| item["evidence"].is_array()));
     }
 }
