@@ -69,7 +69,8 @@ Index persists. Do not re-index before every call. A successful `index()` respon
 | Orient in a new codebase | `overview()` then `architecture()` | High-signal orientation path |
 | Check refactor impact | `impact(symbol_name="Symbol")` | Mandatory before rename/delete/signature changes |
 | Batch lookup several symbols | `code(operation="lookup_symbols", symbols="A,B,C")` | Avoid serial `find_symbol` calls |
-| List symbols in a file | `code(operation="get_document_symbols", file_path="...")` | Better than reading for structure |
+| List symbols in a file | `code(operation="get_document_symbols", file_path="...")` | Returns columnar `{ file, columns, symbols, total }`; use `include_signature=true` only when signatures matter |
+| List symbols in a directory | `code(operation="list_symbols", path="...")` | Directory mode returns object rows with `callers` and `callees` |
 | Structural search | `code(operation="pattern_search", pattern="fn $F($$$)", language="rust")` | Use for AST-shaped queries |
 | Structural rewrite | `code(operation="pattern_rewrite", ..., dry_run=true)` | Preview first, then apply |
 | Plan an edit | `code(operation="edit_plan", goal="...", symbol_name="...")` | Heuristic planning aid: affected symbols/files, risks, next steps |
@@ -101,6 +102,9 @@ Current search responses use full keys:
 - Top-level search response includes `query`, `confidence`, `results`, `total`, and usually `limit` plus `truncated`.
 - Each search result uses `name`, `file`, `line`, `type`, and `score`.
 - Symbol lookup responses use `{ symbols: [...], total: N }`.
+- `get_document_symbols(path)` and `list_symbols(path=<file>)` return `{ file, columns, symbols, total }` where each row in `symbols` is positional against `columns`.
+- File-symbol `columns` always start with `name`, `type`, `line`; `end_line` appears only when needed and `signature` appears only when `include_signature=true`.
+- `list_symbols(path=<dir>)` is a different contract: `{ path, symbols: [{ name, type, file, line, callers, callees }], total }`.
 - `retrieve(ref_id="...")` returns `{ ref_id, content }`.
 
 ## Mandatory Workflows
