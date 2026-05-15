@@ -48,7 +48,7 @@
       "command": [
         "/opt/homebrew/bin/npx",
         "-y",
-        "contextro@1.6.12"
+        "contextro@1.6.13"
       ]
     }
   }
