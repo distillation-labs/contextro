@@ -266,17 +266,35 @@ impl MemoryStore {
                 let weighted_content_hits = stems
                     .iter()
                     .filter(|stem| content_match_terms.contains(stem.as_str()))
-                    .map(|stem| max_frequency + 1 - term_frequencies.get(stem.as_str()).copied().unwrap_or(max_frequency))
+                    .map(|stem| {
+                        max_frequency + 1
+                            - term_frequencies
+                                .get(stem.as_str())
+                                .copied()
+                                .unwrap_or(max_frequency)
+                    })
                     .sum();
                 let weighted_tag_hits = stems
                     .iter()
                     .filter(|stem| tag_match_terms.contains(stem.as_str()))
-                    .map(|stem| max_frequency + 1 - term_frequencies.get(stem.as_str()).copied().unwrap_or(max_frequency))
+                    .map(|stem| {
+                        max_frequency + 1
+                            - term_frequencies
+                                .get(stem.as_str())
+                                .copied()
+                                .unwrap_or(max_frequency)
+                    })
                     .sum();
 
                 let _ = has_discriminative_terms;
 
-                (primary_tag_hit, primary_content_hit, weighted_tag_hits, weighted_content_hits, m)
+                (
+                    primary_tag_hit,
+                    primary_content_hit,
+                    weighted_tag_hits,
+                    weighted_content_hits,
+                    m,
+                )
             })
             .collect();
         ranked.sort_by(|a, b| {
