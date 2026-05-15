@@ -7,9 +7,10 @@ use std::sync::Arc;
 use contextro_core::models::{CodeChunk, SearchResult};
 use parking_lot::RwLock;
 use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
+use tantivy::query::{BooleanQuery, BoostQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::*;
-use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, Searcher};
+use tantivy::tokenizer::TokenStream;
+use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, Searcher, Term};
 use tracing::warn;
 
 #[derive(Clone)]
@@ -131,13 +132,14 @@ impl Bm25Engine {
         let requested_limit = limit.max(1).min(50);
         let query_limit = limit.saturating_mul(2).clamp(requested_limit, 50);
 
-        for variant in build_query_variants(trimmed) {
-            let results = self.run_query(&searcher, &variant.text, query_limit);
-            for (rank, result) in results.into_iter().enumerate() {
-                let contribution = variant.weight
-                    * (result.score.clamp(0.0, 1.0) * 0.85 + (1.0 / (rank as f64 + 1.0)) * 0.15);
-                *scores.entry(result.id.clone()).or_default() += contribution;
-                metadata.entry(result.id.clone()).or_insert(result);
+        let primary_results = self.run_query(&searcher, trimmed, query_limit);
+        merge_variant_results(&mut scores, &mut metadata, primary_results.clone(), 1.0);
+
+        let query_terms = collect_query_terms(trimmed);
+        if should_run_supplemental_variants(&query_terms, &primary_results, requested_limit) {
+            for variant in build_supplemental_query_variants(&query_terms) {
+                let results = self.run_query(&searcher, &variant.text, query_limit);
+                merge_variant_results(&mut scores, &mut metadata, results, variant.weight);
             }
         }
 
@@ -160,14 +162,7 @@ impl Bm25Engine {
     }
 
     fn run_query(&self, searcher: &Searcher, query: &str, limit: usize) -> Vec<SearchResult> {
-        let mut query_parser = QueryParser::for_index(
-            &self.index,
-            vec![self.f_text, self.f_symbol_name, self.f_signature],
-        );
-        query_parser.set_field_boost(self.f_symbol_name, 5.0);
-        query_parser.set_field_boost(self.f_signature, 3.0);
-
-        let parsed = match query_parser.parse_query(query) {
+        let parsed = match self.build_query(query) {
             Ok(q) => q,
             Err(e) => {
                 warn!("BM25 query parse failed for '{query}': {e}");
@@ -215,6 +210,80 @@ impl Bm25Engine {
             .collect()
     }
 
+    fn build_query(&self, query: &str) -> tantivy::Result<Box<dyn Query>> {
+        if let Some(fast_query) = self.build_plain_token_query(query)? {
+            return Ok(fast_query);
+        }
+
+        let mut query_parser = QueryParser::for_index(
+            &self.index,
+            vec![self.f_text, self.f_symbol_name, self.f_signature],
+        );
+        query_parser.set_field_boost(self.f_symbol_name, 5.0);
+        query_parser.set_field_boost(self.f_signature, 3.0);
+        Ok(query_parser.parse_query(query)?)
+    }
+
+    fn build_plain_token_query(&self, query: &str) -> tantivy::Result<Option<Box<dyn Query>>> {
+        if !is_plain_bm25_query(query) {
+            return Ok(None);
+        }
+
+        let terms = self.tokenize_query_terms(query)?;
+        if terms.len() < 2 {
+            return Ok(None);
+        }
+
+        let mut subqueries: Vec<(Occur, Box<dyn Query>)> = Vec::with_capacity(terms.len() * 3);
+        for term in terms {
+            subqueries.push((
+                Occur::Should,
+                Box::new(TermQuery::new(
+                    Term::from_field_text(self.f_text, &term),
+                    IndexRecordOption::WithFreqs,
+                )),
+            ));
+            subqueries.push((
+                Occur::Should,
+                Box::new(BoostQuery::new(
+                    Box::new(TermQuery::new(
+                        Term::from_field_text(self.f_symbol_name, &term),
+                        IndexRecordOption::WithFreqs,
+                    )),
+                    5.0,
+                )),
+            ));
+            subqueries.push((
+                Occur::Should,
+                Box::new(BoostQuery::new(
+                    Box::new(TermQuery::new(
+                        Term::from_field_text(self.f_signature, &term),
+                        IndexRecordOption::WithFreqs,
+                    )),
+                    3.0,
+                )),
+            ));
+        }
+
+        Ok(Some(Box::new(BooleanQuery::new(subqueries))))
+    }
+
+    fn tokenize_query_terms(&self, query: &str) -> tantivy::Result<Vec<String>> {
+        let mut tokenizer = self.index.tokenizer_for_field(self.f_text)?;
+        let mut token_stream = tokenizer.token_stream(query);
+        let mut terms = Vec::new();
+        let mut seen = HashSet::new();
+
+        while token_stream.advance() {
+            let token = token_stream.token().text.clone();
+            if seen.insert(token.clone()) {
+                terms.push(token);
+            }
+        }
+
+        Ok(terms)
+    }
+
     /// Delete all documents matching a filepath.
     pub fn delete_by_filepath(&self, filepath: &str) {
         let mut writer = self.writer.write();
@@ -241,26 +310,92 @@ impl Bm25Engine {
     }
 }
 
-fn build_query_variants(query: &str) -> Vec<QueryVariant> {
-    let mut variants = vec![QueryVariant {
-        text: query.to_string(),
-        weight: 1.0,
-    }];
-
-    if query.split_whitespace().count() < 2 {
-        return variants;
+fn merge_variant_results(
+    scores: &mut HashMap<String, f64>,
+    metadata: &mut HashMap<String, SearchResult>,
+    results: Vec<SearchResult>,
+    weight: f64,
+) {
+    for (rank, result) in results.into_iter().enumerate() {
+        let contribution =
+            weight * (result.score.clamp(0.0, 1.0) * 0.85 + (1.0 / (rank as f64 + 1.0)) * 0.15);
+        *scores.entry(result.id.clone()).or_default() += contribution;
+        metadata.entry(result.id.clone()).or_insert(result);
     }
+}
 
-    let mut seen = HashSet::from([query.to_ascii_lowercase()]);
+fn collect_query_terms(query: &str) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut terms = Vec::new();
+
     for token in query.split(|ch: char| !ch.is_ascii_alphanumeric()) {
         let token = token.trim().to_ascii_lowercase();
-        if token.len() < 3 || is_bm25_stopword(&token) {
+        if token.len() < 3 || is_bm25_stopword(&token) || !seen.insert(token.clone()) {
             continue;
         }
 
-        if seen.insert(token.clone()) {
+        terms.push(token);
+    }
+
+    terms
+}
+
+fn should_run_supplemental_variants(
+    query_terms: &[String],
+    primary_results: &[SearchResult],
+    requested_limit: usize,
+) -> bool {
+    if query_terms.is_empty() {
+        return false;
+    }
+
+    if primary_results.is_empty() {
+        return true;
+    }
+
+    if query_terms.len() == 1 {
+        return false;
+    }
+
+    let grounded_terms = count_grounded_query_terms(query_terms, primary_results);
+    let strong_grounding = grounded_terms >= query_terms.len().min(3);
+    let broad_coverage = grounded_terms * 5 >= query_terms.len() * 3;
+    let enough_primary_hits = primary_results.len() >= requested_limit.min(3);
+
+    !(strong_grounding || (broad_coverage && enough_primary_hits))
+}
+
+fn count_grounded_query_terms(query_terms: &[String], primary_results: &[SearchResult]) -> usize {
+    let lexical_window = primary_results.len().min(3);
+    let grounded_text = primary_results
+        .iter()
+        .take(lexical_window)
+        .map(|result| {
+            format!(
+                "{}\n{}\n{}\n{}",
+                result.symbol_name, result.signature, result.filepath, result.code
+            )
+            .to_ascii_lowercase()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    query_terms
+        .iter()
+        .filter(|term| grounded_text.contains(term.as_str()))
+        .count()
+}
+
+fn build_supplemental_query_variants(query_terms: &[String]) -> Vec<QueryVariant> {
+    let mut variants = Vec::new();
+    let mut seen = HashSet::new();
+
+    for token in query_terms {
+        let token = token.as_str();
+
+        if seen.insert(token.to_string()) {
             variants.push(QueryVariant {
-                text: token.clone(),
+                text: token.to_string(),
                 weight: 0.18,
             });
         }
@@ -327,6 +462,20 @@ fn is_bm25_stopword(token: &str) -> bool {
             | "work"
             | "works"
     )
+}
+
+fn is_plain_bm25_query(query: &str) -> bool {
+    !query.is_empty()
+        && !query.chars().any(|ch| {
+            matches!(
+                ch,
+                '"' | '\'' | ':' | '(' | ')' | '[' | ']' | '{' | '}' | '^' | '*' | '?' | '~'
+                    | '+' | '-'
+            )
+        })
+        && !query
+            .split_ascii_whitespace()
+            .any(|token| matches!(token, "AND" | "OR" | "NOT"))
 }
 
 #[cfg(test)]
@@ -457,5 +606,37 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].symbol_name, "QueryCache");
         assert_eq!(results[0].filepath, "crates/contextro-engines/src/cache.rs");
+    }
+
+    #[test]
+    fn test_bm25_skips_supplemental_variants_when_primary_query_is_well_grounded() {
+        let query_terms = collect_query_terms("how does query cache handle ttl eviction");
+        let primary_results = vec![SearchResult {
+            id: "cache".into(),
+            filepath: "crates/contextro-engines/src/cache.rs".into(),
+            symbol_name: "QueryCache".into(),
+            symbol_type: "struct".into(),
+            language: "rust".into(),
+            line_start: 1,
+            line_end: 10,
+            score: 1.0,
+            code: "Query cache handle keeps TTL eviction behavior stable.".into(),
+            signature: "pub struct QueryCache".into(),
+            match_sources: vec!["bm25".into()],
+        }];
+
+        assert!(!should_run_supplemental_variants(
+            &query_terms,
+            &primary_results,
+            5,
+        ));
+    }
+
+    #[test]
+    fn test_plain_query_fast_path_detects_query_syntax() {
+        assert!(is_plain_bm25_query("query cache eviction"));
+        assert!(!is_plain_bm25_query("symbol_name:QueryCache"));
+        assert!(!is_plain_bm25_query("query AND cache"));
+        assert!(!is_plain_bm25_query("\"query cache\""));
     }
 }
