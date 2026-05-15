@@ -749,7 +749,7 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"path":{"type":"string","description":"Optional file or directory filter"},"exclude_paths":{"type":"array","items":{"type":"string"},"description":"Optional file or directory paths to exclude"},"limit":{"type":"integer","description":"Max results (default: 50)"},"include_public_api":{"type":"boolean","description":"Include likely public API methods/functions in the output (default: false)"},"include_tests":{"type":"boolean","description":"Include test files in the output (default: false)"}}}"#,
         );
         let code_schema = mk(
-            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"}},"required":["operation"]}"#,
+            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"},"include_signature":{"type":"boolean","description":"Include truncated signatures in get_document_symbols or file-path list_symbols output (default: false)"}},"required":["operation"]}"#,
         );
         let mem_schema = mk(
             r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
@@ -787,7 +787,7 @@ impl ContextroServer {
             Tool::new("dead_code",    "Static dead-code heuristic with optional path/exclude filters. Args: path, exclude_paths, limit, include_public_api, include_tests", dead_code_schema),
             Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
             Tool::new("test_coverage_map",     "Static heuristic test coverage bounds (not runtime coverage)", empty.clone()),
-            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path), search_symbols(symbol_name), lookup_symbols(symbols:[]), list_symbols(path), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
+            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path[,include_signature]) returns {file, columns, symbols, total}; list_symbols(file) aliases that file contract while list_symbols(dir) returns object rows with callers/callees; search_symbols(symbol_name), lookup_symbols(symbols:[]), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
             Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
             Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
             Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
@@ -1561,8 +1561,11 @@ mod tests {
                 .load(std::sync::atomic::Ordering::Relaxed),
             server.state.vector_index.len(),
         );
-        let architecture =
-            contextro_tools::analysis::handle_architecture(&json!({}), &server.state.graph, restored_codebase.as_deref());
+        let architecture = contextro_tools::analysis::handle_architecture(
+            &json!({}),
+            &server.state.graph,
+            restored_codebase.as_deref(),
+        );
         let repo_a_search = contextro_tools::search::handle_search(
             &json!({"query": "repo_a_symbol"}),
             &server.state.bm25,
@@ -1730,8 +1733,13 @@ mod tests {
 
         assert_eq!(payload["registered"], true);
         assert_eq!(payload["indexed"], true);
-        assert_eq!(payload["hint"], "Repository registered, indexed, and set as the active repo scope.");
-        assert!(!text.contains("Run index(path) to build the graph and enable search for this repo."));
+        assert_eq!(
+            payload["hint"],
+            "Repository registered, indexed, and set as the active repo scope."
+        );
+        assert!(
+            !text.contains("Run index(path) to build the graph and enable search for this repo.")
+        );
 
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(storage_dir);
