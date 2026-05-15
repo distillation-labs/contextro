@@ -1249,7 +1249,8 @@ fn push_doc_line(doc_lines: &mut Vec<String>, line: &str) {
 }
 
 fn normalize_doc_lines(lines: Vec<String>) -> String {
-    lines.join(" ")
+    lines
+        .join(" ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -1272,7 +1273,10 @@ fn merge_rust_doc_context(item_doc: &str, module_doc: &str) -> String {
         return item_doc;
     }
 
-    truncate_doc(&format!("{}\n\nModule context: {}", item_doc, module_doc), 500)
+    truncate_doc(
+        &format!("{}\n\nModule context: {}", item_doc, module_doc),
+        500,
+    )
 }
 
 fn truncate_doc(text: &str, max_chars: usize) -> String {
