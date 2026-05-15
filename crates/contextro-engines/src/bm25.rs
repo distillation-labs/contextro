@@ -1,5 +1,6 @@
 //! Tantivy-based BM25 full-text search engine.
 
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -8,8 +9,14 @@ use parking_lot::RwLock;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
+use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, Searcher};
 use tracing::warn;
+
+#[derive(Clone)]
+struct QueryVariant {
+    text: String,
+    weight: f64,
+}
 
 /// BM25 search engine backed by Tantivy.
 pub struct Bm25Engine {
@@ -113,7 +120,46 @@ impl Bm25Engine {
     /// Full-text BM25 search with field boosting.
     /// symbol_name is boosted 3x, signature 2x, text 1x for better precision.
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return vec![];
+        }
+
         let searcher = self.reader.searcher();
+        let mut metadata: HashMap<String, SearchResult> = HashMap::new();
+        let mut scores: HashMap<String, f64> = HashMap::new();
+        let requested_limit = limit.max(1).min(50);
+        let query_limit = limit.saturating_mul(2).clamp(requested_limit, 50);
+
+        for variant in build_query_variants(trimmed) {
+            let results = self.run_query(&searcher, &variant.text, query_limit);
+            for (rank, result) in results.into_iter().enumerate() {
+                let contribution = variant.weight
+                    * (result.score.clamp(0.0, 1.0) * 0.85 + (1.0 / (rank as f64 + 1.0)) * 0.15);
+                *scores.entry(result.id.clone()).or_default() += contribution;
+                metadata.entry(result.id.clone()).or_insert(result);
+            }
+        }
+
+        let mut merged: Vec<SearchResult> = scores
+            .into_iter()
+            .filter_map(|(id, score)| {
+                let mut result = metadata.remove(&id)?;
+                result.score = score.min(1.0);
+                Some(result)
+            })
+            .collect();
+
+        merged.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        merged.truncate(limit);
+        merged
+    }
+
+    fn run_query(&self, searcher: &Searcher, query: &str, limit: usize) -> Vec<SearchResult> {
         let mut query_parser = QueryParser::for_index(
             &self.index,
             vec![self.f_text, self.f_symbol_name, self.f_signature],
@@ -124,7 +170,7 @@ impl Bm25Engine {
         let parsed = match query_parser.parse_query(query) {
             Ok(q) => q,
             Err(e) => {
-                warn!("BM25 query parse failed: {}", e);
+                warn!("BM25 query parse failed for '{query}': {e}");
                 return vec![];
             }
         };
@@ -161,7 +207,7 @@ impl Bm25Engine {
                     line_start: get_u64(self.f_line_start) as u32,
                     line_end: get_u64(self.f_line_end) as u32,
                     score: (score as f64) / (max_score as f64),
-                    code: String::new(),
+                    code: get_text(self.f_text),
                     signature: get_text(self.f_signature),
                     match_sources: vec!["bm25".into()],
                 })
@@ -193,6 +239,94 @@ impl Bm25Engine {
         let searcher = self.reader.searcher();
         searcher.num_docs() as usize
     }
+}
+
+fn build_query_variants(query: &str) -> Vec<QueryVariant> {
+    let mut variants = vec![QueryVariant {
+        text: query.to_string(),
+        weight: 1.0,
+    }];
+
+    if query.split_whitespace().count() < 2 {
+        return variants;
+    }
+
+    let mut seen = HashSet::from([query.to_ascii_lowercase()]);
+    for token in query.split(|ch: char| !ch.is_ascii_alphanumeric()) {
+        let token = token.trim().to_ascii_lowercase();
+        if token.len() < 3 || is_bm25_stopword(&token) {
+            continue;
+        }
+
+        if seen.insert(token.clone()) {
+            variants.push(QueryVariant {
+                text: token.clone(),
+                weight: 0.18,
+            });
+        }
+
+        if let Some(stemmed) = stem_bm25_token(&token) {
+            if seen.insert(stemmed.clone()) {
+                variants.push(QueryVariant {
+                    text: stemmed,
+                    weight: 0.24,
+                });
+            }
+        }
+    }
+
+    variants
+}
+
+fn stem_bm25_token(token: &str) -> Option<String> {
+    let stemmed = if token.ends_with("ing") && token.len() > 5 {
+        restore_stemmed_root(&token[..token.len() - 3])
+    } else if token.ends_with("ed") && token.len() > 4 {
+        restore_stemmed_root(&token[..token.len() - 2])
+    } else if token.ends_with("ers") && token.len() > 5 {
+        token[..token.len() - 3].to_string()
+    } else if token.ends_with("er") && token.len() > 4 {
+        token[..token.len() - 2].to_string()
+    } else if token.ends_with("es") && token.len() > 4 {
+        token[..token.len() - 2].to_string()
+    } else if token.ends_with('s') && token.len() > 4 {
+        token[..token.len() - 1].to_string()
+    } else {
+        token.to_string()
+    };
+
+    (stemmed.len() >= 3 && stemmed != token).then_some(stemmed)
+}
+
+fn restore_stemmed_root(base: &str) -> String {
+    if base.ends_with("ch") || base.ends_with("sh") || base.ends_with('v') || base.ends_with('c') {
+        format!("{base}e")
+    } else {
+        base.to_string()
+    }
+}
+
+fn is_bm25_stopword(token: &str) -> bool {
+    matches!(
+        token,
+        "and"
+            | "are"
+            | "does"
+            | "for"
+            | "from"
+            | "how"
+            | "into"
+            | "the"
+            | "this"
+            | "that"
+            | "what"
+            | "when"
+            | "where"
+            | "which"
+            | "with"
+            | "work"
+            | "works"
+    )
 }
 
 #[cfg(test)]
@@ -249,5 +383,79 @@ mod tests {
 
         engine.clear();
         assert_eq!(engine.count(), 0);
+    }
+
+    #[test]
+    fn test_bm25_search_recovers_cache_from_caching_query() {
+        let engine = Bm25Engine::new_in_memory();
+        let mut cache_chunk = make_chunk(
+            "cache",
+            "Query cache stores search responses with TTL eviction and invalidation support.",
+            "QueryCache",
+        );
+        cache_chunk.filepath = "crates/contextro-engines/src/cache.rs".into();
+        cache_chunk.signature = "pub struct QueryCache".into();
+        let other_chunk = make_chunk(
+            "search",
+            "Search routing decides whether to use vector or BM25 retrieval.",
+            "handle_search",
+        );
+
+        engine.index_chunks(&[cache_chunk, other_chunk]);
+
+        let results = engine.search("how does caching work", 5);
+
+        assert!(!results.is_empty());
+        assert_eq!(results[0].symbol_name, "QueryCache");
+        assert!(results[0]
+            .code
+            .to_ascii_lowercase()
+            .contains("ttl eviction"));
+    }
+
+    #[test]
+    fn test_bm25_search_uses_concept_tokens_for_query_cache_eviction() {
+        let engine = Bm25Engine::new_in_memory();
+        let mut cache_chunk = make_chunk(
+            "cache",
+            "Query cache stores results with TTL eviction and invalidates expired entries.",
+            "QueryCache",
+        );
+        cache_chunk.filepath = "crates/contextro-engines/src/cache.rs".into();
+        cache_chunk.signature = "pub struct QueryCache".into();
+
+        let mut fusion_chunk = make_chunk(
+            "fusion",
+            "Reciprocal rank fusion combines BM25 and vector results.",
+            "ReciprocalRankFusion",
+        );
+        fusion_chunk.filepath = "crates/contextro-engines/src/fusion.rs".into();
+
+        engine.index_chunks(&[cache_chunk, fusion_chunk]);
+
+        let results = engine.search("how does the query cache work TTL eviction", 5);
+
+        assert!(!results.is_empty());
+        assert_eq!(results[0].symbol_name, "QueryCache");
+    }
+
+    #[test]
+    fn test_bm25_search_handles_widened_limits_without_panicking() {
+        let engine = Bm25Engine::new_in_memory();
+        let mut cache_chunk = make_chunk(
+            "cache",
+            "Query cache stores search results with TTL eviction and cache invalidation.",
+            "QueryCache",
+        );
+        cache_chunk.filepath = "crates/contextro-engines/src/cache.rs".into();
+        cache_chunk.signature = "pub struct QueryCache".into();
+
+        engine.index_chunks(&[cache_chunk]);
+
+        let results = engine.search("how does caching work", 80);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].symbol_name, "QueryCache");
+        assert_eq!(results[0].filepath, "crates/contextro-engines/src/cache.rs");
     }
 }
