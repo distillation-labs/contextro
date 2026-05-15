@@ -189,7 +189,7 @@ focus(path="src/auth.rs")
 | `sidecar_export` | Generate .graph.* sidecars |
 | `skill_prompt` | Agent bootstrap block |
 | `introspect` | Look up Contextro docs |
-| `retrieve` | Fetch sandboxed output |
+| `retrieve` | Fetch archived session content |
 | `status` | Server status |
 | `health` | Readiness check |
 | `refactor_check` | Pre-refactor analysis |
@@ -205,12 +205,13 @@ Without:  grep "auth" → read auth.py → read middleware.py → read utils.py 
 With:     search("authentication flow") → exact result in <1ms
 ```
 
-| Task | Without Contextro | With Contextro | Savings |
+| Metric | Baseline | Contextro | Improvement |
 |---|---|---|---|
-| Find a function | Read 5 files (~5000 tokens) | `search()` (~116 tokens) | **43x** |
-| Trace callers | grep + read 3 files (~3000 tokens) | `find_callers()` (~6 tokens) | **500x** |
-| Understand a class | Read file + grep (~2000 tokens) | `explain()` (~43 tokens) | **47x** |
-| Check what breaks | Manual audit (~8000 tokens) | `impact()` (~300 tokens) | **27x** |
+| Success rate | 99.5% | **100%** | +0.5% |
+| Total tokens | 941,748 | **93,819** | **90% reduction** |
+| Median latency | 199.8ms | **0.081ms** | **2,466x faster** |
+| Tool calls per task | 3.2 | **1.0** | 68% fewer |
+| Files read | 1,961 | **0** | Eliminated |
 
 ---
 
