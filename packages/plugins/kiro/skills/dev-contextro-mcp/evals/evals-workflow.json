@@ -24,6 +24,21 @@
           "passing_condition": "impact('BaseEmbeddingService') called before any rename recommendation"
         }
       ]
+    },
+    {
+      "id": 102,
+      "name": "output-format-file-symbol-contract",
+      "category": "output_format",
+      "prompt": "You called code(operation='get_document_symbols') and got {\"file\":\"src/cache.rs\",\"columns\":[\"name\",\"type\",\"line\",\"signature\"],\"symbols\":[[\"QueryCache\",\"class\",14,\"pub struct QueryCache {\"],[\"get\",\"method\",34,\"pub fn get(&self, key: &str) -> Option<_>\"]],\"total\":2}. Summarize the first symbol and mention why signature may be absent in other calls.",
+      "expected_behavior": "Agent reads the columnar row correctly, identifies QueryCache at line 14, and explains that signature is only present when include_signature=true.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "columnar get_document_symbols payload is interpreted correctly",
+          "type": "output_format",
+          "passing_condition": "agent identifies QueryCache at line 14 and notes signature is opt-in"
+        }
+      ]
     }
   ],
   "baseline_comparison": {
