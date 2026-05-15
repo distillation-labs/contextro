@@ -4,6 +4,19 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.14] - 2026-05-15
+
+### Fixed
+
+- **Exact-symbol search, code-map focus, and audit follow-up are more actionable under real MCP use** - exact symbol-style `search()` hits now promote clear top matches to high confidence, `search_codebase_map` keeps narrow explanatory queries focused on the dominant files instead of padding with weak neighbors, and `audit()` now surfaces capped offender evidence plus follow-up actions instead of only aggregate counts.
+- **Study coverage and low-token symbol listing are stronger on Rust-heavy repos** - `contextro-study` now generates balanced task sets for Rust codebases more reliably, while `get_document_symbols` defaults to a leaner columnar response with optional signatures so retrieval workflows stay compact without changing the primary search contract.
+- **The shipped skill bundle now matches the live server contract and current benchmark evidence** - the distributed `dev-contextro-mcp` docs, evals, mirrored copies, and package READMEs now describe full-key responses, `index()` readiness, archive retrieval via `retrieve(ref_id)`, and study-backed benchmark numbers instead of stale compact-key, sandbox, and per-tool token claims.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are more precise now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
 ## [1.6.13] - 2026-05-15
 
 ### Fixed
