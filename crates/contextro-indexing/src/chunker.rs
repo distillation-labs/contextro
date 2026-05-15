@@ -128,10 +128,7 @@ fn split_identifier_tokens(text: &str) -> Vec<String> {
         }
     }
 
-    spaced
-        .split_whitespace()
-        .map(String::from)
-        .collect()
+    spaced.split_whitespace().map(String::from).collect()
 }
 
 fn split_path_tokens(path: &str) -> Vec<String> {
@@ -209,7 +206,9 @@ mod tests {
         let chunk = create_chunks(&[sym]).pop().unwrap();
         let max_chars = get_settings().read().chunk_max_chars;
 
-        assert!(chunk.text.contains("# ArchiveStore.retrieve_archived_session"));
+        assert!(chunk
+            .text
+            .contains("# ArchiveStore.retrieve_archived_session"));
         assert!(chunk.text.contains("Kind: function"));
         assert!(chunk.text.contains("Symbol: retrieve_archived_session"));
         assert!(chunk.text.contains("Keywords:"));
