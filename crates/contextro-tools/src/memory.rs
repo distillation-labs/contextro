@@ -707,11 +707,7 @@ pub fn handle_knowledge(args: &Value, knowledge: &KnowledgeStore) -> Value {
             if value.trim().is_empty() {
                 return json!({"error": "Missing required parameter: value"});
             }
-            // If value is a file/dir path, read it; otherwise treat as text
             let source_path = canonicalize_if_exists(Path::new(value));
-            if source_path.is_none() && looks_like_path(value) {
-                return json!({"error": format!("Path not found: {}", value)});
-            }
             let content = source_path
                 .as_deref()
                 .map(read_knowledge_source)
@@ -858,21 +854,6 @@ fn string_list_arg(value: Option<&Value>) -> Option<String> {
         Some(Value::String(s)) if !s.trim().is_empty() => Some(s.trim().to_string()),
         _ => None,
     }
-}
-
-fn looks_like_path(value: &str) -> bool {
-    if value.trim().is_empty() || value.contains('\n') || value.contains('\r') {
-        return false;
-    }
-
-    let path = Path::new(value);
-    path.is_absolute()
-        || value.starts_with("./")
-        || value.starts_with("../")
-        || value.starts_with('~')
-        || value.contains('/')
-        || value.contains('\\')
-        || (path.extension().is_some() && !value.chars().any(char::is_whitespace))
 }
 
 #[cfg(test)]
@@ -1022,6 +1003,80 @@ mod tests {
         );
         assert_eq!(search_result["total"], 1);
         assert_eq!(search_result["results"][0]["source"], "nested-docs");
+
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_add_inline_text_succeeds() {
+        let store_path = temp_file("inline-text");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"inline","value":"developer trust release checklist"}),
+            &knowledge,
+        );
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"release checklist","limit":5}),
+            &knowledge,
+        );
+
+        assert_eq!(add_result["status"], "indexed");
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "inline");
+
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_add_path_like_inline_text_succeeds() {
+        let store_path = temp_file("inline-path-like");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+
+        let inline_value = "See docs/api/v1 and ../notes/todo before release";
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"path-like-inline","value": inline_value}),
+            &knowledge,
+        );
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"docs api v1","limit":5}),
+            &knowledge,
+        );
+
+        assert_eq!(add_result["status"], "indexed");
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "path-like-inline");
+
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_add_existing_file_path_reads_from_disk() {
+        let root = temp_dir("existing-file-path");
+        let note = root.join("guide.md");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&note, "disk-backed knowledge token").unwrap();
+
+        let store_path = temp_file("existing-file-path");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"guide","value": note.to_string_lossy()}),
+            &knowledge,
+        );
+        let show_result = handle_knowledge(&json!({"command":"show"}), &knowledge);
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"disk-backed knowledge token","limit":5}),
+            &knowledge,
+        );
+
+        assert_eq!(add_result["status"], "indexed");
+        assert!(show_result["knowledge_bases"][0]["source_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("guide.md"));
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "guide");
 
         let _ = std::fs::remove_dir_all(root);
         let _ = std::fs::remove_file(store_path);
@@ -1327,20 +1382,38 @@ mod tests {
     }
 
     #[test]
-    fn test_knowledge_add_rejects_nonexistent_path_like_value() {
-        let store_path = temp_file("missing-path");
+    fn test_knowledge_add_nonexistent_path_like_value_is_treated_as_inline_text() {
+        let store_path = temp_file("missing-path-inline");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+        let value = "/nonexistent/path/fake.md";
+
+        let add_result = handle_knowledge(
+            &json!({"command":"add","name":"fake","value": value}),
+            &knowledge,
+        );
+        let search_result = handle_knowledge(
+            &json!({"command":"search","query":"fake md","limit":5}),
+            &knowledge,
+        );
+
+        assert_eq!(add_result["status"], "indexed");
+        assert_eq!(search_result["total"], 1);
+        assert_eq!(search_result["results"][0]["source"], "fake");
+
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_update_still_errors_for_nonexistent_path() {
+        let store_path = temp_file("update-missing-path");
         let knowledge = KnowledgeStore::with_path(&store_path);
 
         let result = handle_knowledge(
-            &json!({"command":"add","name":"fake","value":"/nonexistent/path/fake.md"}),
+            &json!({"command":"update","name":"fake","path":"/nonexistent/path/fake.md"}),
             &knowledge,
         );
 
         assert!(result["error"].as_str().unwrap().contains("Path not found"));
-        assert_eq!(
-            handle_knowledge(&json!({"command":"list"}), &knowledge)["total"],
-            0
-        );
 
         let _ = std::fs::remove_file(store_path);
     }
