@@ -1,0 +1,65 @@
+{
+  "skill_name": "dev-contextro-mcp",
+  "version": "0.1.0",
+  "description": "Core trigger and routing evals for the Contextro MCP skill. Aligned to Anthropic skill guidance: concise frontmatter, correct triggering, problem-first routing, and avoidance of token-heavy anti-patterns.",
+  "rubric": {
+    "source_docs": [
+      "skills-guide.pdf",
+      "Anthropic skills docs",
+      "Anthropic effective harnesses for long-running agents"
+    ],
+    "focus": [
+      "triggering on relevant requests",
+      "not triggering on unrelated requests",
+      "correct tool routing",
+      "anti-pattern avoidance",
+      "current response format interpretation"
+    ]
+  },
+  "categories": {
+    "triggering": "Skill loads on obvious and paraphrased Contextro requests",
+    "routing": "Correct Contextro tool chosen for the user task",
+    "anti_pattern": "Agent avoids wasteful or unsafe alternatives when Contextro fits",
+    "response_format": "Agent correctly interprets current response payloads and wrappers"
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "trigger-index-project",
+      "category": "triggering",
+      "prompt": "Index this project at /Users/alice/platform so I can search it.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent calls index with the path and treats `status: \"done\"` as sufficient readiness for normal follow-up search-oriented tools.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "index is called with the requested path",
+          "type": "tool_selection",
+          "passing_condition": "index tool called with path='/Users/alice/platform'"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "trigger-search-concept",
+      "category": "triggering",
+      "prompt": "Search the codebase for how rate limiting is implemented.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent uses search for conceptual discovery.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search is used for concept search",
+          "type": "tool_selection",
+          "passing_condition": "search called with a rate-limiting-related query"
+        }
+      ]
+    }
+  ],
+  "targets": {
+    "trigger_rate_relevant": 0.9,
+    "non_trigger_rate_irrelevant": 1.0,
+    "impact_before_refactor": 1.0,
+    "response_format_accuracy": 1.0
+  }
+}
