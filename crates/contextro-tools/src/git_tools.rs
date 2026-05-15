@@ -45,25 +45,30 @@ impl RepoRegistry {
     }
 
     pub fn remove(&self, path: &str) -> bool {
-        let key = normalize_repo_path(path);
-        let mut repos = self.repos.write();
-        let removed = repos.remove(&key).is_some() || repos.remove(path).is_some();
-        if removed {
-            self.save_locked(&repos);
-        }
-        removed
+        self.remove_entry(Some(path), None).is_some()
     }
 
     pub fn remove_by_name(&self, name: &str) -> bool {
+        self.remove_entry(None, Some(name)).is_some()
+    }
+
+    pub fn remove_entry(&self, path: Option<&str>, name: Option<&str>) -> Option<(String, String)> {
         let mut repos = self.repos.write();
-        let matching_key = repos
-            .iter()
-            .find_map(|(path, stored_name)| (stored_name == name).then(|| path.clone()));
-        let Some(key) = matching_key else {
-            return false;
+        let removed = if let Some(path) = path.filter(|path| !path.is_empty()) {
+            let key = normalize_repo_path(path);
+            repos
+                .remove_entry(&key)
+                .or_else(|| repos.remove_entry(path))
+        } else if let Some(name) = name.filter(|name| !name.is_empty()) {
+            let matching_key = repos
+                .iter()
+                .find_map(|(path, stored_name)| (stored_name == name).then(|| path.clone()));
+            matching_key.and_then(|key| repos.remove_entry(&key))
+        } else {
+            None
         };
-        let removed = repos.remove(&key).is_some();
-        if removed {
+
+        if removed.is_some() {
             self.save_locked(&repos);
         }
         removed
@@ -302,18 +307,29 @@ pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
     })
 }
 
-pub fn handle_repo_remove(args: &Value, registry: &RepoRegistry) -> Value {
+#[cfg_attr(not(test), allow(dead_code))]
+fn handle_repo_remove(args: &Value, registry: &RepoRegistry) -> Value {
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
     let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
     if path.is_empty() && name.is_empty() {
         return json!({"error": "Missing required parameter: path or name"});
     }
-    if !path.is_empty() {
-        let removed = registry.remove(path);
-        return json!({"removed": removed, "path": path});
+    if let Some((removed_path, removed_name)) = registry.remove_entry(
+        (!path.is_empty()).then_some(path),
+        (!name.is_empty()).then_some(name),
+    ) {
+        let mut response = json!({"removed": true, "path": removed_path, "name": removed_name});
+        if !path.is_empty() {
+            response.as_object_mut().unwrap().remove("name");
+        } else {
+            response.as_object_mut().unwrap().remove("path");
+        }
+        return response;
     }
-    let removed = registry.remove_by_name(name);
-    json!({"removed": removed, "name": name})
+    if !path.is_empty() {
+        return json!({"removed": false, "path": path});
+    }
+    json!({"removed": false, "name": name})
 }
 
 pub fn handle_repo_status(registry: &RepoRegistry) -> Value {
