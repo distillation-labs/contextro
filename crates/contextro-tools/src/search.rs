@@ -276,15 +276,14 @@ fn rerank_natural_language_results(
         } else {
             1.0
         };
-        let quality_multiplier = if is_test_file(&result.filepath)
-            || is_probable_test_symbol(&result.symbol_name)
-        {
-            0.35
-        } else if !targets_support_or_tooling && is_probable_meta_support_result(result) {
-            0.48
-        } else {
-            1.03
-        };
+        let quality_multiplier =
+            if is_test_file(&result.filepath) || is_probable_test_symbol(&result.symbol_name) {
+                0.35
+            } else if !targets_support_or_tooling && is_probable_meta_support_result(result) {
+                0.48
+            } else {
+                1.03
+            };
         let surface_multiplier = if targets_product_surface {
             if is_probable_product_surface_result(result) {
                 1.35
@@ -336,7 +335,10 @@ fn maybe_expand_conceptual_hybrid_candidates(
         return core_results;
     }
 
-    let mut merged = merge_ranked_results(core_results, conceptual_bm25_candidates(query, candidate_limit, bm25));
+    let mut merged = merge_ranked_results(
+        core_results,
+        conceptual_bm25_candidates(query, candidate_limit, bm25),
+    );
     merged.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -564,9 +566,7 @@ fn query_subsystem_focus(query: &str) -> QuerySubsystemFocus {
         };
     }
 
-    if query_is_explanatory(query)
-        && (lowered.contains("caching") || lowered.contains("cache"))
-    {
+    if query_is_explanatory(query) && (lowered.contains("caching") || lowered.contains("cache")) {
         return QuerySubsystemFocus {
             required_terms: vec!["cache".into()],
             strong_terms: vec![
@@ -672,20 +672,8 @@ fn query_targets_support_or_tooling(query: &str) -> bool {
     let lowered = query.to_ascii_lowercase();
 
     [
-        "test",
-        "tests",
-        "fixture",
-        "fixtures",
-        "spec",
-        "stub",
-        "mock",
-        "plugin",
-        "plugins",
-        "setup",
-        "path",
-        "helper",
-        "helpers",
-        "manifest",
+        "test", "tests", "fixture", "fixtures", "spec", "stub", "mock", "plugin", "plugins",
+        "setup", "path", "helper", "helpers", "manifest",
     ]
     .iter()
     .any(|token| lowered.contains(token))
@@ -784,8 +772,8 @@ fn result_query_overlap(query_terms: &[String], result: &SearchResult) -> f64 {
 
     let result_terms: HashSet<String> = normalized_concept_terms(
         &format!(
-        "{} {} {} {}",
-        result.symbol_name, result.filepath, result.signature, result.code
+            "{} {} {} {}",
+            result.symbol_name, result.filepath, result.signature, result.code
         ),
         false,
     );
@@ -798,7 +786,10 @@ fn result_grounding_overlap(query_terms: &[String], result: &SearchResult) -> f6
     }
 
     let grounding_terms: HashSet<String> = normalized_concept_terms(
-        &format!("{} {} {}", result.symbol_name, result.filepath, result.signature),
+        &format!(
+            "{} {} {}",
+            result.symbol_name, result.filepath, result.signature
+        ),
         false,
     );
     term_overlap_ratio(query_terms, &grounding_terms)
@@ -1614,9 +1605,16 @@ mod tests {
             ],
         );
 
-        assert!(reranked[0].filepath.starts_with("packages/observability/src/"));
-        assert!(reranked[1].filepath.starts_with("packages/observability/src/"));
-        assert!(reranked.iter().take(2).all(|result| result.filepath.contains("observability")));
+        assert!(reranked[0]
+            .filepath
+            .starts_with("packages/observability/src/"));
+        assert!(reranked[1]
+            .filepath
+            .starts_with("packages/observability/src/"));
+        assert!(reranked
+            .iter()
+            .take(2)
+            .all(|result| result.filepath.contains("observability")));
     }
 
     #[test]
@@ -1641,7 +1639,8 @@ mod tests {
         result.signature = "pub struct QueryCacheConfig".into();
         result.code = "Caches search responses using configuration-driven TTL eviction.".into();
 
-        let overlap = result_query_overlap(&natural_language_query_terms("caching config"), &result);
+        let overlap =
+            result_query_overlap(&natural_language_query_terms("caching config"), &result);
 
         assert_eq!(overlap, 1.0);
     }
@@ -1707,12 +1706,16 @@ mod tests {
     #[test]
     fn test_observability_queries_target_engine_internals() {
         assert!(query_targets_engine_internals("observability config"));
-        assert!(query_targets_engine_internals("how does observability configuration work"));
+        assert!(query_targets_engine_internals(
+            "how does observability configuration work"
+        ));
     }
 
     #[test]
     fn test_support_or_tooling_intent_detects_setup_and_plugin_queries() {
-        assert!(query_targets_support_or_tooling("plugin setup path helpers"));
+        assert!(query_targets_support_or_tooling(
+            "plugin setup path helpers"
+        ));
         assert!(!query_targets_support_or_tooling("observability config"));
     }
 
@@ -1742,13 +1745,20 @@ mod tests {
             "how does caching work",
             "how does the query cache work, TTL eviction",
         ] {
-            let result =
-                handle_search(&json!({"query": query, "limit": 10}), &bm25, &graph, &cache, &vector);
+            let result = handle_search(
+                &json!({"query": query, "limit": 10}),
+                &bm25,
+                &graph,
+                &cache,
+                &vector,
+            );
             let top = &result["results"][0];
-            assert_eq!(top["name"], "QueryCache", "unexpected result for {query}: {result}");
             assert_eq!(
-                top["file"],
-                "crates/contextro-engines/src/cache.rs",
+                top["name"], "QueryCache",
+                "unexpected result for {query}: {result}"
+            );
+            assert_eq!(
+                top["file"], "crates/contextro-engines/src/cache.rs",
                 "unexpected result for {query}: {result}"
             );
         }
@@ -1821,7 +1831,10 @@ mod tests {
         );
 
         let results = result["results"].as_array().expect("results array");
-        assert_eq!(results[0]["name"], "QueryCache", "unexpected result: {result}");
+        assert_eq!(
+            results[0]["name"], "QueryCache",
+            "unexpected result: {result}"
+        );
         assert_eq!(results[0]["file"], "crates/contextro-engines/src/cache.rs");
         assert!(results.iter().any(|entry| {
             entry["file"] == "crates/contextro-engines/src/cache.rs"
@@ -1865,7 +1878,10 @@ mod tests {
             &vector,
         );
 
-        assert_eq!(result["results"][0]["name"], "QueryCache", "unexpected result: {result}");
+        assert_eq!(
+            result["results"][0]["name"], "QueryCache",
+            "unexpected result: {result}"
+        );
         assert_eq!(result["confidence"], "high", "unexpected result: {result}");
     }
 
@@ -1951,9 +1967,15 @@ mod tests {
 
         assert_eq!(result["confidence"], "high", "unexpected result: {result}");
         assert_eq!(result["results"][0]["name"], "QueryCache");
-        assert_eq!(result["results"][0]["file"], "crates/contextro-engines/src/cache.rs");
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
         assert_eq!(result["results"][0]["type"], "function");
-        assert!(result["results"][0].get("score").is_some(), "unexpected result: {result}");
+        assert!(
+            result["results"][0].get("score").is_some(),
+            "unexpected result: {result}"
+        );
         assert_eq!(result["limit"], 10);
         assert_eq!(result["truncated"], false);
     }
@@ -1990,8 +2012,14 @@ mod tests {
 
         let entries = result["results"].as_array().expect("results array");
         assert!(entries.iter().any(|entry| entry["name"] == "QueryCache"));
-        assert!(entries.iter().all(|entry| entry.get("type").is_some()), "unexpected result: {result}");
-        assert!(entries.iter().all(|entry| entry.get("score").is_some()), "unexpected result: {result}");
+        assert!(
+            entries.iter().all(|entry| entry.get("type").is_some()),
+            "unexpected result: {result}"
+        );
+        assert!(
+            entries.iter().all(|entry| entry.get("score").is_some()),
+            "unexpected result: {result}"
+        );
         assert_eq!(result["limit"], 10);
         assert_eq!(result["truncated"], false);
     }
@@ -2005,7 +2033,8 @@ mod tests {
             0.97,
             &["vector"],
         );
-        settlement_state.signature = "export type SettlementSyncFormState = typeof DEFAULT_SETTLEMENT_SYNC_CONFIG".into();
+        settlement_state.signature =
+            "export type SettlementSyncFormState = typeof DEFAULT_SETTLEMENT_SYNC_CONFIG".into();
         settlement_state.code = "settlement sync config state for accounting forms".into();
 
         let mut observability_builder = make_named_result(
@@ -2015,8 +2044,11 @@ mod tests {
             0.63,
             &["bm25", "vector"],
         );
-        observability_builder.signature = "export function buildObservabilityConfig(serviceName: string): ObservabilityConfig".into();
-        observability_builder.code = "build observability config with telemetry and tracing exporters".into();
+        observability_builder.signature =
+            "export function buildObservabilityConfig(serviceName: string): ObservabilityConfig"
+                .into();
+        observability_builder.code =
+            "build observability config with telemetry and tracing exporters".into();
 
         let mut sentry_builder = make_named_result(
             "sentry-builder",
@@ -2025,7 +2057,8 @@ mod tests {
             0.61,
             &["bm25"],
         );
-        sentry_builder.signature = "export function buildNextSentryConfigOptions(): NextSentryBuildOptions | null".into();
+        sentry_builder.signature =
+            "export function buildNextSentryConfigOptions(): NextSentryBuildOptions | null".into();
         sentry_builder.code = "build sentry config options for observability".into();
 
         let reranked = rerank_natural_language_results(
@@ -2066,7 +2099,8 @@ mod tests {
             0.92,
             &["vector"],
         );
-        find_hf_cache_path.signature = "fn find_hf_cache_path(hf_id: &str) -> Option<String>".into();
+        find_hf_cache_path.signature =
+            "fn find_hf_cache_path(hf_id: &str) -> Option<String>".into();
         find_hf_cache_path.code = "find huggingface cache path".into();
 
         let mut query_cache = make_named_result(
@@ -2077,7 +2111,8 @@ mod tests {
             &["bm25", "vector"],
         );
         query_cache.signature = "pub struct QueryCache".into();
-        query_cache.code = "stores cached search responses with TTL eviction and invalidation".into();
+        query_cache.code =
+            "stores cached search responses with TTL eviction and invalidation".into();
 
         let mut query_cache_get = make_named_result(
             "query-cache-get",
@@ -2086,12 +2121,20 @@ mod tests {
             0.58,
             &["bm25"],
         );
-        query_cache_get.signature = "pub fn get(&self, query: &str) -> Option<SearchResponse>".into();
-        query_cache_get.code = "returns cached search responses when entries have not expired".into();
+        query_cache_get.signature =
+            "pub fn get(&self, query: &str) -> Option<SearchResponse>".into();
+        query_cache_get.code =
+            "returns cached search responses when entries have not expired".into();
 
         let reranked = rerank_natural_language_results(
             "how does caching work",
-            vec![read_cache, write_cache, find_hf_cache_path, query_cache, query_cache_get],
+            vec![
+                read_cache,
+                write_cache,
+                find_hf_cache_path,
+                query_cache,
+                query_cache_get,
+            ],
         );
 
         assert_eq!(reranked[0].symbol_name, "QueryCache");
@@ -2158,7 +2201,10 @@ mod tests {
 
         assert_eq!(reranked[0].filepath, "packages/observability/src/config.ts");
         assert_eq!(reranked[1].filepath, "packages/observability/src/index.ts");
-        assert!(reranked.iter().take(2).all(|result| !is_probable_meta_support_result(result)));
+        assert!(reranked
+            .iter()
+            .take(2)
+            .all(|result| !is_probable_meta_support_result(result)));
     }
 
     #[test]
@@ -2170,7 +2216,8 @@ mod tests {
             0.97,
             &["bm25"],
         );
-        cache_tests.signature = "fn test_handle_search_surfaces_query_cache_for_caching_queries()".into();
+        cache_tests.signature =
+            "fn test_handle_search_surfaces_query_cache_for_caching_queries()".into();
         cache_tests.code = "assert query cache search results".into();
 
         let mut stem_tests = make_named_result(
@@ -2201,7 +2248,8 @@ mod tests {
             &["bm25", "vector"],
         );
         query_cache.signature = "pub struct QueryCache".into();
-        query_cache.code = "stores cached search responses with TTL eviction and invalidation".into();
+        query_cache.code =
+            "stores cached search responses with TTL eviction and invalidation".into();
 
         let mut cache_get = make_named_result(
             "cache-get",
@@ -2218,10 +2266,19 @@ mod tests {
             vec![cache_tests, stem_tests, hf_path, query_cache, cache_get],
         );
 
-        assert_eq!(reranked[0].filepath, "crates/contextro-engines/src/cache.rs");
+        assert_eq!(
+            reranked[0].filepath,
+            "crates/contextro-engines/src/cache.rs"
+        );
         assert_eq!(reranked[0].symbol_name, "QueryCache");
-        assert_eq!(reranked[1].filepath, "crates/contextro-engines/src/cache.rs");
-        assert!(reranked.iter().take(2).all(|result| is_probable_engine_internal_search_result(result)));
+        assert_eq!(
+            reranked[1].filepath,
+            "crates/contextro-engines/src/cache.rs"
+        );
+        assert!(reranked
+            .iter()
+            .take(2)
+            .all(|result| is_probable_engine_internal_search_result(result)));
     }
 
     #[test]
