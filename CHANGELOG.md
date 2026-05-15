@@ -4,6 +4,19 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.15] - 2026-05-15
+
+### Fixed
+
+- **Narrow explanatory code-map queries now point at the implementation file instead of the dispatcher** - `search_codebase_map` uses a more direct per-file relevance score for narrow "how does X work" queries, so commit-search style questions prefer the real tool implementation over broad router files while preserving broader architecture maps.
+- **Audit quality scoring now moves with real complexity drift** - `audit()` still returns actionable evidence and follow-up calls, but `quality_score` now drops when the worst hotspot connectivity or largest file size grows materially instead of staying pinned when only the recommendation categories are unchanged.
+- **File symbol-listing contracts are now documented and regression-tested end-to-end** - `get_document_symbols` and file-path `list_symbols` columnar output, `include_signature`, and the directory-path `list_symbols` object-row contract are now reflected in the MCP schema, release-candidate gate, shipped skill docs, mirrored eval bundles, and public READMEs.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are more precise now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
 ## [1.6.14] - 2026-05-15
 
 ### Fixed
