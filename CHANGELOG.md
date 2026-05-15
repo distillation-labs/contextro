@@ -4,6 +4,14 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.13] - 2026-05-15
+
+### Fixed
+
+- **Search and code-map focus are more aligned with real developer queries** — ranking and conceptual retrieval improved for cache/observability-style searches, while `edit_plan` stays more focused when relevant symbols span multiple subsystems.
+- **Restart persistence is more trustworthy across repo and memory workflows** — active repo scope restoration and recall persistence now survive restart-sensitive flows instead of dropping or misreporting state.
+- **Tool contracts and release-candidate guidance are more accurate** — `knowledge(add inline value)` now honors the intended contract, `repo_add` success hints are truthful, and the local RC benchmark gate is calibrated to block noisy regressions without overfailing.
+
 ### Known Limitations
 
 - **Incremental re-indexing not yet implemented** — the file scanner computes xxHash3 content hashes but the pipeline always does a full rebuild. Partial updates (only re-parsing changed files) are planned for the next release.
