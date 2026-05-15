@@ -54,6 +54,38 @@
           "passing_condition": "search called with a rate-limiting-related query"
         }
       ]
+    },
+    {
+      "id": 3,
+      "name": "response-format-columnar-file-symbols",
+      "category": "response_format",
+      "prompt": "Use get_document_symbols on a file and tell me the first symbol name and line. The tool returns {\"file\":\"src/cache.rs\",\"columns\":[\"name\",\"type\",\"line\",\"end_line\"],\"symbols\":[[\"QueryCache\",\"class\",14,20],[\"get\",\"method\",34,46]],\"total\":2}.",
+      "should_trigger": true,
+      "expected_behavior": "Agent reads the columnar payload via the columns array and reports QueryCache at line 14 without assuming symbols[0].name exists.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "columnar symbol rows are interpreted correctly",
+          "type": "response_format",
+          "passing_condition": "agent identifies the first symbol as QueryCache on line 14 using columns-aware interpretation"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "response-format-list-symbols-file-vs-directory",
+      "category": "response_format",
+      "prompt": "A file-path list_symbols call returned {\"file\":\"src/cache.rs\",\"columns\":[\"name\",\"type\",\"line\"],\"symbols\":[[\"QueryCache\",\"class\",14]],\"total\":1}, while a directory-path list_symbols call returned {\"path\":\"src\",\"symbols\":[{\"name\":\"QueryCache\",\"type\":\"class\",\"file\":\"src/cache.rs\",\"line\":14,\"callers\":2,\"callees\":4}],\"total\":1}. Explain the difference.",
+      "should_trigger": true,
+      "expected_behavior": "Agent explains that file-path list_symbols aliases get_document_symbols and is columnar, while directory-path list_symbols returns object rows with callers/callees.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "file and directory list_symbols contracts are distinguished",
+          "type": "response_format",
+          "passing_condition": "agent states that file-path list_symbols is columnar and directory-path list_symbols returns object rows with callers/callees"
+        }
+      ]
     }
   ],
   "targets": {
