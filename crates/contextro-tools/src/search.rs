@@ -108,7 +108,7 @@ pub fn handle_search(
     let total = results.len();
     results.truncate(limit);
 
-    let confidence = confidence_label(&results);
+    let confidence = confidence_label(query, &results);
 
     let out: Vec<Value> = results
         .iter()
@@ -1139,12 +1139,16 @@ fn accumulate_result(
     }
 }
 
-fn confidence_label(results: &[SearchResult]) -> &'static str {
+fn confidence_label(query: &str, results: &[SearchResult]) -> &'static str {
     let Some(top) = results.first() else {
         return "low";
     };
     let second = results.get(1).map(|r| r.score).unwrap_or(0.0);
     let gap = top.score - second;
+
+    if is_high_confidence_exact_symbol_hit(query, top) && top.score >= 0.55 {
+        return "high";
+    }
 
     if top.score >= 0.75 && gap >= 0.15 {
         "high"
@@ -1153,6 +1157,29 @@ fn confidence_label(results: &[SearchResult]) -> &'static str {
     } else {
         "low"
     }
+}
+
+fn is_high_confidence_exact_symbol_hit(query: &str, result: &SearchResult) -> bool {
+    if !is_symbol_lookup_query(query) || is_test_file(&result.filepath) {
+        return false;
+    }
+
+    let normalized_query = normalize_identifier(query);
+    if normalized_query.len() < 3 {
+        return false;
+    }
+
+    let symbol_name = normalize_identifier(&result.symbol_name);
+    let terminal_symbol = normalize_identifier(&terminal_symbol_name(&result.symbol_name));
+    let path_stem = std::path::Path::new(&result.filepath)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(normalize_identifier)
+        .unwrap_or_default();
+
+    normalized_query == symbol_name
+        || normalized_query == terminal_symbol
+        || normalized_query == path_stem
 }
 
 #[cfg(test)]
@@ -1800,6 +1827,173 @@ mod tests {
             entry["file"] == "crates/contextro-engines/src/cache.rs"
                 && entry["name"] == "QueryCache::get"
         }));
+    }
+
+    #[test]
+    fn test_handle_search_query_cache_exact_match_reports_high_confidence() {
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[
+            make_chunk(
+                "query-cache",
+                "QueryCache stores cached search responses with TTL eviction and invalidation support.",
+                "QueryCache",
+                "crates/contextro-engines/src/cache.rs",
+            ),
+            make_chunk(
+                "query-cache-get",
+                "QueryCache::get returns cached search responses when cache entries have not expired.",
+                "QueryCache::get",
+                "crates/contextro-engines/src/cache.rs",
+            ),
+            make_chunk(
+                "handle-search",
+                "handle_search routes search tool requests and formats responses.",
+                "handle_search",
+                "crates/contextro-tools/src/search.rs",
+            ),
+        ]);
+
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "hybrid"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(result["results"][0]["name"], "QueryCache", "unexpected result: {result}");
+        assert_eq!(result["confidence"], "high", "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_confidence_label_promotes_exact_symbol_like_top_hit_without_large_gap() {
+        let confidence = confidence_label(
+            "QueryCache",
+            &[
+                make_named_result(
+                    "query-cache",
+                    "QueryCache",
+                    "crates/contextro-engines/src/cache.rs",
+                    0.62,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "query-cache-get",
+                    "QueryCache::get",
+                    "crates/contextro-engines/src/cache.rs",
+                    0.58,
+                    &["bm25"],
+                ),
+            ],
+        );
+
+        assert_eq!(confidence, "high");
+    }
+
+    #[test]
+    fn test_confidence_label_keeps_natural_language_cache_query_at_medium_without_large_gap() {
+        let confidence = confidence_label(
+            "how does caching work",
+            &[
+                make_named_result(
+                    "query-cache",
+                    "QueryCache",
+                    "crates/contextro-engines/src/cache.rs",
+                    0.62,
+                    &["bm25"],
+                ),
+                make_named_result(
+                    "query-cache-get",
+                    "QueryCache::get",
+                    "crates/contextro-engines/src/cache.rs",
+                    0.58,
+                    &["bm25"],
+                ),
+            ],
+        );
+
+        assert_eq!(confidence, "medium");
+    }
+
+    #[test]
+    fn test_handle_search_keeps_rich_payload_for_exact_symbol_matches() {
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[
+            make_chunk(
+                "query-cache",
+                "QueryCache stores cached search responses with TTL eviction and invalidation support.",
+                "QueryCache",
+                "crates/contextro-engines/src/cache.rs",
+            ),
+            make_chunk(
+                "query-cache-get",
+                "QueryCache::get returns cached search responses when cache entries have not expired.",
+                "QueryCache::get",
+                "crates/contextro-engines/src/cache.rs",
+            ),
+        ]);
+
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "bm25"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(result["confidence"], "high", "unexpected result: {result}");
+        assert_eq!(result["results"][0]["name"], "QueryCache");
+        assert_eq!(result["results"][0]["file"], "crates/contextro-engines/src/cache.rs");
+        assert_eq!(result["results"][0]["type"], "function");
+        assert!(result["results"][0].get("score").is_some(), "unexpected result: {result}");
+        assert_eq!(result["limit"], 10);
+        assert_eq!(result["truncated"], false);
+    }
+
+    #[test]
+    fn test_handle_search_keeps_rich_payload_for_non_exact_single_term_queries() {
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[
+            make_chunk(
+                "query-cache",
+                "Query cache stores cached search responses with TTL eviction and invalidation support.",
+                "QueryCache",
+                "crates/contextro-engines/src/cache.rs",
+            ),
+            make_chunk(
+                "query-cache-get",
+                "Returns cached search responses when query cache entries have not expired.",
+                "QueryCache::get",
+                "crates/contextro-engines/src/cache.rs",
+            ),
+        ]);
+
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "cache", "limit": 10, "mode": "bm25"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        let entries = result["results"].as_array().expect("results array");
+        assert!(entries.iter().any(|entry| entry["name"] == "QueryCache"));
+        assert!(entries.iter().all(|entry| entry.get("type").is_some()), "unexpected result: {result}");
+        assert!(entries.iter().all(|entry| entry.get("score").is_some()), "unexpected result: {result}");
+        assert_eq!(result["limit"], 10);
+        assert_eq!(result["truncated"], false);
     }
 
     #[test]
