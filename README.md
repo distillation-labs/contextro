@@ -147,6 +147,9 @@ code(operation="pattern_rewrite", pattern="println!($MSG)", replacement="tracing
 code(operation="edit_plan", goal="Replace legacy logging", symbol_name="log_event")
 ```
 
+`get_document_symbols` returns a compact columnar payload: `{ file, columns, symbols, total }`.
+Pass `include_signature=true` only when you need signatures; `list_symbols(path=<file>)` uses the same file contract, while `list_symbols(path=<dir>)` returns object rows with `callers` and `callees`.
+
 ### Search git history
 
 ```
