@@ -13,14 +13,14 @@
       "not triggering on unrelated requests",
       "correct tool routing",
       "anti-pattern avoidance",
-      "compact response format interpretation"
+      "current response format interpretation"
     ]
   },
   "categories": {
     "triggering": "Skill loads on obvious and paraphrased Contextro requests",
     "routing": "Correct Contextro tool chosen for the user task",
     "anti_pattern": "Agent avoids wasteful or unsafe alternatives when Contextro fits",
-    "response_format": "Agent correctly interprets compact response keys and implicit fields"
+    "response_format": "Agent correctly interprets current response payloads and wrappers"
   },
   "evals": [
     {
@@ -29,19 +29,13 @@
       "category": "triggering",
       "prompt": "Index this project at /Users/alice/platform so I can search it.",
       "should_trigger": true,
-      "expected_behavior": "Skill loads. Agent calls index with the path, then status before using search-oriented tools.",
+      "expected_behavior": "Skill loads. Agent calls index with the path and treats `status: \"done\"` as sufficient readiness for normal follow-up search-oriented tools.",
       "assertions": [
         {
           "id": "a1",
           "text": "index is called with the requested path",
           "type": "tool_selection",
           "passing_condition": "index tool called with path='/Users/alice/platform'"
-        },
-        {
-          "id": "a2",
-          "text": "status is used after index",
-          "type": "workflow",
-          "passing_condition": "status() called after index() and before any search/find_symbol/explain call"
         }
       ]
     },
