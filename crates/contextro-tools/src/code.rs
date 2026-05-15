@@ -528,6 +528,8 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
     let normalized_query = raw_query.to_ascii_lowercase();
     let query_tokens = tokenize_codebase_map_text(raw_query);
     let query_term_set: HashSet<String> = query_tokens.iter().cloned().collect();
+    let narrow_explanatory_query =
+        codebase_map_query_is_narrow_explanatory(raw_query, &query_tokens);
     let targets_product_surface = codebase_map_query_targets_product_surface(raw_query);
     let prefers_subsystem_closure = codebase_map_query_prefers_subsystem_closure(raw_query);
     let path_filter = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
@@ -594,8 +596,14 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 })
         });
 
-        let dominant_file =
-            detect_dominant_codebase_map_file(&hits, graph, &query_tokens, targets_product_surface);
+        let dominant_file = detect_dominant_codebase_map_file(
+            &hits,
+            graph,
+            &normalized_query,
+            &query_tokens,
+            targets_product_surface,
+            narrow_explanatory_query,
+        );
         if prefers_subsystem_closure {
             subsystem_dominant_file = dominant_file.clone();
         }
@@ -832,12 +840,21 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 detect_dominant_codebase_map_file(
                     &hits,
                     graph,
+                    &normalized_query,
                     &query_tokens,
                     targets_product_surface,
+                    narrow_explanatory_query,
                 )
             })
         } else {
-            detect_dominant_codebase_map_file(&hits, graph, &query_tokens, targets_product_surface)
+            detect_dominant_codebase_map_file(
+                &hits,
+                graph,
+                &normalized_query,
+                &query_tokens,
+                targets_product_surface,
+                narrow_explanatory_query,
+            )
         };
 
         if let Some(dominant_file) = dominant_file.as_ref() {
@@ -936,6 +953,18 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
         }
     }
 
+    if narrow_explanatory_query {
+        for (_, symbols, file_score) in &mut grouped {
+            *file_score = codebase_map_narrow_file_relevance_score(
+                symbols,
+                graph,
+                &normalized_query,
+                &query_tokens,
+                targets_product_surface,
+            );
+        }
+    }
+
     if normalized_query.is_empty() {
         grouped.sort_by(|a, b| a.0.cmp(&b.0));
     } else {
@@ -945,7 +974,7 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 .then_with(|| a.0.cmp(&b.0))
         });
 
-        if codebase_map_query_is_narrow_explanatory(raw_query, &query_tokens) && grouped.len() > 1 {
+        if narrow_explanatory_query && grouped.len() > 1 {
             let lead_score = grouped[0].2;
             let second_score = grouped[1].2;
             let max_files = if lead_score >= second_score + 0.35 {
@@ -1178,6 +1207,34 @@ fn codebase_map_same_file_score(
     base + connectivity_bias + concept_overlap.min(4.0) * 0.22 + 0.20 + exact_name_bonus
 }
 
+fn codebase_map_narrow_file_relevance_score(
+    hits: &[CodebaseMapHit],
+    graph: &CodeGraph,
+    normalized_query: &str,
+    query_tokens: &[String],
+    targets_product_surface: bool,
+) -> f64 {
+    let mut scores: Vec<f64> = hits
+        .iter()
+        .filter_map(|hit| {
+            graph.get_node(&hit.node_id).map(|node| {
+                codebase_map_intra_file_relevance_score(
+                    &node,
+                    normalized_query,
+                    query_tokens,
+                    targets_product_surface,
+                )
+            })
+        })
+        .collect();
+    if scores.is_empty() {
+        return hits.iter().map(|hit| hit.score).fold(0.0_f64, f64::max);
+    }
+
+    scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(Ordering::Equal));
+    scores.into_iter().take(2).sum()
+}
+
 fn should_keep_codebase_map_neighbor(
     node: &UniversalNode,
     query_terms: &HashSet<String>,
@@ -1220,8 +1277,10 @@ fn should_keep_same_file_codebase_map_candidate(
 fn detect_dominant_codebase_map_file(
     hits: &[CodebaseMapHit],
     graph: &CodeGraph,
+    normalized_query: &str,
     query_tokens: &[String],
     targets_product_surface: bool,
+    narrow_explanatory_query: bool,
 ) -> Option<String> {
     #[derive(Clone, Copy, Default)]
     struct FileStats {
@@ -1234,14 +1293,50 @@ fn detect_dominant_codebase_map_file(
     let mut file_scores: HashMap<&str, FileStats> = HashMap::new();
     let concept_terms: HashSet<String> = query_tokens.iter().cloned().collect();
 
-    for hit in hits.iter().take(12) {
-        let entry = file_scores.entry(hit.source_file.as_str()).or_default();
-        entry.hit_count += 1;
-        entry.total_score += hit.score;
-        if let Some(node) = graph.get_node(&hit.node_id) {
-            entry.concept_overlap += codebase_map_concept_overlap(&node, &concept_terms);
-            if targets_product_surface && is_probable_codebase_map_product_surface_node(&node) {
-                entry.product_surface_hits += 1;
+    if narrow_explanatory_query {
+        let mut per_file_hits: HashMap<&str, Vec<f64>> = HashMap::new();
+        for hit in hits.iter().take(12) {
+            let entry = file_scores.entry(hit.source_file.as_str()).or_default();
+            entry.hit_count += 1;
+            if let Some(node) = graph.get_node(&hit.node_id) {
+                let symbol_score = codebase_map_intra_file_relevance_score(
+                    &node,
+                    normalized_query,
+                    query_tokens,
+                    targets_product_surface,
+                );
+                per_file_hits
+                    .entry(hit.source_file.as_str())
+                    .or_default()
+                    .push(symbol_score.max(0.0));
+                entry.concept_overlap += codebase_map_symbol_concept_overlap(&node, &concept_terms);
+                if targets_product_surface && is_probable_codebase_map_product_surface_node(&node) {
+                    entry.product_surface_hits += 1;
+                }
+            } else {
+                per_file_hits
+                    .entry(hit.source_file.as_str())
+                    .or_default()
+                    .push(hit.score.max(0.0));
+            }
+        }
+
+        for (file, mut scores) in per_file_hits {
+            scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(Ordering::Equal));
+            if let Some(entry) = file_scores.get_mut(file) {
+                entry.total_score = scores.into_iter().take(2).sum();
+            }
+        }
+    } else {
+        for hit in hits.iter().take(12) {
+            let entry = file_scores.entry(hit.source_file.as_str()).or_default();
+            entry.hit_count += 1;
+            entry.total_score += hit.score;
+            if let Some(node) = graph.get_node(&hit.node_id) {
+                entry.concept_overlap += codebase_map_concept_overlap(&node, &concept_terms);
+                if targets_product_surface && is_probable_codebase_map_product_surface_node(&node) {
+                    entry.product_surface_hits += 1;
+                }
             }
         }
     }
@@ -1249,21 +1344,31 @@ fn detect_dominant_codebase_map_file(
     let mut ranked_files: Vec<(&str, f64, FileStats)> = file_scores
         .iter()
         .map(|(file, stats)| {
-            let weighted_score = stats.total_score
-                + stats.hit_count as f64 * 0.22
-                + stats.concept_overlap.min(8) as f64 * 0.08
-                + if targets_product_surface {
-                    stats.product_surface_hits as f64 * 0.10
-                } else {
-                    0.0
-                };
+            let weighted_score = if narrow_explanatory_query {
+                stats.total_score
+            } else {
+                stats.total_score
+                    + stats.hit_count as f64 * 0.22
+                    + stats.concept_overlap.min(8) as f64 * 0.08
+                    + if targets_product_surface {
+                        stats.product_surface_hits as f64 * 0.10
+                    } else {
+                        0.0
+                    }
+            };
             (*file, weighted_score, *stats)
         })
         .collect();
     ranked_files.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(Ordering::Equal)
-            .then_with(|| b.2.hit_count.cmp(&a.2.hit_count))
+            .then_with(|| {
+                if narrow_explanatory_query {
+                    b.2.concept_overlap.cmp(&a.2.concept_overlap)
+                } else {
+                    b.2.hit_count.cmp(&a.2.hit_count)
+                }
+            })
             .then_with(|| a.0.cmp(b.0))
     });
 
@@ -2207,7 +2312,10 @@ fn infer_edit_plan_symbols_from_goal(goal: &str, graph: &CodeGraph) -> Vec<Unive
                 Some(existing) if existing.1 >= score => {}
                 Some(existing) => *existing = (candidate_match.node, score),
                 None => {
-                    bucket.insert(candidate_match.node.id.clone(), (candidate_match.node, score));
+                    bucket.insert(
+                        candidate_match.node.id.clone(),
+                        (candidate_match.node, score),
+                    );
                 }
             }
         }
@@ -2393,8 +2501,7 @@ fn score_edit_plan_candidate_match(
     let mut score = name_match_score;
 
     if content.contains(candidate_lower) {
-        score += if node_name.contains(candidate_lower)
-            || qualified_name.contains(candidate_lower)
+        score += if node_name.contains(candidate_lower) || qualified_name.contains(candidate_lower)
         {
             0.75
         } else {
@@ -2405,8 +2512,7 @@ fn score_edit_plan_candidate_match(
         score += 0.5;
     }
     if file_path.contains(candidate_lower) {
-        score += if node_name.contains(candidate_lower)
-            || qualified_name.contains(candidate_lower)
+        score += if node_name.contains(candidate_lower) || qualified_name.contains(candidate_lower)
         {
             0.2
         } else {
@@ -2449,14 +2555,12 @@ fn score_edit_plan_candidate_match(
     } else {
         0.0
     };
-    let weak_content_only_penalty = if name_token_overlap == 0.0
-        && token_overlap > 0.0
-        && name_match_score == 0.0
-    {
-        0.75
-    } else {
-        0.0
-    };
+    let weak_content_only_penalty =
+        if name_token_overlap == 0.0 && token_overlap > 0.0 && name_match_score == 0.0 {
+            0.75
+        } else {
+            0.0
+        };
 
     score + name_token_overlap * 0.35 + token_overlap * 0.12
         - helper_penalty
@@ -2612,7 +2716,8 @@ fn expand_edit_plan_bridge_symbols(
                 if is_callee && goal_name_overlap == 0 && !state_bridge {
                     return None;
                 }
-                if same_file && !is_caller && goal_name_overlap == 0 && !state_bridge && !owner_like {
+                if same_file && !is_caller && goal_name_overlap == 0 && !state_bridge && !owner_like
+                {
                     return None;
                 }
                 if cross_file_primary_scope
@@ -2662,13 +2767,12 @@ fn expand_edit_plan_bridge_symbols(
             if is_edit_plan_test_like_node(node) {
                 return None;
             }
-            let score =
-                score_edit_plan_bridge_concept_match(
-                    node,
-                    &primary_concepts,
-                    &primary_paths,
-                    cross_file_primary_scope,
-                );
+            let score = score_edit_plan_bridge_concept_match(
+                node,
+                &primary_concepts,
+                &primary_paths,
+                cross_file_primary_scope,
+            );
             (score >= 1.35).then(|| (node.clone(), score))
         })
         .collect();
@@ -2735,21 +2839,18 @@ fn score_edit_plan_bridge_node(
     } else {
         0.0
     };
-    let cross_file_same_path_penalty = if cross_file_primary_scope
-        && same_primary_file
-        && !state_bridge
-        && !owner_like
-    {
-        if is_edit_plan_handler_symbol(node) {
-            1.10
-        } else if name_overlap < 1.0 {
-            0.70
+    let cross_file_same_path_penalty =
+        if cross_file_primary_scope && same_primary_file && !state_bridge && !owner_like {
+            if is_edit_plan_handler_symbol(node) {
+                1.10
+            } else if name_overlap < 1.0 {
+                0.70
+            } else {
+                0.20
+            }
         } else {
-            0.20
-        }
-    } else {
-        0.0
-    };
+            0.0
+        };
 
     overlap * 0.35
         + name_overlap * 0.22
@@ -2815,17 +2916,18 @@ fn score_edit_plan_bridge_concept_match(
     } else {
         0.0
     };
-    let cross_file_same_path_penalty = if cross_file_primary_scope && same_path && !state_bridge && !owner_like {
-        if is_edit_plan_handler_symbol(node) {
-            0.90
-        } else if name_overlap < 2.0 {
-            0.60
+    let cross_file_same_path_penalty =
+        if cross_file_primary_scope && same_path && !state_bridge && !owner_like {
+            if is_edit_plan_handler_symbol(node) {
+                0.90
+            } else if name_overlap < 2.0 {
+                0.60
+            } else {
+                0.20
+            }
         } else {
-            0.20
-        }
-    } else {
-        0.0
-    };
+            0.0
+        };
 
     concept_overlap * 0.30
         + symbol_overlap * 0.12
@@ -2952,14 +3054,14 @@ fn add_edit_plan_neighbors(
         .chain(graph.get_callees(&node.id).into_iter())
         .filter(|neighbor| seen_neighbors.insert(neighbor.id.clone()))
         .collect();
-    neighbor_candidates.extend(
-        graph.find_nodes_by_name("", false).into_iter().filter(|candidate| {
+    neighbor_candidates.extend(graph.find_nodes_by_name("", false).into_iter().filter(
+        |candidate| {
             candidate.location.file_path == node.location.file_path
                 && candidate.location.start_line <= node.location.start_line
                 && candidate.name.chars().any(|ch| ch.is_ascii_uppercase())
                 && seen_neighbors.insert(candidate.id.clone())
-        }),
-    );
+        },
+    ));
     let mut neighbors: Vec<(UniversalNode, f64)> = neighbor_candidates
         .into_iter()
         .filter_map(|neighbor| {
@@ -2968,7 +3070,8 @@ fn add_edit_plan_neighbors(
             }
 
             let goal_overlap = codebase_map_symbol_concept_overlap(&neighbor, goal_terms) as f64;
-            let anchor_overlap = codebase_map_symbol_concept_overlap(&neighbor, &anchor_terms) as f64;
+            let anchor_overlap =
+                codebase_map_symbol_concept_overlap(&neighbor, &anchor_terms) as f64;
             let goal_name_overlap = edit_plan_name_overlap(&neighbor, goal_terms) as f64;
             let anchor_name_overlap = edit_plan_name_overlap(&neighbor, &anchor_terms) as f64;
             let conceptual_overlap = goal_overlap + anchor_overlap;
@@ -2982,13 +3085,18 @@ fn add_edit_plan_neighbors(
             if high_degree_anchor && !state_bridge && name_overlap < 1.0 {
                 return None;
             }
-            if high_degree_anchor && !state_bridge && goal_name_overlap == 0.0 && anchor_name_overlap == 0.0 {
+            if high_degree_anchor
+                && !state_bridge
+                && goal_name_overlap == 0.0
+                && anchor_name_overlap == 0.0
+            {
                 return None;
             }
             if high_degree_anchor && same_file && handler_like && goal_name_overlap == 0.0 {
                 return None;
             }
-            if high_degree_anchor && same_file && !owner_like && !state_bridge && name_overlap < 2.0 {
+            if high_degree_anchor && same_file && !owner_like && !state_bridge && name_overlap < 2.0
+            {
                 return None;
             }
             let helper_penalty = if is_codebase_map_meta_helper_symbol(&neighbor.name) {
@@ -3005,12 +3113,12 @@ fn add_edit_plan_neighbors(
             } else {
                 0.0
             };
-            let state_bridge_bonus = if state_bridge && (goal_overlap >= 1.0 || anchor_overlap >= 1.0)
-            {
-                0.25
-            } else {
-                0.0
-            };
+            let state_bridge_bonus =
+                if state_bridge && (goal_overlap >= 1.0 || anchor_overlap >= 1.0) {
+                    0.25
+                } else {
+                    0.0
+                };
 
             let score = goal_overlap * 0.28
                 + anchor_overlap * 0.24
@@ -3720,7 +3828,11 @@ mod tests {
             .collect();
 
         assert!(names.contains(&"dispatch"), "unexpected names: {:?}", names);
-        assert!(names.contains(&"QueryCache"), "unexpected names: {:?}", names);
+        assert!(
+            names.contains(&"QueryCache"),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
         assert!(
             !names.contains(&"test_dispatch_query_cache"),
@@ -3849,19 +3961,52 @@ mod tests {
             .filter_map(|value| value.as_str())
             .collect();
 
-        assert!(primary_names.contains(&"dispatch"), "unexpected primaries: {:?}", primary_names);
-        assert!(primary_names.contains(&"QueryCache"), "unexpected primaries: {:?}", primary_names);
+        assert!(
+            primary_names.contains(&"dispatch"),
+            "unexpected primaries: {:?}",
+            primary_names
+        );
+        assert!(
+            primary_names.contains(&"QueryCache"),
+            "unexpected primaries: {:?}",
+            primary_names
+        );
         assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"test_bm25_search_recovers_cache_from_caching_query"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"handle_circular_dependencies"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"handle_dead_code"), "unexpected names: {:?}", names);
+        assert!(
+            !names.contains(&"test_bm25_search_recovers_cache_from_caching_query"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"handle_circular_dependencies"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"handle_dead_code"),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(!names.contains(&"search"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"make_chunk"), "unexpected names: {:?}", names);
+        assert!(
+            !names.contains(&"make_chunk"),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(target_files.contains(&"crates/contextro-server/src/main.rs"));
         assert!(target_files.contains(&"crates/contextro-server/src/state.rs"));
         assert!(target_files.contains(&"crates/contextro-engines/src/cache.rs"));
-        assert_eq!(target_files.len(), 3, "unexpected target files: {:?}", target_files);
-        assert!(affected.len() <= 5, "unexpected affected symbols: {:?}", names);
+        assert_eq!(
+            target_files.len(),
+            3,
+            "unexpected target files: {:?}",
+            target_files
+        );
+        assert!(
+            affected.len() <= 5,
+            "unexpected affected symbols: {:?}",
+            names
+        );
     }
 
     #[test]
@@ -3979,12 +4124,32 @@ mod tests {
             .collect();
 
         assert!(names.contains(&"dispatch"), "unexpected names: {:?}", names);
-        assert!(names.contains(&"QueryCache"), "unexpected names: {:?}", names);
+        assert!(
+            names.contains(&"QueryCache"),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"handle_focus"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"handle_status"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"clear_active_scope"), "unexpected names: {:?}", names);
-        assert!(!target_files.contains(&"crates/contextro-tools/src/analysis.rs"), "unexpected target files: {:?}", target_files);
+        assert!(
+            !names.contains(&"handle_focus"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"handle_status"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"clear_active_scope"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !target_files.contains(&"crates/contextro-tools/src/analysis.rs"),
+            "unexpected target files: {:?}",
+            target_files
+        );
         assert_eq!(target_files, vec!["crates/contextro-tools/src/code.rs"]);
     }
 
@@ -4092,25 +4257,57 @@ mod tests {
         let clear_scope_index = names.iter().position(|name| *name == "clear_active_scope");
 
         assert!(names.contains(&"dispatch"), "unexpected names: {:?}", names);
-        assert!(names.contains(&"QueryCache"), "unexpected names: {:?}", names);
+        assert!(
+            names.contains(&"QueryCache"),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
-        assert!(names.contains(&"call_tool") || names.contains(&"ContextroServer"), "unexpected names: {:?}", names);
-        assert!(handle_status_index.is_none(), "unexpected names: {:?}", names);
+        assert!(
+            names.contains(&"call_tool") || names.contains(&"ContextroServer"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            handle_status_index.is_none(),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(clear_scope_index.is_none(), "unexpected names: {:?}", names);
-        assert!(target_files.contains(&"crates/contextro-server/src/main.rs"), "unexpected target files: {:?}", target_files);
-        assert!(target_files.contains(&"crates/contextro-server/src/state.rs"), "unexpected target files: {:?}", target_files);
-        assert!(target_files.contains(&"crates/contextro-engines/src/cache.rs"), "unexpected target files: {:?}", target_files);
+        assert!(
+            target_files.contains(&"crates/contextro-server/src/main.rs"),
+            "unexpected target files: {:?}",
+            target_files
+        );
+        assert!(
+            target_files.contains(&"crates/contextro-server/src/state.rs"),
+            "unexpected target files: {:?}",
+            target_files
+        );
+        assert!(
+            target_files.contains(&"crates/contextro-engines/src/cache.rs"),
+            "unexpected target files: {:?}",
+            target_files
+        );
         if let (Some(app_state_index), Some(call_tool_index)) = (
             app_state_index,
             names.iter().position(|name| *name == "call_tool"),
         ) {
-            assert!(app_state_index < call_tool_index, "unexpected ordering: {:?}", names);
+            assert!(
+                app_state_index < call_tool_index,
+                "unexpected ordering: {:?}",
+                names
+            );
         }
         if let (Some(app_state_index), Some(server_index)) = (
             app_state_index,
             names.iter().position(|name| *name == "ContextroServer"),
         ) {
-            assert!(app_state_index < server_index, "unexpected ordering: {:?}", names);
+            assert!(
+                app_state_index < server_index,
+                "unexpected ordering: {:?}",
+                names
+            );
         }
     }
 
@@ -4738,6 +4935,99 @@ mod tests {
     }
 
     #[test]
+    fn test_search_codebase_map_prefers_git_tools_for_narrow_commit_queries() {
+        let graph = CodeGraph::new();
+        let main_file = "/tmp/contextro/crates/contextro-server/src/main.rs";
+        let git_file = "/tmp/contextro/crates/contextro-tools/src/git_tools.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            main_file,
+            10,
+            "fn dispatch() { commit_search(); commit_history(); call_tool(); tool_definitions(); }",
+        ));
+        graph.add_node(test_node(
+            "tool-definitions",
+            "tool_definitions",
+            main_file,
+            40,
+            "fn tool_definitions() { register commit_search and commit_history handlers }",
+        ));
+        graph.add_node(test_node(
+            "call-tool",
+            "call_tool",
+            main_file,
+            60,
+            "fn call_tool() { dispatches git tool handlers }",
+        ));
+        graph.add_node(test_node(
+            "commit-search-route",
+            "commit_search",
+            main_file,
+            72,
+            "fn commit_search() { route commit search tool requests }",
+        ));
+        graph.add_node(test_node(
+            "commit-history-route",
+            "commit_history",
+            main_file,
+            86,
+            "fn commit_history() { route commit history tool requests }",
+        ));
+
+        graph.add_node(test_node(
+            "handle-commit-search",
+            "handle_commit_search",
+            git_file,
+            15,
+            "pub fn handle_commit_search() { search commit history and rank commit records }",
+        ));
+        graph.add_node(test_node(
+            "handle-commit-history",
+            "handle_commit_history",
+            git_file,
+            36,
+            "pub fn handle_commit_history() { load commit records from repo registry }",
+        ));
+        graph.add_node(test_node(
+            "repo-registry",
+            "RepoRegistry",
+            git_file,
+            58,
+            "pub struct RepoRegistry { commit search storage and routing helpers }",
+        ));
+        graph.add_node(test_node(
+            "commit-record",
+            "CommitRecord",
+            git_file,
+            84,
+            "pub struct CommitRecord { commit message and history payload }",
+        ));
+
+        add_call(&graph, "dispatch", "commit-search-route");
+        add_call(&graph, "dispatch", "commit-history-route");
+        add_call(&graph, "commit-search-route", "handle-commit-search");
+        add_call(&graph, "commit-history-route", "handle-commit-history");
+        add_call(&graph, "handle-commit-search", "repo-registry");
+        add_call(&graph, "handle-commit-search", "commit-record");
+
+        let result = search_codebase_map(
+            &json!({"query":"how does commit search work"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let files = result["files"].as_array().unwrap();
+        assert!(!files.is_empty(), "unexpected result: {result}");
+        assert_eq!(
+            files[0]["file"],
+            json!("crates/contextro-tools/src/git_tools.rs"),
+            "unexpected result: {result}"
+        );
+    }
+
+    #[test]
     fn test_get_document_symbols_omits_signatures_by_default() {
         let dir = temp_dir("default-signature");
         let file = dir.join("main.py");
@@ -4771,7 +5061,10 @@ mod tests {
         );
 
         assert_eq!(result["total"], 1);
-        assert_eq!(result["columns"], json!(["name", "type", "line", "signature"]));
+        assert_eq!(
+            result["columns"],
+            json!(["name", "type", "line", "signature"])
+        );
         let rendered = result["symbols"][0][3].as_str().unwrap();
         assert!(rendered.ends_with('…'));
         assert!(rendered.chars().count() <= 58);
@@ -4794,7 +5087,10 @@ mod tests {
             Some(dir.to_string_lossy().as_ref()),
         );
 
-        assert_eq!(result["columns"], json!(["name", "type", "line", "end_line"]));
+        assert_eq!(
+            result["columns"],
+            json!(["name", "type", "line", "end_line"])
+        );
         assert_eq!(result["symbols"][0], json!(["Hello", "class", 1, 3]));
         assert_eq!(result["symbols"][1], json!(["first", "method", 2, null]));
         assert_eq!(result["symbols"][2], json!(["second", "function", 5, null]));
@@ -4802,4 +5098,62 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn test_list_symbols_uses_columnar_file_contract() {
+        let dir = temp_dir("list-symbols-file-contract");
+        let file = dir.join("main.py");
+        std::fs::write(&file, "def hello(name):\n    return name\n").unwrap();
+
+        let result = handle_code(
+            &json!({"operation":"list_symbols","path": file.to_string_lossy().to_string()}),
+            &CodeGraph::new(),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["columns"], json!(["name", "type", "line"]));
+        assert_eq!(result["symbols"][0], json!(["hello", "function", 1]));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_list_symbols_directory_contract_remains_object_based() {
+        let dir = temp_dir("list-symbols-dir-contract");
+        let file = dir.join("module.py");
+        std::fs::write(&file, "def hello(name):\n    return name\n").unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "hello".into(),
+            name: "hello".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 1,
+                end_line: 2,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let result = handle_code(
+            &json!({"operation":"list_symbols","path": dir.to_string_lossy().to_string()}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert!(
+            result.get("columns").is_none(),
+            "unexpected result: {result}"
+        );
+        assert_eq!(result["symbols"][0]["name"], json!("hello"));
+        assert_eq!(result["symbols"][0]["file"], json!("module.py"));
+        assert!(result["symbols"][0].get("callers").is_some());
+        assert!(result["symbols"][0].get("callees").is_some());
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
