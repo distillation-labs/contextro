@@ -7,12 +7,14 @@ Full routing table for Contextro MCP tools. Use this when the main SKILL.md tabl
 ### "Find code that does X"
 -> `search("X")` - hybrid semantic+keyword+graph
 -> If exact name known: `find_symbol("ExactName")`
+-> If mapping a subsystem or architecture slice: `code(operation="search_codebase_map", query="X")`
 -> If structural pattern: `code(operation="pattern_search", pattern="...", language="python")`
 
 ### "Understand how X works"
 -> `explain("X")` for specific non-utility symbols
 -> `search("how does X work")` for broad concepts
 -> `find_callees("X")` to see what X calls
+-> Prefer `find_symbol("X")` + `focus(path="...")` / `explain("X")` over `search_codebase_map` for narrow symbol-specific questions
 -> Only `readFile` if you need the full implementation body after explain told you the file
 
 ### "Who uses X / who calls X"
@@ -29,8 +31,9 @@ Full routing table for Contextro MCP tools. Use this when the main SKILL.md tabl
 -> `analyze(path="src/module")` - code quality for a specific area
 
 ### "Git history"
--> `commit_search("what changed")` - semantic search over commits
+-> `commit_search("what changed")` - semantic search over commits; works best when commit subjects are descriptive
 -> `commit_history(limit=10)` - browse recent commits chronologically
+-> Prefer `commit_history` first when commit messages in the repo are terse or formulaic
 
 ### "Store / retrieve context"
 -> `remember(content, memory_type="decision")` - persist decisions
@@ -45,8 +48,13 @@ Full routing table for Contextro MCP tools. Use this when the main SKILL.md tabl
 -> `code(operation="lookup_symbols", symbols="A,B,C")` - batch symbol lookup
 
 ### "Session recovery"
--> `session_snapshot()` - ALWAYS call first after context compaction
--> `recall("what I was working on")` - retrieve stored context
+-> `retrieve(ref_id="arc_...")` - retrieve archived content created by `compact()`
+-> `recall("what I was working on")` - retrieve durable memory stored via `remember()`
+-> `session_snapshot()` - use when you need recent tool-call context or session re-entry help
+
+### "Plan an edit"
+-> `code(operation="edit_plan", goal="...")` - heuristic planning aid returning affected symbols/files, risks, and next steps
+-> Not a deterministic ordered edit script
 
 ## Search Mode Selection
 
