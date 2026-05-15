@@ -37,6 +37,9 @@ local `skills-guide.pdf`.
 - Reads full-key search payloads: `query`, `confidence`, `results`, `total`, and usually `limit` plus `truncated`.
 - Reads search results with `name`, `file`, `line`, `type`, `score`.
 - Reads `find_symbol` and symbol lookup responses as `{ symbols: [...], total: N }`.
+- Reads `get_document_symbols` and file-path `list_symbols` responses as columnar `{ file, columns, symbols, total }`, using `columns` indexes instead of assuming `symbols[i].name`.
+- Knows `signature` is opt-in via `include_signature=true` and `end_line` appears only when needed.
+- Distinguishes file-path `list_symbols` from directory-path `list_symbols`, whose directory contract remains object rows with `callers` and `callees`.
 - Reads `retrieve()` responses as `{ ref_id, content }`.
 - Reads `{callers: [...]}` and `{callees: [...]}` directly from find_callers/find_callees.
 
