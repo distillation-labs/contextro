@@ -24,9 +24,21 @@ pub struct ContextroServer {
 
 impl ContextroServer {
     pub fn new() -> Self {
-        Self {
-            state: Arc::new(AppState::new()),
-        }
+        Self::from_state(AppState::new())
+    }
+
+    fn from_state(state: AppState) -> Self {
+        let server = Self {
+            state: Arc::new(state),
+        };
+        server.restore_persisted_active_scope();
+        server
+    }
+
+    #[cfg(test)]
+    fn with_settings(settings: contextro_config::Settings) -> Self {
+        let state = AppState::from_settings(settings).expect("failed to initialize app state");
+        Self::from_state(state)
     }
 
     fn can_skip_reindex(
@@ -56,13 +68,7 @@ impl ContextroServer {
             "status" => self.handle_status(),
             "health" => self.handle_health(),
             "index" => self.handle_index(&args),
-            "search" => contextro_tools::search::handle_search(
-                &args,
-                &s.bm25,
-                &s.graph,
-                &s.query_cache,
-                &s.vector_index,
-            ),
+            "search" => self.handle_search(&args),
             "find_symbol" => self.handle_find_symbol(&args),
             "find_callers" => {
                 contextro_tools::graph_tools::handle_find_callers(&args, &s.graph, cb)
@@ -121,6 +127,15 @@ impl ContextroServer {
                         combined["graph_relationships"] =
                             index_result["graph_relationships"].clone();
                         combined["total_symbols"] = index_result["total_symbols"].clone();
+                        if combined.get("hint")
+                            == Some(&json!(
+                                "Run index(path) to build the graph and enable search for this repo."
+                            ))
+                        {
+                            combined["hint"] = json!(
+                                "Repository registered, indexed, and set as the active repo scope."
+                            );
+                        }
                     } else if let Some(error) = index_result.get("error") {
                         combined["indexed"] = json!(false);
                         combined["index_error"] = error.clone();
@@ -128,9 +143,7 @@ impl ContextroServer {
                     combined
                 }
             }
-            "repo_remove" => {
-                contextro_tools::git_tools::handle_repo_remove(&args, &s.repo_registry)
-            }
+            "repo_remove" => self.handle_repo_remove(&args),
             "repo_status" => contextro_tools::git_tools::handle_repo_status(&s.repo_registry),
             "code" => contextro_tools::code::handle_code(&args, &s.graph, cb),
             "audit" => contextro_tools::artifacts::handle_audit(&s.graph, cb),
@@ -246,6 +259,22 @@ impl ContextroServer {
         })
     }
 
+    fn handle_search(&self, args: &Value) -> Value {
+        if !*self.state.indexed.read() || self.state.codebase_path.read().is_none() {
+            return json!({
+                "error": "No codebase loaded. Run 'index(path)' or 'repo_add(path)' to load an active repo scope."
+            });
+        }
+
+        contextro_tools::search::handle_search(
+            args,
+            &self.state.bm25,
+            &self.state.graph,
+            &self.state.query_cache,
+            &self.state.vector_index,
+        )
+    }
+
     fn handle_index(&self, args: &Value) -> Value {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         if path.is_empty() {
@@ -255,6 +284,7 @@ impl ContextroServer {
             return json!({"error": format!("Not a directory: {}", path)});
         }
 
+        let requested_path = normalize_repo_dir(path);
         let settings = get_settings().read().clone();
         let storage_dir = contextro_config::project_storage_dir(path);
         std::fs::create_dir_all(&storage_dir).ok();
@@ -273,7 +303,7 @@ impl ContextroServer {
 
         // If nothing changed and we already have an index, skip re-parsing
         if Self::can_skip_reindex(
-            path,
+            &requested_path,
             loaded_codebase.as_deref(),
             *self.state.indexed.read(),
             is_incremental,
@@ -332,10 +362,19 @@ impl ContextroServer {
                 }
 
                 // Swap in the persistent BM25 engine
+                if let Some(previous_active) = loaded_codebase
+                    .as_deref()
+                    .map(normalize_repo_dir)
+                    .filter(|previous_active| previous_active != &requested_path)
+                {
+                    self.remember_repo_scope(previous_active, requested_path.clone());
+                }
+
                 *self.state.indexed.write() = true;
-                *self.state.codebase_path.write() = Some(path.to_string());
+                *self.state.codebase_path.write() = Some(requested_path.clone());
                 self.state.query_cache.invalidate();
-                self.state.knowledge.set_active_scope(Some(path));
+                self.state.knowledge.set_active_scope(Some(&requested_path));
+                self.state.persist_repo_scope_state();
 
                 // Auto-populate knowledge base with project docs
                 let kb_populated = auto_populate_knowledge(path, &self.state.knowledge);
@@ -364,6 +403,156 @@ impl ContextroServer {
                 resp
             }
             Err(e) => json!({"error": format!("Indexing failed: {}", e)}),
+        }
+    }
+
+    fn handle_repo_remove(&self, args: &Value) -> Value {
+        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        if path.is_empty() && name.is_empty() {
+            return json!({"error": "Missing required parameter: path or name"});
+        }
+
+        let removed = self.state.repo_registry.remove_entry(
+            (!path.is_empty()).then_some(path),
+            (!name.is_empty()).then_some(name),
+        );
+        let Some((removed_path, removed_name)) = removed else {
+            return if !path.is_empty() {
+                json!({"removed": false, "path": path})
+            } else {
+                json!({"removed": false, "name": name})
+            };
+        };
+
+        self.prune_repo_scope_history(&removed_path);
+
+        let removed_is_active = self
+            .state
+            .codebase_path
+            .read()
+            .clone()
+            .map(|active| normalize_repo_dir(&active) == removed_path)
+            .unwrap_or(false);
+
+        let mut response = json!({
+            "removed": true,
+            "path": removed_path,
+            "name": removed_name,
+        });
+
+        if !removed_is_active {
+            if !path.is_empty() {
+                response.as_object_mut().unwrap().remove("name");
+            } else {
+                response.as_object_mut().unwrap().remove("path");
+            }
+            return response;
+        }
+
+        if let Some(previous_path) = self.take_previous_repo_scope_candidate() {
+            *self.state.indexed.write() = false;
+            *self.state.codebase_path.write() = None;
+            let restore_result = self.handle_index(&json!({"path": previous_path}));
+            if restore_result.get("status") == Some(&json!("done")) {
+                response["active_scope_restored"] = json!(true);
+                response["restored_path"] = self
+                    .state
+                    .codebase_path
+                    .read()
+                    .clone()
+                    .map(Value::String)
+                    .unwrap_or(Value::Null);
+                response["hint"] = json!(
+                    "Removed repo was active, so Contextro restored the previous repo scope."
+                );
+                return response;
+            }
+
+            self.clear_active_scope();
+            response["active_scope_cleared"] = json!(true);
+            response["warning"] =
+                json!("Removed repo was active and the previous scope could not be restored.");
+            if let Some(error) = restore_result.get("error") {
+                response["restore_error"] = error.clone();
+            }
+            response["hint"] =
+                json!("Run index(path) or repo_add(path) to select a new active repo scope.");
+            return response;
+        }
+
+        self.clear_active_scope();
+        response["active_scope_cleared"] = json!(true);
+        response["warning"] =
+            json!("Removed repo was active and no previous repo scope was available.");
+        response["hint"] =
+            json!("Run index(path) or repo_add(path) to select a new active repo scope.");
+        response
+    }
+
+    fn remember_repo_scope(&self, previous_path: String, next_path: String) {
+        if previous_path == next_path {
+            return;
+        }
+
+        let mut history = self.state.repo_scope_history.write();
+        history.retain(|path| path != &next_path);
+        if history.last() != Some(&previous_path) {
+            history.push(previous_path);
+        }
+        drop(history);
+        self.state.persist_repo_scope_state();
+    }
+
+    fn prune_repo_scope_history(&self, removed_path: &str) {
+        self.state
+            .repo_scope_history
+            .write()
+            .retain(|path| path != removed_path);
+        self.state.persist_repo_scope_state();
+    }
+
+    fn take_previous_repo_scope_candidate(&self) -> Option<String> {
+        let mut history = self.state.repo_scope_history.write();
+        while let Some(candidate) = history.pop() {
+            if std::path::Path::new(&candidate).is_dir() {
+                drop(history);
+                self.state.persist_repo_scope_state();
+                return Some(candidate);
+            }
+        }
+        drop(history);
+        self.state.persist_repo_scope_state();
+        None
+    }
+
+    fn clear_active_scope(&self) {
+        self.state.graph.clear();
+        self.state.bm25.clear();
+        self.state.vector_index.clear();
+        self.state.query_cache.invalidate();
+        self.state
+            .chunk_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        *self.state.indexed.write() = false;
+        *self.state.codebase_path.write() = None;
+        self.state.knowledge.set_active_scope(None);
+        self.state.persist_repo_scope_state();
+    }
+
+    fn restore_persisted_active_scope(&self) {
+        let Some(path) = self.state.codebase_path.read().clone() else {
+            return;
+        };
+
+        if !std::path::Path::new(&path).is_dir() {
+            self.clear_active_scope();
+            return;
+        }
+
+        let result = self.handle_index(&json!({"path": path}));
+        if result.get("status") != Some(&json!("done")) {
+            self.clear_active_scope();
         }
     }
 
@@ -1078,15 +1267,19 @@ fn rank_nodes_by_degree(
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        format_response, resolve_refactor_targets, strip_response_paths, take_chars,
-        ContextroServer,
+        format_response, normalize_repo_dir, resolve_refactor_targets, strip_response_paths,
+        take_chars, ContextroServer,
     };
+    use contextro_config::Settings;
     use contextro_core::graph::{
         RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
     };
     use contextro_core::NodeType;
     use contextro_engines::graph::CodeGraph;
     use serde_json::{json, Value};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_can_skip_reindex_only_for_same_loaded_repo() {
@@ -1273,6 +1466,363 @@ mod tests {
             .unwrap_or("")
             .contains("exact=false"));
         assert!(result["did_you_mean"].is_array());
+    }
+
+    fn temp_repo_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("contextro-server-{unique}-{name}"))
+    }
+
+    fn write_indexable_repo(root: &Path, symbol_name: &str) {
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(
+            root.join("src/lib.rs"),
+            format!("pub fn {symbol_name}() {{}}\n"),
+        )
+        .unwrap();
+    }
+
+    fn temp_storage_dir(name: &str) -> PathBuf {
+        temp_repo_dir(&format!("storage-{name}"))
+    }
+
+    fn test_settings(storage_dir: &Path) -> Settings {
+        let mut settings = Settings::default();
+        settings.storage_dir = storage_dir.to_string_lossy().to_string();
+        settings
+    }
+
+    fn test_server(storage_dir: &Path) -> ContextroServer {
+        fs::create_dir_all(storage_dir).unwrap();
+        ContextroServer::with_settings(test_settings(storage_dir))
+    }
+
+    #[test]
+    fn test_repo_remove_restores_previous_active_scope_and_knowledge_scope() {
+        let storage_dir = temp_storage_dir("repo-remove-restore");
+        let server = test_server(&storage_dir);
+        let repo_a = temp_repo_dir("repo-a");
+        let repo_b = temp_repo_dir("repo-b");
+        write_indexable_repo(&repo_a, "repo_a_symbol");
+        write_indexable_repo(&repo_b, "repo_b_symbol");
+
+        let index_a = server.handle_index(&json!({"path": repo_a.to_string_lossy().to_string()}));
+        assert_eq!(index_a["status"], "done");
+        server
+            .state
+            .knowledge
+            .add("repo-a-doc", "alpha scope", None);
+
+        server.dispatch(
+            "repo_add",
+            json!({"path": repo_b.to_string_lossy().to_string()}),
+        );
+        assert_eq!(
+            server
+                .state
+                .codebase_path
+                .read()
+                .clone()
+                .map(|path| normalize_repo_dir(&path)),
+            Some(normalize_repo_dir(repo_b.to_string_lossy().as_ref()))
+        );
+        server
+            .state
+            .knowledge
+            .add("repo-b-doc", "bravo scope", None);
+
+        let remove_result =
+            server.handle_repo_remove(&json!({"path": repo_b.to_string_lossy().to_string()}));
+
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(remove_result["active_scope_restored"], true);
+        assert_eq!(
+            server
+                .state
+                .codebase_path
+                .read()
+                .clone()
+                .map(|path| normalize_repo_dir(&path)),
+            Some(normalize_repo_dir(repo_a.to_string_lossy().as_ref()))
+        );
+        assert_eq!(server.state.knowledge.search("alpha", 5).len(), 1);
+        assert!(server.state.knowledge.search("bravo", 5).is_empty());
+
+        let restored_codebase = server.state.codebase_path.read().clone();
+        let overview = contextro_tools::analysis::handle_overview(
+            &server.state.graph,
+            restored_codebase.as_deref(),
+            server
+                .state
+                .chunk_count
+                .load(std::sync::atomic::Ordering::Relaxed),
+            server.state.vector_index.len(),
+        );
+        let architecture =
+            contextro_tools::analysis::handle_architecture(&json!({}), &server.state.graph, restored_codebase.as_deref());
+        let repo_a_search = contextro_tools::search::handle_search(
+            &json!({"query": "repo_a_symbol"}),
+            &server.state.bm25,
+            &server.state.graph,
+            &server.state.query_cache,
+            &server.state.vector_index,
+        );
+        let repo_b_search = contextro_tools::search::handle_search(
+            &json!({"query": "repo_b_symbol"}),
+            &server.state.bm25,
+            &server.state.graph,
+            &server.state.query_cache,
+            &server.state.vector_index,
+        );
+        let repo_a_results = repo_a_search["results"].as_array().expect("results array");
+        let repo_b_results = repo_b_search["results"].as_array().expect("results array");
+
+        assert_eq!(
+            overview["codebase_path"],
+            normalize_repo_dir(repo_a.to_string_lossy().as_ref())
+        );
+        assert!(overview["total_symbols"].as_u64().unwrap_or(0) >= 1);
+        assert!(architecture["total_nodes"].as_u64().unwrap_or(0) >= 1);
+        assert!(repo_a_search["total"].as_u64().unwrap_or(0) >= 1);
+        assert!(repo_a_results
+            .iter()
+            .any(|result| result["name"] == "repo_a_symbol"));
+        assert!(!repo_b_results
+            .iter()
+            .any(|result| result["name"] == "repo_b_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo_a);
+        let _ = std::fs::remove_dir_all(repo_b);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_repo_remove_clears_active_scope_when_no_previous_scope_exists() {
+        let storage_dir = temp_storage_dir("repo-remove-clear");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("repo-clear");
+        write_indexable_repo(&repo, "repo_clear_symbol");
+
+        server
+            .state
+            .repo_registry
+            .add(repo.to_string_lossy().as_ref(), None);
+        let index_result =
+            server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(index_result["status"], "done");
+        server
+            .state
+            .knowledge
+            .add("repo-doc", "repo scoped note", None);
+
+        let remove_result =
+            server.handle_repo_remove(&json!({"path": repo.to_string_lossy().to_string()}));
+
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(remove_result["active_scope_cleared"], true);
+        assert_eq!(*server.state.indexed.read(), false);
+        assert_eq!(*server.state.codebase_path.read(), None);
+        assert_eq!(server.state.graph.node_count(), 0);
+        assert_eq!(
+            server
+                .state
+                .chunk_count
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert!(server.state.knowledge.search("repo scoped", 5).is_empty());
+        assert!(remove_result["warning"]
+            .as_str()
+            .unwrap_or("")
+            .contains("no previous repo scope"));
+
+        let overview = contextro_tools::analysis::handle_overview(
+            &server.state.graph,
+            server.state.codebase_path.read().as_deref(),
+            server
+                .state
+                .chunk_count
+                .load(std::sync::atomic::Ordering::Relaxed),
+            server.state.vector_index.len(),
+        );
+        let architecture = contextro_tools::analysis::handle_architecture(
+            &json!({}),
+            &server.state.graph,
+            server.state.codebase_path.read().as_deref(),
+        );
+        let search = contextro_tools::search::handle_search(
+            &json!({"query": "repo_clear_symbol"}),
+            &server.state.bm25,
+            &server.state.graph,
+            &server.state.query_cache,
+            &server.state.vector_index,
+        );
+
+        assert_eq!(overview["codebase_path"], Value::Null);
+        assert_eq!(overview["total_symbols"], 0);
+        assert_eq!(architecture["total_nodes"], 0);
+        assert_eq!(search["total"], 0);
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_restart_restores_active_scope_and_search_after_repo_add() {
+        let storage_dir = temp_storage_dir("restart-repo-add");
+        let repo = temp_repo_dir("restart-repo-a");
+        write_indexable_repo(&repo, "restart_repo_symbol");
+
+        let server = test_server(&storage_dir);
+        let add_result = server.dispatch(
+            "repo_add",
+            json!({"path": repo.to_string_lossy().to_string()}),
+        );
+        assert_ne!(add_result.is_error, Some(true));
+
+        let restarted = test_server(&storage_dir);
+        assert_eq!(*restarted.state.indexed.read(), true);
+        assert_eq!(
+            restarted
+                .state
+                .codebase_path
+                .read()
+                .clone()
+                .map(|path| normalize_repo_dir(&path)),
+            Some(normalize_repo_dir(repo.to_string_lossy().as_ref()))
+        );
+
+        let search = restarted.handle_search(&json!({"query": "restart_repo_symbol"}));
+        let results = search["results"].as_array().expect("results array");
+        assert!(results
+            .iter()
+            .any(|result| result["name"] == "restart_repo_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_repo_add_dispatch_replaces_stale_git_hint_after_auto_index() {
+        let storage_dir = temp_storage_dir("repo-add-hint");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("repo-add-hint-repo");
+        write_indexable_repo(&repo, "repo_add_hint_symbol");
+        let git_init = std::process::Command::new("git")
+            .arg("init")
+            .arg(&repo)
+            .output()
+            .expect("initialize git repo");
+        assert!(git_init.status.success());
+
+        let result = server.dispatch(
+            "repo_add",
+            json!({"path": repo.to_string_lossy().to_string()}),
+        );
+        assert_ne!(result.is_error, Some(true));
+
+        let content = serde_json::to_value(&result.content[0]).expect("serialize tool content");
+        let text = content["text"].as_str().expect("tool text payload");
+        let payload: Value = serde_json::from_str(text).expect("repo_add JSON payload");
+
+        assert_eq!(payload["registered"], true);
+        assert_eq!(payload["indexed"], true);
+        assert_eq!(payload["hint"], "Repository registered, indexed, and set as the active repo scope.");
+        assert!(!text.contains("Run index(path) to build the graph and enable search for this repo."));
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_restart_repo_remove_restores_previous_scope() {
+        let storage_dir = temp_storage_dir("restart-repo-restore");
+        let repo_a = temp_repo_dir("restart-restore-a");
+        let repo_b = temp_repo_dir("restart-restore-b");
+        write_indexable_repo(&repo_a, "restore_repo_a_symbol");
+        write_indexable_repo(&repo_b, "restore_repo_b_symbol");
+
+        let server = test_server(&storage_dir);
+        let index_a = server.handle_index(&json!({"path": repo_a.to_string_lossy().to_string()}));
+        assert_eq!(index_a["status"], "done");
+        let add_b = server.dispatch(
+            "repo_add",
+            json!({"path": repo_b.to_string_lossy().to_string()}),
+        );
+        assert_ne!(add_b.is_error, Some(true));
+
+        let restarted = test_server(&storage_dir);
+        let remove_result =
+            restarted.handle_repo_remove(&json!({"path": repo_b.to_string_lossy().to_string()}));
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(remove_result["active_scope_restored"], true);
+        assert_eq!(
+            restarted
+                .state
+                .codebase_path
+                .read()
+                .clone()
+                .map(|path| normalize_repo_dir(&path)),
+            Some(normalize_repo_dir(repo_a.to_string_lossy().as_ref()))
+        );
+
+        let search = restarted.handle_search(&json!({"query": "restore_repo_a_symbol"}));
+        let results = search["results"].as_array().expect("results array");
+        assert!(results
+            .iter()
+            .any(|result| result["name"] == "restore_repo_a_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo_a);
+        let _ = std::fs::remove_dir_all(repo_b);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_restart_repo_remove_only_active_repo_clears_persisted_scope() {
+        let storage_dir = temp_storage_dir("restart-repo-clear");
+        let repo = temp_repo_dir("restart-clear-a");
+        write_indexable_repo(&repo, "restart_clear_symbol");
+
+        let server = test_server(&storage_dir);
+        let add_result = server.dispatch(
+            "repo_add",
+            json!({"path": repo.to_string_lossy().to_string()}),
+        );
+        assert_ne!(add_result.is_error, Some(true));
+
+        let restarted = test_server(&storage_dir);
+        let remove_result =
+            restarted.handle_repo_remove(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(remove_result["active_scope_cleared"], true);
+        assert_eq!(*restarted.state.indexed.read(), false);
+        assert_eq!(*restarted.state.codebase_path.read(), None);
+        assert!(!storage_dir.join("repo-scope.json").exists());
+
+        let restarted_again = test_server(&storage_dir);
+        assert_eq!(*restarted_again.state.indexed.read(), false);
+        assert_eq!(*restarted_again.state.codebase_path.read(), None);
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_search_returns_clear_error_when_no_codebase_loaded() {
+        let storage_dir = temp_storage_dir("search-empty-state");
+        let server = test_server(&storage_dir);
+
+        let result = server.handle_search(&json!({"query": "anything"}));
+
+        assert_eq!(
+            result["error"],
+            "No codebase loaded. Run 'index(path)' or 'repo_add(path)' to load an active repo scope."
+        );
+
+        let _ = std::fs::remove_dir_all(storage_dir);
     }
 }
 
