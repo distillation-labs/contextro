@@ -42,7 +42,8 @@ Full routing table for Contextro MCP tools. Use this when the main SKILL.md tabl
 -> `knowledge(command="search", query="topic")` - search indexed docs
 
 ### "AST operations"
--> `code(operation="get_document_symbols", file_path="...")` - list all symbols in a file
+-> `code(operation="get_document_symbols", file_path="...")` - list file symbols as columnar `{ file, columns, symbols, total }`
+-> `code(operation="list_symbols", path="<dir>")` - list directory symbols as object rows with `callers`/`callees`
 -> `code(operation="pattern_search", pattern="...", language="...")` - structural search
 -> `code(operation="pattern_rewrite", ..., dry_run=True)` - safe structural rewrite
 -> `code(operation="lookup_symbols", symbols="A,B,C")` - batch symbol lookup
