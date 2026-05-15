@@ -39,7 +39,7 @@ After installation, your AI agent will:
 1. **Search by meaning** instead of reading 5+ files to find one function
 2. **Check impact** before renaming or deleting anything
 3. **Trace call graphs** instead of grepping for usages
-4. **Use 95% fewer tokens** for code discovery tasks
+4. **Use about 90% fewer tokens** for code discovery tasks in published and repo-local studies
 
 ## Commands
 
@@ -108,13 +108,14 @@ Output is written to `./experiment_results/`:
 - `results.json` — per-task metrics for both arms
 - `summary.json` — aggregated comparison
 
-### Typical Results
+### Current Study Results
 
 | Metric | Without MCP | With MCP | Improvement |
 |--------|-------------|----------|-------------|
-| Tokens per task | ~1,700 | ~50 | **95% reduction** |
-| Tool calls | 4 | 1 | **70% reduction** |
-| Files read | 3 | 0 | **100% reduction** |
+| Tokens (1,000-task production study) | 941,748 | 93,819 | **90% reduction** |
+| Tokens (200-task Contextro repo study) | 222,646 | 23,447 | **89.5% reduction** |
+| Tool calls per task (1,000-task production study) | 3.2 | 1.0 | lower |
+| Files read (1,000-task production study) | 1,961 | 0 | **100% reduction** |
 
 ## How Skills Work
 
