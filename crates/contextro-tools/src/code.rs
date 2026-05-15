@@ -363,8 +363,18 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let mut affected_symbols: Vec<Value> = Vec::new();
     let mut risks: Vec<String> = Vec::new();
     let mut seen_symbol_ids = HashSet::new();
+    let goal_term_set: HashSet<String> = edit_plan_goal_terms(goal).into_iter().collect();
 
-    for node in resolve_edit_plan_primary_symbols(symbol_name, goal, graph) {
+    let primary_symbols = resolve_edit_plan_primary_symbols(symbol_name, goal, graph);
+    let bridge_symbols = expand_edit_plan_bridge_symbols(
+        &primary_symbols,
+        goal,
+        graph,
+        &graph.find_nodes_by_name("", false),
+        6,
+    );
+
+    for node in primary_symbols {
         let file = strip_base(&node.location.file_path, codebase);
         if !target_files.contains(&file) {
             target_files.push(file);
@@ -384,6 +394,7 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
             &mut risks,
             graph,
             &node,
+            &goal_term_set,
             codebase,
         );
 
@@ -394,6 +405,21 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
                 node.name, callers
             ));
         }
+    }
+
+    for node in bridge_symbols {
+        let file = strip_base(&node.location.file_path, codebase);
+        if !target_files.contains(&file) {
+            target_files.push(file);
+        }
+        add_edit_plan_symbol(
+            &mut affected_symbols,
+            &mut seen_symbol_ids,
+            graph,
+            &node,
+            codebase,
+            "bridge",
+        );
     }
 
     if let Some(fp) = file_path {
@@ -469,7 +495,6 @@ struct CodebaseMapHit {
 /// Return a symbol-level map of the codebase grouped by file.
 /// Accepts an optional `query` to filter by symbol name and an optional `path` prefix.
 fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-
     let raw_query = args
         .get("query")
         .and_then(|v| v.as_str())
@@ -544,12 +569,8 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 })
         });
 
-        let dominant_file = detect_dominant_codebase_map_file(
-            &hits,
-            graph,
-            &query_tokens,
-            targets_product_surface,
-        );
+        let dominant_file =
+            detect_dominant_codebase_map_file(&hits, graph, &query_tokens, targets_product_surface);
         if prefers_subsystem_closure {
             subsystem_dominant_file = dominant_file.clone();
         }
@@ -791,12 +812,7 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 )
             })
         } else {
-            detect_dominant_codebase_map_file(
-                &hits,
-                graph,
-                &query_tokens,
-                targets_product_surface,
-            )
+            detect_dominant_codebase_map_file(&hits, graph, &query_tokens, targets_product_surface)
         };
 
         if let Some(dominant_file) = dominant_file.as_ref() {
@@ -816,22 +832,22 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 .iter()
                 .map(|(node, _, _)| node.id.clone())
                 .collect();
-            let dominant_concepts: HashSet<String> = if prefers_subsystem_closure && !subsystem_nodes.is_empty() {
-                subsystem_nodes
-                    .iter()
-                    .flat_map(|(node, _, _)| codebase_map_symbol_candidate_tokens(node))
-                    .chain(query_tokens.iter().cloned())
-                    .collect()
-            } else {
-                hits
-                    .iter()
-                    .filter(|hit| &hit.source_file == dominant_file)
-                    .take(8)
-                    .filter_map(|hit| graph.get_node(&hit.node_id))
-                    .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
-                    .chain(query_tokens.iter().cloned())
-                    .collect()
-            };
+            let dominant_concepts: HashSet<String> =
+                if prefers_subsystem_closure && !subsystem_nodes.is_empty() {
+                    subsystem_nodes
+                        .iter()
+                        .flat_map(|(node, _, _)| codebase_map_symbol_candidate_tokens(node))
+                        .chain(query_tokens.iter().cloned())
+                        .collect()
+                } else {
+                    hits.iter()
+                        .filter(|hit| &hit.source_file == dominant_file)
+                        .take(8)
+                        .filter_map(|hit| graph.get_node(&hit.node_id))
+                        .flat_map(|node| codebase_map_symbol_candidate_tokens(&node))
+                        .chain(query_tokens.iter().cloned())
+                        .collect()
+                };
 
             for hit in &mut hits {
                 let Some(node) = graph.get_node(&hit.node_id) else {
@@ -907,7 +923,11 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
 
     let files: Vec<Value> = grouped
         .into_iter()
-        .take(if normalized_query.is_empty() { usize::MAX } else { 5 })
+        .take(if normalized_query.is_empty() {
+            usize::MAX
+        } else {
+            5
+        })
         .map(|(file, mut symbols, _)| {
             if normalized_query.is_empty() {
                 symbols.sort_by(|a, b| {
@@ -1085,8 +1105,7 @@ fn codebase_map_expansion_score(
         0.0
     };
 
-    base
-        + codebase_map_subsystem_role_bias(node, targets_product_surface)
+    base + codebase_map_subsystem_role_bias(node, targets_product_surface)
         + 0.20
         + if same_seed_file { 0.32 } else { 0.0 }
         + if same_dominant_file { 0.16 } else { 0.0 }
@@ -1108,20 +1127,12 @@ fn codebase_map_same_file_score(
         targets_product_surface,
     );
     let concept_overlap = codebase_map_symbol_concept_overlap(node, concept_tokens) as f64;
-    let exact_name_bonus = if node
-        .name
-        .to_ascii_lowercase()
-        .contains(normalized_query)
-    {
+    let exact_name_bonus = if node.name.to_ascii_lowercase().contains(normalized_query) {
         0.2
     } else {
         0.0
     };
-    base
-        + connectivity_bias
-        + concept_overlap.min(4.0) * 0.22
-        + 0.20
-        + exact_name_bonus
+    base + connectivity_bias + concept_overlap.min(4.0) * 0.22 + 0.20 + exact_name_bonus
 }
 
 fn should_keep_codebase_map_neighbor(
@@ -1248,10 +1259,7 @@ fn apply_dominant_file_focus(
         return;
     }
 
-    let dominant_top_score = dominant_scores
-        .iter()
-        .copied()
-        .fold(0.0_f64, f64::max);
+    let dominant_top_score = dominant_scores.iter().copied().fold(0.0_f64, f64::max);
     let dominant_floor = dominant_scores
         .iter()
         .copied()
@@ -1583,7 +1591,8 @@ fn should_include_subsystem_closure_node(
     );
     let query_overlap = codebase_map_symbol_concept_overlap(node, query_terms);
     let behavioral_role = codebase_map_has_behavioral_role(node);
-    let generic_non_behavioral = is_codebase_map_generic_helper_symbol(&node.name) && !behavioral_role;
+    let generic_non_behavioral =
+        is_codebase_map_generic_helper_symbol(&node.name) && !behavioral_role;
     if generic_non_behavioral && query_overlap == 0 {
         return false;
     }
@@ -1735,7 +1744,9 @@ fn build_dominant_file_subsystem_nodes(
 
     let mut subsystem_nodes: Vec<(UniversalNode, usize, f64)> = best_nodes
         .into_iter()
-        .filter_map(|(node_id, (distance, score))| graph.get_node(&node_id).map(|node| (node, distance, score)))
+        .filter_map(|(node_id, (distance, score))| {
+            graph.get_node(&node_id).map(|node| (node, distance, score))
+        })
         .collect();
     subsystem_nodes.sort_by(|a, b| {
         b.2.partial_cmp(&a.2)
@@ -1809,7 +1820,11 @@ fn codebase_map_local_meta_helper_penalty(
         .to_ascii_lowercase();
 
     if is_codebase_map_meta_helper_symbol(&symbol_name) {
-        if targets_product_surface { 0.72 } else { 0.42 }
+        if targets_product_surface {
+            0.72
+        } else {
+            0.42
+        }
     } else {
         0.0
     }
@@ -1818,13 +1833,21 @@ fn codebase_map_local_meta_helper_penalty(
 fn codebase_map_local_connectivity_bias(graph: &CodeGraph, node: &UniversalNode) -> f64 {
     let (callers, callees) = graph.get_node_degree(&node.id);
     let total_degree = callers + callees;
-    let shared_flow_bonus = if callers > 0 && callees > 0 { 0.08 } else { 0.0 };
+    let shared_flow_bonus = if callers > 0 && callees > 0 {
+        0.08
+    } else {
+        0.0
+    };
 
     total_degree.min(4) as f64 * 0.07 + shared_flow_bonus
 }
 
 fn codebase_map_query_targets_product_surface(query: &str) -> bool {
     let lowered = query.to_ascii_lowercase();
+    if codebase_map_query_targets_engine_internals(&lowered) {
+        return false;
+    }
+
     lowered.contains("how does")
         || lowered.contains("how do")
         || [
@@ -1842,6 +1865,23 @@ fn codebase_map_query_targets_product_surface(query: &str) -> bool {
         ]
         .iter()
         .any(|token| lowered.contains(token))
+}
+
+fn codebase_map_query_targets_engine_internals(lowered_query: &str) -> bool {
+    [
+        "cache",
+        "cached",
+        "caching",
+        "evict",
+        "eviction",
+        "expire",
+        "expiry",
+        "ttl",
+        "invalidation",
+        "invalidate",
+    ]
+    .iter()
+    .any(|token| lowered_query.contains(token))
 }
 
 fn codebase_map_surface_bias(node: &UniversalNode) -> f64 {
@@ -2016,13 +2056,13 @@ fn codebase_map_token_variants(token: &str) -> Vec<String> {
 
 fn stem_codebase_map_token(token: &str) -> Option<String> {
     let stemmed = if token.ends_with("ing") && token.len() > 5 {
-        token[..token.len() - 3].to_string()
+        restore_codebase_map_stemmed_root(&token[..token.len() - 3])
     } else if token.ends_with("ers") && token.len() > 5 {
         token[..token.len() - 3].to_string()
     } else if token.ends_with("er") && token.len() > 4 {
         token[..token.len() - 2].to_string()
     } else if token.ends_with("ed") && token.len() > 4 {
-        token[..token.len() - 2].to_string()
+        restore_codebase_map_stemmed_root(&token[..token.len() - 2])
     } else if token.ends_with("es") && token.len() > 4 {
         token[..token.len() - 2].to_string()
     } else if token.ends_with('s') && token.len() > 4 {
@@ -2032,6 +2072,14 @@ fn stem_codebase_map_token(token: &str) -> Option<String> {
     };
 
     (stemmed.len() >= 3).then_some(stemmed)
+}
+
+fn restore_codebase_map_stemmed_root(base: &str) -> String {
+    if base.ends_with("ch") || base.ends_with("sh") || base.ends_with('v') || base.ends_with('c') {
+        format!("{base}e")
+    } else {
+        base.to_string()
+    }
 }
 
 fn is_codebase_map_stopword(token: &str) -> bool {
@@ -2072,52 +2120,66 @@ fn resolve_edit_plan_primary_symbols(
     infer_edit_plan_symbols_from_goal(goal, graph)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EditPlanCandidateMatchTier {
+    ExactName,
+    FuzzyName,
+    Content,
+}
+
+struct EditPlanCandidateMatch {
+    node: UniversalNode,
+    score: f64,
+    tier: EditPlanCandidateMatchTier,
+}
+
 fn infer_edit_plan_symbols_from_goal(goal: &str, graph: &CodeGraph) -> Vec<UniversalNode> {
     let all_nodes = graph.find_nodes_by_name("", false);
-    let mut resolved = Vec::new();
-    let mut seen = HashSet::new();
+    let all_candidates = extract_goal_symbol_candidates(goal);
+    let anchor_candidates = rank_edit_plan_goal_candidates(goal, &all_candidates);
+    let mut exact_ranked_matches: HashMap<String, (UniversalNode, f64)> = HashMap::new();
+    let mut fuzzy_ranked_matches: HashMap<String, (UniversalNode, f64)> = HashMap::new();
+    let mut content_ranked_matches: HashMap<String, (UniversalNode, f64)> = HashMap::new();
 
-    for candidate in extract_goal_symbol_candidates(goal) {
-        let mut matches = graph.find_nodes_by_name(&candidate, true);
-        if matches.is_empty() {
-            matches = graph.find_nodes_by_name(&candidate, false);
-        }
-        if matches.is_empty() {
-            let candidate_tokens = tokenize_codebase_map_text(&candidate);
-            matches = all_nodes
-                .iter()
-                .filter(|node| {
-                    let name = node.name.to_ascii_lowercase();
-                    candidate_tokens.iter().any(|token| {
-                        name.contains(token.as_str()) || token.contains(name.as_str())
-                    })
-                })
-                .cloned()
-                .collect();
-        }
-
-        matches.sort_by(|a, b| {
-            let a_name = a.name.to_ascii_lowercase();
-            let b_name = b.name.to_ascii_lowercase();
-            let candidate_lower = candidate.to_ascii_lowercase();
-            b_name
-                .eq(&candidate_lower)
-                .cmp(&a_name.eq(&candidate_lower))
-                .then_with(|| a_name.len().cmp(&b_name.len()))
-                .then_with(|| a.location.start_line.cmp(&b.location.start_line))
-        });
-
-        for node in matches {
-            if seen.insert(node.id.clone()) {
-                resolved.push(node);
-            }
-            if resolved.len() >= 3 {
-                return resolved;
+    for (candidate, candidate_score) in anchor_candidates {
+        let candidate_matches = resolve_edit_plan_candidate_matches(&candidate, graph, &all_nodes);
+        for candidate_match in candidate_matches {
+            let score = candidate_score + candidate_match.score;
+            let bucket = match candidate_match.tier {
+                EditPlanCandidateMatchTier::ExactName => &mut exact_ranked_matches,
+                EditPlanCandidateMatchTier::FuzzyName => &mut fuzzy_ranked_matches,
+                EditPlanCandidateMatchTier::Content => &mut content_ranked_matches,
+            };
+            match bucket.get_mut(&candidate_match.node.id) {
+                Some(existing) if existing.1 >= score => {}
+                Some(existing) => *existing = (candidate_match.node, score),
+                None => {
+                    bucket.insert(candidate_match.node.id.clone(), (candidate_match.node, score));
+                }
             }
         }
     }
 
-    resolved
+    let mut ranked_matches: Vec<(UniversalNode, f64)> = if !exact_ranked_matches.is_empty() {
+        exact_ranked_matches.into_values().collect()
+    } else if !fuzzy_ranked_matches.is_empty() {
+        fuzzy_ranked_matches.into_values().collect()
+    } else {
+        content_ranked_matches.into_values().collect()
+    };
+
+    ranked_matches.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.0.location.file_path.cmp(&b.0.location.file_path))
+            .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
+    });
+
+    ranked_matches
+        .into_iter()
+        .take(3)
+        .map(|(node, _)| node)
+        .collect()
 }
 
 fn extract_goal_symbol_candidates(goal: &str) -> Vec<String> {
@@ -2141,26 +2203,657 @@ fn extract_goal_symbol_candidates(goal: &str) -> Vec<String> {
     candidates
 }
 
+fn rank_edit_plan_goal_candidates(goal: &str, candidates: &[String]) -> Vec<(String, f64)> {
+    let normalized_goal = goal.to_ascii_lowercase();
+    let goal_tokens = tokenize_codebase_map_text(goal);
+    let goal_terms: HashSet<String> = goal_tokens.iter().cloned().collect();
+    let mut ranked = Vec::new();
+
+    for (index, candidate) in candidates.iter().enumerate() {
+        let candidate_lower = candidate.to_ascii_lowercase();
+        let candidate_tokens = tokenize_codebase_map_text(candidate);
+        let exact_phrase = normalized_goal.contains(candidate_lower.as_str());
+        let symbol_like = is_edit_plan_symbol_like_candidate(candidate);
+        let overlap = candidate_tokens
+            .iter()
+            .filter(|token| goal_terms.contains(*token))
+            .count() as f64;
+
+        let mut score = overlap * 0.25;
+        if exact_phrase {
+            score += 2.0;
+        }
+        if symbol_like {
+            score += 1.3;
+        }
+        if candidate.chars().any(|ch| ch.is_ascii_uppercase()) {
+            score += 0.45;
+        }
+        if candidate.contains('_') || candidate.contains(':') {
+            score += 0.35;
+        }
+        if candidate.len() >= 8 {
+            score += 0.15;
+        }
+
+        ranked.push((candidate.clone(), score - index as f64 * 0.03));
+    }
+
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| b.0.len().cmp(&a.0.len()))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    ranked
+}
+
+fn resolve_edit_plan_candidate_matches(
+    candidate: &str,
+    graph: &CodeGraph,
+    all_nodes: &[UniversalNode],
+) -> Vec<EditPlanCandidateMatch> {
+    let candidate_lower = candidate.to_ascii_lowercase();
+    let candidate_tokens = tokenize_codebase_map_text(candidate);
+    let mut matches: Vec<EditPlanCandidateMatch> = graph
+        .find_nodes_by_name(candidate, true)
+        .into_iter()
+        .map(|node| {
+            let score = score_edit_plan_candidate_match(&candidate_lower, &candidate_tokens, &node);
+            EditPlanCandidateMatch {
+                node,
+                score: 3.0 + score,
+                tier: EditPlanCandidateMatchTier::ExactName,
+            }
+        })
+        .collect();
+
+    if matches.is_empty() {
+        matches = graph
+            .find_nodes_by_name(candidate, false)
+            .into_iter()
+            .map(|node| {
+                let score =
+                    score_edit_plan_candidate_match(&candidate_lower, &candidate_tokens, &node);
+                EditPlanCandidateMatch {
+                    node,
+                    score: 2.0 + score,
+                    tier: EditPlanCandidateMatchTier::FuzzyName,
+                }
+            })
+            .collect();
+    }
+
+    if matches.is_empty() {
+        matches = all_nodes
+            .iter()
+            .filter_map(|node| {
+                let score =
+                    score_edit_plan_candidate_match(&candidate_lower, &candidate_tokens, node);
+                (score >= 1.0).then(|| EditPlanCandidateMatch {
+                    node: node.clone(),
+                    score,
+                    tier: EditPlanCandidateMatchTier::Content,
+                })
+            })
+            .collect();
+    }
+
+    matches.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                edit_plan_candidate_kind_rank(&a.node).cmp(&edit_plan_candidate_kind_rank(&b.node))
+            })
+            .then_with(|| a.node.location.start_line.cmp(&b.node.location.start_line))
+    });
+    matches.truncate(4);
+    matches
+}
+
+fn score_edit_plan_candidate_match(
+    candidate_lower: &str,
+    candidate_tokens: &[String],
+    node: &UniversalNode,
+) -> f64 {
+    let node_name = node.name.to_ascii_lowercase();
+    let qualified_name = node
+        .parent
+        .as_ref()
+        .map(|parent| format!("{parent}.{}", node.name))
+        .unwrap_or_else(|| node.name.clone())
+        .to_ascii_lowercase();
+    let content = node.content.to_ascii_lowercase();
+    let docstring = node.docstring.as_deref().unwrap_or("").to_ascii_lowercase();
+    let file_path = node.location.file_path.to_ascii_lowercase();
+
+    let name_match_score = if node_name == candidate_lower || qualified_name == candidate_lower {
+        3.0
+    } else if node_name.contains(candidate_lower) || qualified_name.contains(candidate_lower) {
+        2.2
+    } else if candidate_lower.contains(node_name.as_str()) {
+        1.4
+    } else {
+        0.0
+    };
+    let mut score = name_match_score;
+
+    if content.contains(candidate_lower) {
+        score += if node_name.contains(candidate_lower)
+            || qualified_name.contains(candidate_lower)
+        {
+            0.75
+        } else {
+            0.25
+        };
+    }
+    if docstring.contains(candidate_lower) {
+        score += 0.5;
+    }
+    if file_path.contains(candidate_lower) {
+        score += if node_name.contains(candidate_lower)
+            || qualified_name.contains(candidate_lower)
+        {
+            0.2
+        } else {
+            0.05
+        };
+    }
+
+    let token_overlap = candidate_tokens
+        .iter()
+        .filter(|token| {
+            node_name.contains(token.as_str())
+                || qualified_name.contains(token.as_str())
+                || content.contains(token.as_str())
+                || docstring.contains(token.as_str())
+                || file_path.contains(token.as_str())
+        })
+        .count() as f64;
+    let name_token_overlap = candidate_tokens
+        .iter()
+        .filter(|token| {
+            node_name.contains(token.as_str()) || qualified_name.contains(token.as_str())
+        })
+        .count() as f64;
+    let helper_penalty = if is_codebase_map_meta_helper_symbol(&node.name) {
+        1.4
+    } else if is_codebase_map_generic_helper_symbol(&node.name) {
+        0.75
+    } else {
+        0.0
+    };
+    let test_penalty = if is_edit_plan_test_like_node(node)
+        && !candidate_lower.contains("test")
+        && !candidate_lower.contains("spec")
+    {
+        if name_match_score >= 2.2 {
+            1.6
+        } else {
+            2.6
+        }
+    } else {
+        0.0
+    };
+    let weak_content_only_penalty = if name_token_overlap == 0.0
+        && token_overlap > 0.0
+        && name_match_score == 0.0
+    {
+        0.75
+    } else {
+        0.0
+    };
+
+    score + name_token_overlap * 0.35 + token_overlap * 0.12
+        - helper_penalty
+        - test_penalty
+        - weak_content_only_penalty
+}
+
+fn edit_plan_candidate_kind_rank(node: &UniversalNode) -> usize {
+    if is_edit_plan_test_like_node(node) {
+        4
+    } else if is_codebase_map_meta_helper_symbol(&node.name) {
+        3
+    } else if is_codebase_map_generic_helper_symbol(&node.name) {
+        2
+    } else if node.name.chars().any(|ch| ch.is_ascii_uppercase()) {
+        0
+    } else {
+        1
+    }
+}
+
+fn is_edit_plan_symbol_like_candidate(candidate: &str) -> bool {
+    candidate.contains('_')
+        || candidate.contains(':')
+        || candidate.chars().any(|ch| ch.is_ascii_uppercase())
+}
+
+fn is_edit_plan_test_like_node(node: &UniversalNode) -> bool {
+    is_test_file(&node.location.file_path) || is_probable_codebase_map_test_symbol(&node.name)
+}
+
+fn is_edit_plan_handler_symbol(node: &UniversalNode) -> bool {
+    let symbol_name = node
+        .name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&node.name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(&node.name)
+        .to_ascii_lowercase();
+
+    symbol_name.starts_with("handle_")
+}
+
+fn is_edit_plan_owner_like_symbol(node: &UniversalNode) -> bool {
+    node.name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&node.name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(&node.name)
+        .chars()
+        .any(|ch| ch.is_ascii_uppercase())
+}
+
+fn is_edit_plan_state_or_config_bridge_symbol(node: &UniversalNode) -> bool {
+    let symbol_name = node
+        .name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&node.name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(&node.name)
+        .to_ascii_lowercase();
+
+    symbol_name.contains("state")
+        || symbol_name.contains("config")
+        || symbol_name.contains("context")
+        || symbol_name.contains("settings")
+}
+
+fn expand_edit_plan_bridge_symbols(
+    primary_symbols: &[UniversalNode],
+    goal: &str,
+    graph: &CodeGraph,
+    all_nodes: &[UniversalNode],
+    limit: usize,
+) -> Vec<UniversalNode> {
+    if primary_symbols.is_empty() {
+        return Vec::new();
+    }
+
+    let goal_terms = edit_plan_goal_terms(goal);
+    let goal_term_set: HashSet<String> = goal_terms.iter().cloned().collect();
+    let primary_ids: HashSet<String> = primary_symbols.iter().map(|node| node.id.clone()).collect();
+    let primary_paths: HashSet<String> = primary_symbols
+        .iter()
+        .map(|node| node.location.file_path.clone())
+        .collect();
+    let cross_file_primary_scope = primary_paths.len() > 1;
+    let mut scored: Vec<(UniversalNode, f64)> = primary_symbols
+        .iter()
+        .cloned()
+        .map(|node| {
+            let score = 3.5
+                + score_edit_plan_bridge_node(
+                    &node,
+                    &goal_term_set,
+                    &primary_paths,
+                    cross_file_primary_scope,
+                    false,
+                );
+            (node, score)
+        })
+        .collect();
+    let mut seen: HashSet<String> = primary_ids;
+
+    for primary in primary_symbols {
+        let caller_ids: HashSet<String> = graph
+            .get_callers(&primary.id)
+            .into_iter()
+            .map(|node| node.id)
+            .collect();
+        let callee_ids: HashSet<String> = graph
+            .get_callees(&primary.id)
+            .into_iter()
+            .map(|node| node.id)
+            .collect();
+        let mut local_seen = HashSet::new();
+        let mut neighbor_candidates: Vec<UniversalNode> = graph
+            .get_callers(&primary.id)
+            .into_iter()
+            .chain(graph.get_callees(&primary.id).into_iter())
+            .filter(|node| local_seen.insert(node.id.clone()))
+            .collect();
+        neighbor_candidates.extend(
+            all_nodes
+                .iter()
+                .filter(|node| node.location.file_path == primary.location.file_path)
+                .cloned(),
+        );
+
+        let mut ranked_neighbors: Vec<(UniversalNode, f64)> = neighbor_candidates
+            .into_iter()
+            .filter_map(|node| {
+                if seen.contains(&node.id) {
+                    return None;
+                }
+                if is_edit_plan_test_like_node(&node) {
+                    return None;
+                }
+                let state_bridge = is_edit_plan_state_or_config_bridge_symbol(&node);
+                let goal_name_overlap = edit_plan_name_overlap(&node, &goal_term_set);
+                let is_caller = caller_ids.contains(&node.id);
+                let is_callee = callee_ids.contains(&node.id);
+                let same_file = node.location.file_path == primary.location.file_path;
+                let owner_like = same_file
+                    && node.location.start_line <= primary.location.start_line
+                    && is_edit_plan_owner_like_symbol(&node);
+                if is_callee && goal_name_overlap == 0 && !state_bridge {
+                    return None;
+                }
+                if same_file && !is_caller && goal_name_overlap == 0 && !state_bridge && !owner_like {
+                    return None;
+                }
+                if cross_file_primary_scope
+                    && same_file
+                    && !state_bridge
+                    && !owner_like
+                    && (is_edit_plan_handler_symbol(&node) || goal_name_overlap < 2)
+                {
+                    return None;
+                }
+                let score = score_edit_plan_bridge_node(
+                    &node,
+                    &goal_term_set,
+                    &primary_paths,
+                    cross_file_primary_scope,
+                    true,
+                ) + if owner_like { 0.18 } else { 0.0 };
+                (score >= 0.9).then_some((node, score))
+            })
+            .collect();
+        ranked_neighbors.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.location.file_path.cmp(&b.0.location.file_path))
+                .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
+        });
+
+        for (node, score) in ranked_neighbors.into_iter().take(2) {
+            if seen.insert(node.id.clone()) {
+                scored.push((node, 1.2 + score));
+            }
+        }
+    }
+
+    let primary_concepts: HashSet<String> = primary_symbols
+        .iter()
+        .flat_map(edit_plan_symbol_name_tokens)
+        .chain(goal_terms.iter().cloned())
+        .collect();
+
+    let mut bridge_candidates: Vec<(UniversalNode, f64)> = all_nodes
+        .iter()
+        .filter_map(|node| {
+            if seen.contains(&node.id) {
+                return None;
+            }
+            if is_edit_plan_test_like_node(node) {
+                return None;
+            }
+            let score =
+                score_edit_plan_bridge_concept_match(
+                    node,
+                    &primary_concepts,
+                    &primary_paths,
+                    cross_file_primary_scope,
+                );
+            (score >= 1.35).then(|| (node.clone(), score))
+        })
+        .collect();
+    bridge_candidates.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.0.location.file_path.cmp(&b.0.location.file_path))
+            .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
+    });
+
+    for (node, score) in bridge_candidates.into_iter().take(2) {
+        if seen.insert(node.id.clone()) {
+            scored.push((node, score));
+        }
+    }
+
+    scored.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.0.location.file_path.cmp(&b.0.location.file_path))
+            .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
+    });
+    scored.truncate(limit);
+    scored.into_iter().map(|(node, _)| node).collect()
+}
+
+fn score_edit_plan_bridge_node(
+    node: &UniversalNode,
+    goal_terms: &HashSet<String>,
+    primary_paths: &HashSet<String>,
+    cross_file_primary_scope: bool,
+    is_secondary: bool,
+) -> f64 {
+    let overlap = codebase_map_concept_overlap(node, goal_terms) as f64;
+    let name_overlap = edit_plan_name_overlap(node, goal_terms) as f64;
+    let same_primary_file = primary_paths.contains(&node.location.file_path);
+    let symbol_like = is_edit_plan_symbol_like_candidate(&node.name);
+    let state_bridge = is_edit_plan_state_or_config_bridge_symbol(node);
+    let owner_like = is_edit_plan_owner_like_symbol(node);
+    let path = node.location.file_path.to_ascii_lowercase();
+    let helper_penalty = if is_codebase_map_meta_helper_symbol(&node.name) {
+        0.95
+    } else if is_codebase_map_generic_helper_symbol(&node.name) && overlap < 2.0 {
+        0.45
+    } else {
+        0.0
+    };
+    let state_bridge_bonus = if state_bridge && overlap >= 1.0 {
+        if cross_file_primary_scope && !same_primary_file {
+            0.95 + if owner_like { 0.18 } else { 0.0 }
+        } else {
+            0.28
+        }
+    } else {
+        0.0
+    };
+    let ungrounded_penalty = if name_overlap == 0.0 && !state_bridge {
+        0.40
+    } else {
+        0.0
+    };
+    let handler_penalty = if is_edit_plan_handler_symbol(node) && name_overlap == 0.0 {
+        0.55
+    } else {
+        0.0
+    };
+    let cross_file_same_path_penalty = if cross_file_primary_scope
+        && same_primary_file
+        && !state_bridge
+        && !owner_like
+    {
+        if is_edit_plan_handler_symbol(node) {
+            1.10
+        } else if name_overlap < 1.0 {
+            0.70
+        } else {
+            0.20
+        }
+    } else {
+        0.0
+    };
+
+    overlap * 0.35
+        + name_overlap * 0.22
+        + if same_primary_file {
+            if cross_file_primary_scope && !state_bridge && !owner_like {
+                0.08
+            } else {
+                0.26
+            }
+        } else {
+            0.0
+        }
+        + if symbol_like { 0.15 } else { 0.0 }
+        + if path.contains("/server/") || path.contains("/tools/") || path.contains("/engines/") {
+            0.08
+        } else {
+            0.0
+        }
+        + if is_secondary { 0.12 } else { 0.0 }
+        + state_bridge_bonus
+        - helper_penalty
+        - ungrounded_penalty
+        - handler_penalty
+        - cross_file_same_path_penalty
+}
+
+fn score_edit_plan_bridge_concept_match(
+    node: &UniversalNode,
+    primary_concepts: &HashSet<String>,
+    primary_paths: &HashSet<String>,
+    cross_file_primary_scope: bool,
+) -> f64 {
+    let concept_overlap = codebase_map_concept_overlap(node, primary_concepts) as f64;
+    let symbol_overlap = codebase_map_symbol_concept_overlap(node, primary_concepts) as f64;
+    let name_overlap = edit_plan_name_overlap(node, primary_concepts) as f64;
+    let same_path = primary_paths.contains(&node.location.file_path);
+    let state_bridge = is_edit_plan_state_or_config_bridge_symbol(node);
+    let owner_like = is_edit_plan_owner_like_symbol(node);
+    if cross_file_primary_scope && same_path && !state_bridge && !owner_like && name_overlap < 2.0 {
+        return 0.0;
+    }
+    if name_overlap == 0.0 && !state_bridge {
+        return 0.0;
+    }
+    let helper_penalty = if is_codebase_map_meta_helper_symbol(&node.name) {
+        1.1
+    } else if is_codebase_map_generic_helper_symbol(&node.name) && name_overlap < 2.0 {
+        0.55
+    } else {
+        0.0
+    };
+    let state_bridge_bonus = if state_bridge && (concept_overlap >= 2.0 || name_overlap >= 1.0) {
+        if cross_file_primary_scope && !same_path {
+            1.10 + if owner_like { 0.18 } else { 0.0 }
+        } else {
+            0.72
+        }
+    } else {
+        0.0
+    };
+    let handler_penalty = if is_edit_plan_handler_symbol(node) && name_overlap < 1.0 {
+        0.40
+    } else {
+        0.0
+    };
+    let cross_file_same_path_penalty = if cross_file_primary_scope && same_path && !state_bridge && !owner_like {
+        if is_edit_plan_handler_symbol(node) {
+            0.90
+        } else if name_overlap < 2.0 {
+            0.60
+        } else {
+            0.20
+        }
+    } else {
+        0.0
+    };
+
+    concept_overlap * 0.30
+        + symbol_overlap * 0.12
+        + name_overlap * 0.28
+        + if same_path {
+            if cross_file_primary_scope && !state_bridge && !owner_like {
+                0.04
+            } else {
+                0.16
+            }
+        } else {
+            0.0
+        }
+        + if is_edit_plan_symbol_like_candidate(&node.name) {
+            0.10
+        } else {
+            0.0
+        }
+        + state_bridge_bonus
+        - helper_penalty
+        - handler_penalty
+        - cross_file_same_path_penalty
+}
+
 fn is_edit_plan_stopword(token: &str) -> bool {
     matches!(
         token,
         "add"
             | "change"
+            | "function"
             | "extract"
             | "file"
-            | "function"
             | "goal"
             | "into"
             | "move"
+            | "per"
             | "plan"
             | "refactor"
             | "rename"
             | "replace"
+            | "result"
             | "separate"
             | "the"
             | "this"
+            | "tool"
             | "update"
+            | "using"
     )
+}
+
+fn edit_plan_goal_terms(goal: &str) -> Vec<String> {
+    tokenize_codebase_map_text(goal)
+        .into_iter()
+        .filter(|token| !is_edit_plan_stopword(token))
+        .collect()
+}
+
+fn edit_plan_symbol_name_tokens(node: &UniversalNode) -> HashSet<String> {
+    let qualified_name = node
+        .parent
+        .as_ref()
+        .map(|parent| format!("{parent}.{}", node.name))
+        .unwrap_or_else(|| node.name.clone());
+    [node.name.as_str(), qualified_name.as_str()]
+        .into_iter()
+        .flat_map(tokenize_codebase_map_text)
+        .collect()
+}
+
+fn edit_plan_name_overlap(node: &UniversalNode, concept_tokens: &HashSet<String>) -> usize {
+    let name_tokens = edit_plan_symbol_name_tokens(node);
+    concept_tokens
+        .iter()
+        .filter(|term| {
+            name_tokens.iter().any(|candidate| {
+                candidate == *term
+                    || candidate.contains(term.as_str())
+                    || term.contains(candidate.as_str())
+            })
+        })
+        .count()
 }
 
 fn add_edit_plan_symbol(
@@ -2192,22 +2885,107 @@ fn add_edit_plan_neighbors(
     risks: &mut Vec<String>,
     graph: &CodeGraph,
     node: &UniversalNode,
+    goal_terms: &HashSet<String>,
     codebase: Option<&str>,
 ) {
-    let mut neighbors: Vec<UniversalNode> = graph
+    let anchor_terms = edit_plan_symbol_name_tokens(node);
+    let (anchor_callers, anchor_callees) = graph.get_node_degree(&node.id);
+    let high_degree_anchor =
+        anchor_callers >= 2 || anchor_callees >= 5 || anchor_callers + anchor_callees >= 6;
+    let mut seen_neighbors = HashSet::new();
+    let mut neighbor_candidates: Vec<UniversalNode> = graph
         .get_callers(&node.id)
         .into_iter()
         .chain(graph.get_callees(&node.id).into_iter())
+        .filter(|neighbor| seen_neighbors.insert(neighbor.id.clone()))
+        .collect();
+    neighbor_candidates.extend(
+        graph.find_nodes_by_name("", false).into_iter().filter(|candidate| {
+            candidate.location.file_path == node.location.file_path
+                && candidate.location.start_line <= node.location.start_line
+                && candidate.name.chars().any(|ch| ch.is_ascii_uppercase())
+                && seen_neighbors.insert(candidate.id.clone())
+        }),
+    );
+    let mut neighbors: Vec<(UniversalNode, f64)> = neighbor_candidates
+        .into_iter()
+        .filter_map(|neighbor| {
+            if is_edit_plan_test_like_node(&neighbor) {
+                return None;
+            }
+
+            let goal_overlap = codebase_map_symbol_concept_overlap(&neighbor, goal_terms) as f64;
+            let anchor_overlap = codebase_map_symbol_concept_overlap(&neighbor, &anchor_terms) as f64;
+            let goal_name_overlap = edit_plan_name_overlap(&neighbor, goal_terms) as f64;
+            let anchor_name_overlap = edit_plan_name_overlap(&neighbor, &anchor_terms) as f64;
+            let conceptual_overlap = goal_overlap + anchor_overlap;
+            let name_overlap = goal_name_overlap + anchor_name_overlap;
+            let same_file = neighbor.location.file_path == node.location.file_path;
+            let state_bridge = is_edit_plan_state_or_config_bridge_symbol(&neighbor);
+            let owner_like = same_file
+                && neighbor.location.start_line <= node.location.start_line
+                && neighbor.name.chars().any(|ch| ch.is_ascii_uppercase());
+            let handler_like = is_edit_plan_handler_symbol(&neighbor);
+            if high_degree_anchor && !state_bridge && name_overlap < 1.0 {
+                return None;
+            }
+            if high_degree_anchor && !state_bridge && goal_name_overlap == 0.0 && anchor_name_overlap == 0.0 {
+                return None;
+            }
+            if high_degree_anchor && same_file && handler_like && goal_name_overlap == 0.0 {
+                return None;
+            }
+            if high_degree_anchor && same_file && !owner_like && !state_bridge && name_overlap < 2.0 {
+                return None;
+            }
+            let helper_penalty = if is_codebase_map_meta_helper_symbol(&neighbor.name) {
+                0.95
+            } else if is_codebase_map_generic_helper_symbol(&neighbor.name)
+                && conceptual_overlap < 2.0
+            {
+                0.40
+            } else {
+                0.0
+            };
+            let handler_penalty = if handler_like && goal_name_overlap == 0.0 {
+                0.40
+            } else {
+                0.0
+            };
+            let state_bridge_bonus = if state_bridge && (goal_overlap >= 1.0 || anchor_overlap >= 1.0)
+            {
+                0.25
+            } else {
+                0.0
+            };
+
+            let score = goal_overlap * 0.28
+                + anchor_overlap * 0.24
+                + goal_name_overlap * 0.22
+                + anchor_name_overlap * 0.18
+                + if same_file { 0.35 } else { 0.10 }
+                + 0.18
+                + state_bridge_bonus
+                - helper_penalty
+                - handler_penalty;
+
+            let min_score = if high_degree_anchor { 0.90 } else { 0.45 };
+            (score >= min_score).then_some((neighbor, score))
+        })
         .collect();
     neighbors.sort_by(|a, b| {
-        let a_same_file = a.location.file_path == node.location.file_path;
-        let b_same_file = b.location.file_path == node.location.file_path;
-        b_same_file
-            .cmp(&a_same_file)
-            .then_with(|| a.location.start_line.cmp(&b.location.start_line))
+        let a_same_file = a.0.location.file_path == node.location.file_path;
+        let b_same_file = b.0.location.file_path == node.location.file_path;
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| b_same_file.cmp(&a_same_file))
+            .then_with(|| a.0.location.start_line.cmp(&b.0.location.start_line))
     });
 
-    for neighbor in neighbors.into_iter().take(4) {
+    for (neighbor, _) in neighbors
+        .into_iter()
+        .take(if high_degree_anchor { 2 } else { 3 })
+    {
         let file = strip_base(&neighbor.location.file_path, codebase);
         if !target_files.contains(&file) {
             target_files.push(file.clone());
@@ -2300,7 +3078,13 @@ mod tests {
         dir
     }
 
-    fn test_node(id: &str, name: &str, file_path: &str, start_line: u32, content: &str) -> UniversalNode {
+    fn test_node(
+        id: &str,
+        name: &str,
+        file_path: &str,
+        start_line: u32,
+        content: &str,
+    ) -> UniversalNode {
         UniversalNode {
             id: id.into(),
             name: name.into(),
@@ -2492,7 +3276,11 @@ mod tests {
         let dir = temp_dir("pattern-search-relative-dir");
         let nested = dir.join("src");
         std::fs::create_dir_all(&nested).unwrap();
-        std::fs::write(nested.join("lib.rs"), "fn handle_alpha() {}\nfn beta() {}\n").unwrap();
+        std::fs::write(
+            nested.join("lib.rs"),
+            "fn handle_alpha() {}\nfn beta() {}\n",
+        )
+        .unwrap();
 
         let result = pattern_search(
             &json!({
@@ -2621,7 +3409,10 @@ mod tests {
             .collect();
 
         assert_eq!(result["confidence"], "high");
-        assert_eq!(result["target_files"][0], "crates/contextro-tools/src/search.rs");
+        assert_eq!(
+            result["target_files"][0],
+            "crates/contextro-tools/src/search.rs"
+        );
         assert!(names.contains(&"handle_search"));
         assert!(names.contains(&"rerank_natural_language_results"));
         assert!(names.contains(&"drop_low_confidence_noise"));
@@ -2649,6 +3440,625 @@ mod tests {
             .unwrap()
             .iter()
             .any(|step| step.as_str() == Some("Resolve the target symbol or file before editing")));
+    }
+
+    #[test]
+    fn test_edit_plan_prioritizes_cross_subsystem_anchors_before_generic_goal_tokens() {
+        let graph = CodeGraph::new();
+        let server_file = "/tmp/contextro/crates/contextro-server/src/main.rs";
+        let state_file = "/tmp/contextro/crates/contextro-server/src/state.rs";
+        let cache_file = "/tmp/contextro/crates/contextro-engines/src/cache.rs";
+        let unrelated_file = "/tmp/contextro/crates/contextro-tools/src/code.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            server_file,
+            50,
+            "fn dispatch(&self, name: &str, args: Value) { self.state.query_cache.get(name); }",
+        ));
+        graph.add_node(test_node(
+            "app-state",
+            "AppState",
+            state_file,
+            27,
+            "pub struct AppState { pub query_cache: Arc<QueryCache>, pub graph: Arc<CodeGraph> }",
+        ));
+        graph.add_node(test_node(
+            "query-cache",
+            "QueryCache",
+            cache_file,
+            14,
+            "pub struct QueryCache { entries: DashMap<String, CacheEntry> }",
+        ));
+        graph.add_node(test_node(
+            "generic-add",
+            "add_edit_plan_symbol",
+            unrelated_file,
+            2166,
+            "fn add_edit_plan_symbol() {}",
+        ));
+        graph.add_node(test_node(
+            "generic-result",
+            "accumulate_result",
+            unrelated_file,
+            1400,
+            "fn accumulate_result() { result.push(value); }",
+        ));
+
+        let result = edit_plan(
+            &json!({"goal":"add per-tool result caching to the dispatch function using QueryCache"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let affected = result["affected_symbols"].as_array().unwrap();
+        let names: Vec<&str> = affected
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        let primary_names: Vec<&str> = affected
+            .iter()
+            .filter(|symbol| symbol["role"].as_str() == Some("primary"))
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        let target_files: Vec<&str> = result["target_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+
+        assert_eq!(result["confidence"], "high");
+        assert!(primary_names.contains(&"dispatch"));
+        assert!(primary_names.contains(&"QueryCache"));
+        assert!(names.contains(&"AppState"));
+        assert!(!primary_names.contains(&"add_edit_plan_symbol"));
+        assert!(!primary_names.contains(&"accumulate_result"));
+        assert!(target_files.contains(&"crates/contextro-server/src/main.rs"));
+        assert!(target_files.contains(&"crates/contextro-server/src/state.rs"));
+        assert!(target_files.contains(&"crates/contextro-engines/src/cache.rs"));
+    }
+
+    #[test]
+    fn test_edit_plan_bridge_expansion_adds_same_file_and_conceptual_bridge_symbols() {
+        let graph = CodeGraph::new();
+        let server_file = "/tmp/contextro/crates/contextro-server/src/main.rs";
+        let state_file = "/tmp/contextro/crates/contextro-server/src/state.rs";
+        let cache_file = "/tmp/contextro/crates/contextro-engines/src/cache.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            server_file,
+            50,
+            "fn dispatch(&self, name: &str, args: Value) { let s = &self.state; }",
+        ));
+        graph.add_node(test_node(
+            "contextro-server",
+            "ContextroServer",
+            server_file,
+            21,
+            "pub struct ContextroServer { state: Arc<AppState> }",
+        ));
+        graph.add_node(test_node(
+            "app-state",
+            "AppState",
+            state_file,
+            27,
+            "pub struct AppState { pub query_cache: Arc<QueryCache> }",
+        ));
+        graph.add_node(test_node(
+            "query-cache-field",
+            "query_cache",
+            state_file,
+            32,
+            "pub query_cache: Arc<QueryCache>",
+        ));
+        graph.add_node(test_node(
+            "query-cache",
+            "QueryCache",
+            cache_file,
+            14,
+            "pub struct QueryCache { entries: DashMap<String, CacheEntry> }",
+        ));
+
+        let result = edit_plan(
+            &json!({"goal":"add per-tool result caching to the dispatch function using QueryCache"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let affected = result["affected_symbols"].as_array().unwrap();
+        let names: Vec<&str> = affected
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+
+        assert!(names.contains(&"dispatch"));
+        assert!(names.contains(&"ContextroServer"));
+        assert!(names.contains(&"AppState"));
+        assert!(names.contains(&"query_cache") || names.contains(&"QueryCache"));
+    }
+
+    #[test]
+    fn test_edit_plan_prefers_state_bridge_symbols_and_filters_test_like_distractors() {
+        let graph = CodeGraph::new();
+        let server_file = "/tmp/contextro/crates/contextro-server/src/main.rs";
+        let state_file = "/tmp/contextro/crates/contextro-server/src/state.rs";
+        let cache_file = "/tmp/contextro/crates/contextro-engines/src/cache.rs";
+        let tool_file = "/tmp/contextro/crates/contextro-tools/src/code.rs";
+        let test_file = "/tmp/contextro/crates/contextro-server/tests/dispatch.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            server_file,
+            50,
+            "fn dispatch(&self, name: &str, args: Value) { self.state.query_cache.get(name); }",
+        ));
+        graph.add_node(test_node(
+            "server",
+            "ContextroServer",
+            server_file,
+            21,
+            "pub struct ContextroServer { state: Arc<AppState> }",
+        ));
+        graph.add_node(test_node(
+            "app-state",
+            "AppState",
+            state_file,
+            27,
+            "pub struct AppState { pub query_cache: Arc<QueryCache>, pub graph: Arc<CodeGraph> }",
+        ));
+        graph.add_node(test_node(
+            "query-cache-field",
+            "query_cache",
+            state_file,
+            32,
+            "pub query_cache: Arc<QueryCache>",
+        ));
+        graph.add_node(test_node(
+            "query-cache",
+            "QueryCache",
+            cache_file,
+            14,
+            "pub struct QueryCache { entries: DashMap<String, CacheEntry> }",
+        ));
+        graph.add_node(test_node(
+            "helper-add",
+            "add_edit_plan_symbol",
+            tool_file,
+            2544,
+            "fn add_edit_plan_symbol() { affected_symbols.push(value); }",
+        ));
+        graph.add_node(test_node(
+            "helper-accumulate",
+            "accumulate_result",
+            tool_file,
+            1404,
+            "fn accumulate_result() { result.push(value); }",
+        ));
+        graph.add_node(test_node(
+            "dispatch-test",
+            "test_dispatch_query_cache",
+            test_file,
+            10,
+            "fn test_dispatch_query_cache() { assert!(true); }",
+        ));
+
+        add_call(&graph, "server", "dispatch");
+        add_call(&graph, "dispatch", "app-state");
+        add_call(&graph, "app-state", "query-cache");
+        add_call(&graph, "app-state", "query-cache-field");
+        add_call(&graph, "dispatch-test", "dispatch");
+        add_call(&graph, "helper-accumulate", "dispatch");
+
+        let result = edit_plan(
+            &json!({"goal":"add per-tool result caching to the dispatch function using QueryCache"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let affected = result["affected_symbols"].as_array().unwrap();
+        let names: Vec<&str> = affected
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+
+        assert!(names.contains(&"dispatch"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"QueryCache"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
+        assert!(
+            !names.contains(&"test_dispatch_query_cache"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"add_edit_plan_symbol"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"accumulate_result"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            affected.len() <= 5,
+            "too many affected symbols returned: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn test_edit_plan_real_runtime_query_stays_focused_on_dispatch_cache_path() {
+        let graph = CodeGraph::new();
+        let main_file = "/tmp/contextro/crates/contextro-server/src/main.rs";
+        let state_file = "/tmp/contextro/crates/contextro-server/src/state.rs";
+        let cache_file = "/tmp/contextro/crates/contextro-engines/src/cache.rs";
+        let bm25_file = "/tmp/contextro/crates/contextro-engines/src/bm25.rs";
+        let chunk_file = "/tmp/contextro/crates/contextro-tools/src/search.rs";
+        let analysis_file = "/tmp/contextro/crates/contextro-tools/src/analysis.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            main_file,
+            50,
+            "fn dispatch(&self, name: &str, args: Value) { self.state.query_cache.get(name); self.state.query_cache.insert(name, args); }",
+        ));
+        graph.add_node(test_node(
+            "server",
+            "ContextroServer",
+            main_file,
+            21,
+            "pub struct ContextroServer { state: Arc<AppState> }",
+        ));
+        graph.add_node(test_node(
+            "app-state",
+            "AppState",
+            state_file,
+            27,
+            "pub struct AppState { pub query_cache: Arc<QueryCache>, pub graph: Arc<CodeGraph> }",
+        ));
+        graph.add_node(test_node(
+            "query-cache",
+            "QueryCache",
+            cache_file,
+            14,
+            "pub struct QueryCache { entries: DashMap<String, CacheEntry> }",
+        ));
+        graph.add_node(test_node(
+            "dead-code",
+            "handle_dead_code",
+            analysis_file,
+            322,
+            "pub fn handle_dead_code() { /* unrelated analysis handler */ }",
+        ));
+        graph.add_node(test_node(
+            "circular",
+            "handle_circular_dependencies",
+            analysis_file,
+            429,
+            "pub fn handle_circular_dependencies() { /* unrelated dependency handler */ }",
+        ));
+        graph.add_node(test_node(
+            "search",
+            "search",
+            main_file,
+            110,
+            "fn search() { /* dispatches search tools */ }",
+        ));
+        graph.add_node(test_node(
+            "make-chunk",
+            "make_chunk",
+            chunk_file,
+            696,
+            "fn make_chunk(id: &str, text: &str) -> CodeChunk { /* chunk builder */ }",
+        ));
+        graph.add_node(test_node(
+            "bm25-cache-test",
+            "test_bm25_search_recovers_cache_from_caching_query",
+            bm25_file,
+            389,
+            "fn test_bm25_search_recovers_cache_from_caching_query() { assert!(cache_hit); }",
+        ));
+
+        add_call(&graph, "server", "dispatch");
+        add_call(&graph, "dispatch", "app-state");
+        add_call(&graph, "app-state", "query-cache");
+        add_call(&graph, "dispatch", "search");
+        add_call(&graph, "dispatch", "dead-code");
+        add_call(&graph, "dispatch", "circular");
+        add_call(&graph, "dispatch", "make-chunk");
+
+        let result = edit_plan(
+            &json!({"goal":"add per-tool result caching to the dispatch function using QueryCache"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let affected = result["affected_symbols"].as_array().unwrap();
+        let names: Vec<&str> = affected
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        let primary_names: Vec<&str> = affected
+            .iter()
+            .filter(|symbol| symbol["role"].as_str() == Some("primary"))
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        let target_files: Vec<&str> = result["target_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+
+        assert!(primary_names.contains(&"dispatch"), "unexpected primaries: {:?}", primary_names);
+        assert!(primary_names.contains(&"QueryCache"), "unexpected primaries: {:?}", primary_names);
+        assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"test_bm25_search_recovers_cache_from_caching_query"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"handle_circular_dependencies"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"handle_dead_code"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"search"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"make_chunk"), "unexpected names: {:?}", names);
+        assert!(target_files.contains(&"crates/contextro-server/src/main.rs"));
+        assert!(target_files.contains(&"crates/contextro-server/src/state.rs"));
+        assert!(target_files.contains(&"crates/contextro-engines/src/cache.rs"));
+        assert_eq!(target_files.len(), 3, "unexpected target files: {:?}", target_files);
+        assert!(affected.len() <= 5, "unexpected affected symbols: {:?}", names);
+    }
+
+    #[test]
+    fn test_edit_plan_regression_excludes_rc_dispatch_cache_contamination() {
+        let graph = CodeGraph::new();
+        let code_file = "/tmp/contextro/crates/contextro-tools/src/code.rs";
+        let analysis_file = "/tmp/contextro/crates/contextro-tools/src/analysis.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            code_file,
+            50,
+            "fn dispatch(&self, operation: &str, args: Value) { self.state.query_cache.get(operation); self.state.query_cache.insert(operation, CacheEntry::new()); }",
+        ));
+        graph.add_node(test_node(
+            "query-cache",
+            "QueryCache",
+            code_file,
+            14,
+            "pub struct QueryCache { entries: DashMap<String, CacheEntry> }",
+        ));
+        graph.add_node(test_node(
+            "cache-entry",
+            "CacheEntry",
+            code_file,
+            19,
+            "pub struct CacheEntry { value: Value, hit_rate: usize }",
+        ));
+        graph.add_node(test_node(
+            "server",
+            "ContextroServer",
+            code_file,
+            5,
+            "pub struct ContextroServer { state: Arc<AppState> }",
+        ));
+        graph.add_node(test_node(
+            "app-state",
+            "AppState",
+            code_file,
+            9,
+            "pub struct AppState { pub query_cache: Arc<QueryCache>, pub graph: Arc<CodeGraph> }",
+        ));
+        graph.add_node(test_node(
+            "handle-index",
+            "handle_index",
+            code_file,
+            80,
+            "fn handle_index(state: &AppState) { dispatch(); }",
+        ));
+        graph.add_node(test_node(
+            "handle-focus",
+            "handle_focus",
+            code_file,
+            90,
+            "fn handle_focus(state: &AppState) { dispatch(); }",
+        ));
+        graph.add_node(test_node(
+            "handle-status",
+            "handle_status",
+            code_file,
+            100,
+            "fn handle_status(state: &AppState) { dispatch(); }",
+        ));
+        graph.add_node(test_node(
+            "clear-scope",
+            "clear_active_scope",
+            code_file,
+            110,
+            "fn clear_active_scope(state: &AppState) { state.query_cache.clear(); }",
+        ));
+        graph.add_node(test_node(
+            "hit-rate",
+            "hit_rate",
+            code_file,
+            120,
+            "fn hit_rate(entry: &CacheEntry) -> f64 { entry.hit_rate as f64 }",
+        ));
+        graph.add_node(test_node(
+            "analysis-plan",
+            "build_analysis_plan",
+            analysis_file,
+            40,
+            "fn build_analysis_plan() { handle_focus(); handle_status(); }",
+        ));
+
+        add_call(&graph, "server", "dispatch");
+        add_call(&graph, "dispatch", "app-state");
+        add_call(&graph, "app-state", "query-cache");
+        add_call(&graph, "query-cache", "cache-entry");
+        add_call(&graph, "dispatch", "handle-index");
+        add_call(&graph, "dispatch", "handle-focus");
+        add_call(&graph, "dispatch", "handle-status");
+        add_call(&graph, "dispatch", "clear-scope");
+        add_call(&graph, "dispatch", "hit-rate");
+        add_call(&graph, "analysis-plan", "handle-focus");
+        add_call(&graph, "analysis-plan", "handle-status");
+
+        let result = edit_plan(
+            &json!({"goal":"add per-tool result caching to the dispatch function using QueryCache"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let affected = result["affected_symbols"].as_array().unwrap();
+        let names: Vec<&str> = affected
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        let target_files: Vec<&str> = result["target_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+
+        assert!(names.contains(&"dispatch"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"QueryCache"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"handle_focus"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"handle_status"), "unexpected names: {:?}", names);
+        assert!(!names.contains(&"clear_active_scope"), "unexpected names: {:?}", names);
+        assert!(!target_files.contains(&"crates/contextro-tools/src/analysis.rs"), "unexpected target files: {:?}", target_files);
+        assert_eq!(target_files, vec!["crates/contextro-tools/src/code.rs"]);
+    }
+
+    #[test]
+    fn test_edit_plan_regression_promotes_app_state_and_excludes_leaky_main_bridges() {
+        let graph = CodeGraph::new();
+        let main_file = "/tmp/contextro/crates/contextro-server/src/main.rs";
+        let state_file = "/tmp/contextro/crates/contextro-server/src/state.rs";
+        let cache_file = "/tmp/contextro/crates/contextro-engines/src/cache.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            main_file,
+            90,
+            "fn dispatch(&self, operation: &str, args: Value) { self.state.query_cache.get(operation); call_tool(operation, args); }",
+        ));
+        graph.add_node(test_node(
+            "call-tool",
+            "call_tool",
+            main_file,
+            140,
+            "fn call_tool(operation: &str, args: Value) -> Value { dispatch_tool(operation, args) }",
+        ));
+        graph.add_node(test_node(
+            "server",
+            "ContextroServer",
+            main_file,
+            20,
+            "pub struct ContextroServer { state: Arc<AppState> }",
+        ));
+        graph.add_node(test_node(
+            "handle-status",
+            "handle_status",
+            main_file,
+            200,
+            "fn handle_status(state: &AppState) -> Value { state.query_cache.hit_rate(); json!({}) }",
+        ));
+        graph.add_node(test_node(
+            "clear-scope",
+            "clear_active_scope",
+            main_file,
+            215,
+            "fn clear_active_scope(state: &AppState) { state.query_cache.clear(); }",
+        ));
+        graph.add_node(test_node(
+            "app-state",
+            "AppState",
+            state_file,
+            25,
+            "pub struct AppState { pub query_cache: Arc<QueryCache>, pub config: Arc<Config> }",
+        ));
+        graph.add_node(test_node(
+            "query-cache",
+            "QueryCache",
+            cache_file,
+            14,
+            "pub struct QueryCache { entries: DashMap<String, CacheEntry> }",
+        ));
+        graph.add_node(test_node(
+            "cache-entry",
+            "CacheEntry",
+            cache_file,
+            32,
+            "pub struct CacheEntry { value: Value, hit_rate: f64 }",
+        ));
+        graph.add_node(test_node(
+            "hit-rate",
+            "hit_rate",
+            cache_file,
+            60,
+            "fn hit_rate(entry: &CacheEntry) -> f64 { entry.hit_rate }",
+        ));
+
+        add_call(&graph, "server", "dispatch");
+        add_call(&graph, "dispatch", "call-tool");
+        add_call(&graph, "dispatch", "app-state");
+        add_call(&graph, "app-state", "query-cache");
+        add_call(&graph, "query-cache", "cache-entry");
+        add_call(&graph, "handle-status", "app-state");
+        add_call(&graph, "handle-status", "query-cache");
+        add_call(&graph, "clear-scope", "app-state");
+        add_call(&graph, "clear-scope", "query-cache");
+        add_call(&graph, "hit-rate", "cache-entry");
+
+        let result = edit_plan(
+            &json!({"goal":"add per-tool result caching to the dispatch function using QueryCache"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        let affected = result["affected_symbols"].as_array().unwrap();
+        let names: Vec<&str> = affected
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        let target_files: Vec<&str> = result["target_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+        let app_state_index = names.iter().position(|name| *name == "AppState");
+        let handle_status_index = names.iter().position(|name| *name == "handle_status");
+        let clear_scope_index = names.iter().position(|name| *name == "clear_active_scope");
+
+        assert!(names.contains(&"dispatch"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"QueryCache"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"AppState"), "unexpected names: {:?}", names);
+        assert!(names.contains(&"call_tool") || names.contains(&"ContextroServer"), "unexpected names: {:?}", names);
+        assert!(handle_status_index.is_none(), "unexpected names: {:?}", names);
+        assert!(clear_scope_index.is_none(), "unexpected names: {:?}", names);
+        assert!(target_files.contains(&"crates/contextro-server/src/main.rs"), "unexpected target files: {:?}", target_files);
+        assert!(target_files.contains(&"crates/contextro-server/src/state.rs"), "unexpected target files: {:?}", target_files);
+        assert!(target_files.contains(&"crates/contextro-engines/src/cache.rs"), "unexpected target files: {:?}", target_files);
+        if let (Some(app_state_index), Some(call_tool_index)) = (
+            app_state_index,
+            names.iter().position(|name| *name == "call_tool"),
+        ) {
+            assert!(app_state_index < call_tool_index, "unexpected ordering: {:?}", names);
+        }
+        if let (Some(app_state_index), Some(server_index)) = (
+            app_state_index,
+            names.iter().position(|name| *name == "ContextroServer"),
+        ) {
+            assert!(app_state_index < server_index, "unexpected ordering: {:?}", names);
+        }
     }
 
     #[test]
@@ -2733,15 +4143,26 @@ mod tests {
             .iter()
             .filter_map(|symbol| symbol["name"].as_str())
             .collect();
-        assert_eq!(result["files"][0]["file"], "crates/contextro-tools/src/search.rs");
+        assert_eq!(
+            result["files"][0]["file"],
+            "crates/contextro-tools/src/search.rs"
+        );
         assert!(names.contains(&"handle_search"));
         assert!(names.contains(&"rerank_natural_language_results"));
         assert!(names.contains(&"drop_low_confidence_noise"));
         assert!(names.contains(&"is_symbol_lookup_query"));
         assert!(names.contains(&"result_matches_symbol_query"));
         assert!(names.contains(&"vector_candidate_limit"));
-        assert!(!names.contains(&"resolve_refactor_targets"), "unexpected names: {:?}", names);
-        assert!(!names.contains(&"rank_nodes_by_degree"), "unexpected names: {:?}", names);
+        assert!(
+            !names.contains(&"resolve_refactor_targets"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"rank_nodes_by_degree"),
+            "unexpected names: {:?}",
+            names
+        );
     }
 
     #[test]
@@ -2803,16 +4224,31 @@ mod tests {
             Some("/tmp/contextro"),
         );
 
-        assert_eq!(result["files"][0]["file"], "crates/contextro-tools/src/search.rs");
+        assert_eq!(
+            result["files"][0]["file"],
+            "crates/contextro-tools/src/search.rs"
+        );
         let names: Vec<&str> = result["files"][0]["symbols"]
             .as_array()
             .unwrap()
             .iter()
             .filter_map(|symbol| symbol["name"].as_str())
             .collect();
-        assert!(names.contains(&"handle_search"), "unexpected names: {:?}", names);
-        assert!(names.contains(&"rerank_natural_language_results"), "unexpected names: {:?}", names);
-        assert!(names.contains(&"drop_low_confidence_noise"), "unexpected names: {:?}", names);
+        assert!(
+            names.contains(&"handle_search"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"rerank_natural_language_results"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"drop_low_confidence_noise"),
+            "unexpected names: {:?}",
+            names
+        );
     }
 
     #[test]
@@ -2925,7 +4361,10 @@ mod tests {
         );
 
         assert_eq!(result["total_files"], 1, "unexpected result: {result}");
-        assert_eq!(result["files"][0]["file"], "crates/contextro-tools/src/search.rs");
+        assert_eq!(
+            result["files"][0]["file"],
+            "crates/contextro-tools/src/search.rs"
+        );
 
         let names: Vec<&str> = result["files"][0]["symbols"]
             .as_array()
@@ -2934,7 +4373,11 @@ mod tests {
             .filter_map(|symbol| symbol["name"].as_str())
             .collect();
 
-        assert!(names.contains(&"handle_search"), "unexpected names: {:?}", names);
+        assert!(
+            names.contains(&"handle_search"),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(
             names.contains(&"rerank_natural_language_results"),
             "unexpected names: {:?}",
@@ -2975,12 +4418,109 @@ mod tests {
             "unexpected names: {:?}",
             names
         );
-        assert!(!names.contains(&"fuse_results"), "unexpected names: {:?}", names);
+        assert!(
+            !names.contains(&"fuse_results"),
+            "unexpected names: {:?}",
+            names
+        );
         assert!(
             !names.contains(&"accumulate_result"),
             "unexpected names: {:?}",
             names
         );
+    }
+
+    #[test]
+    fn test_search_codebase_map_prefers_cache_module_for_explanatory_cache_queries() {
+        let graph = CodeGraph::new();
+        let cache_file = "/tmp/contextro/crates/contextro-engines/src/cache.rs";
+        let tool_file = "/tmp/contextro/crates/contextro-tools/src/search.rs";
+
+        graph.add_node(test_node(
+            "query-cache",
+            "QueryCache",
+            cache_file,
+            14,
+            "pub struct QueryCache { ttl eviction invalidation cached query search responses }",
+        ));
+        graph.add_node(test_node(
+            "cache-get",
+            "QueryCache.get",
+            cache_file,
+            34,
+            "fn get(&self, query: &str) -> Option<Value> { ttl expiry returns cached response }",
+        ));
+        graph.add_node(test_node(
+            "cache-put",
+            "QueryCache.put",
+            cache_file,
+            49,
+            "fn put(&self, query: &str, result: Value) { cache eviction removes oldest entry at capacity }",
+        ));
+        graph.add_node(test_node(
+            "handle-search",
+            "handle_search",
+            tool_file,
+            17,
+            "pub fn handle_search() { execute_search(); rerank_natural_language_results(); }",
+        ));
+        graph.add_node(test_node(
+            "rerank",
+            "rerank_natural_language_results",
+            tool_file,
+            216,
+            "fn rerank_natural_language_results() { improve search ranking for product responses }",
+        ));
+
+        add_call(&graph, "query-cache", "cache-get");
+        add_call(&graph, "query-cache", "cache-put");
+        add_call(&graph, "handle-search", "rerank");
+
+        let result = search_codebase_map(
+            &json!({"query":"how does the query cache work, TTL eviction"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["total_files"], 1, "unexpected result: {result}");
+        assert_eq!(
+            result["files"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
+        let names: Vec<&str> = result["files"][0]["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        assert!(
+            names.contains(&"QueryCache"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"QueryCache.get"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"QueryCache.put"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"handle_search"),
+            "unexpected names: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn test_codebase_map_stemming_restores_cache_from_caching_queries() {
+        let tokens = tokenize_codebase_map_text("how does caching work");
+
+        assert!(tokens.contains(&"caching".to_string()));
+        assert!(tokens.contains(&"cache".to_string()));
     }
 
     #[test]
