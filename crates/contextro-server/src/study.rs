@@ -23,7 +23,7 @@ use contextro_indexing::{create_chunks, IndexingPipeline};
 
 const DEFAULT_TASKS: usize = 1000;
 const DEFAULT_SEARCH_LIMIT: usize = 5;
-const SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "mts", "cjs"];
+const SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "mts", "cjs", "rs"];
 
 #[derive(Debug, Clone, Serialize)]
 struct StudyTask {
@@ -354,11 +354,15 @@ fn build_index(codebase: &str) -> Result<IndexedRepo> {
 fn generate_tasks(indexed: &IndexedRepo, total: usize) -> Result<Vec<StudyTask>> {
     let symbol_target = total * 30 / 100;
     let search_target = total * 30 / 100;
-    let lookup_target = total * 20 / 100;
-    let document_target = total - symbol_target - search_target - lookup_target;
+    let base_lookup_target = total * 20 / 100;
 
     let unique_symbols = collect_unique_symbols(&indexed.symbols);
     let file_candidates = collect_document_files(&indexed.symbols, &indexed.codebase);
+    let document_target = usize::min(
+        total - symbol_target - search_target - base_lookup_target,
+        file_candidates.len(),
+    );
+    let lookup_target = total - symbol_target - search_target - document_target;
 
     if unique_symbols.len() < symbol_target + search_target + lookup_target * 3 {
         return Err(anyhow!(
@@ -518,7 +522,7 @@ fn collect_document_files(symbols: &[Symbol], codebase: &str) -> Vec<FileCandida
     let mut candidates = Vec::new();
     for (absolute, mut items) in files {
         items.sort_by_key(|s| s.line_start);
-        if items.len() < 3 || items.len() > 14 {
+        if items.len() < 2 {
             continue;
         }
         let expected = items
@@ -527,7 +531,7 @@ fn collect_document_files(symbols: &[Symbol], codebase: &str) -> Vec<FileCandida
             .map(|s| (s.name.clone(), s.line_start))
             .collect::<Vec<_>>();
         let max_line = expected.iter().map(|(_, line)| *line).max().unwrap_or(0);
-        if max_line > 180 {
+        if max_line > 260 {
             continue;
         }
 
@@ -1278,4 +1282,68 @@ fn truncate_pad(value: &str, width: usize) -> String {
         value.to_string()
     };
     format!("{shortened:<width$}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_symbol(name: &str, filepath: &str, line_start: usize) -> Symbol {
+        Symbol {
+            name: name.to_string(),
+            symbol_type: SymbolType::Function,
+            filepath: filepath.to_string(),
+            line_start: line_start as u32,
+            line_end: (line_start + 2) as u32,
+            language: "rust".to_string(),
+            signature: format!("fn {name}()"),
+            docstring: String::new(),
+            parent: None,
+            code_snippet: String::new(),
+            imports: Vec::new(),
+            calls: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn source_filter_includes_rust_files() {
+        assert!(is_source_file("src/study.rs"));
+        assert!(is_source_file("src/app.ts"));
+        assert!(!is_source_file("Cargo.toml"));
+    }
+
+    #[test]
+    fn unique_symbol_collection_keeps_rust_symbols() {
+        let symbols = vec![
+            test_symbol("alpha_task", "/repo/crates/a/src/lib.rs", 10),
+            test_symbol("alpha_task", "/repo/crates/b/src/lib.rs", 12),
+            test_symbol("beta_task", "/repo/crates/a/src/study.rs", 20),
+            test_symbol("ignore_json", "/repo/data/config.json", 30),
+        ];
+
+        let unique = collect_unique_symbols(&symbols);
+
+        assert_eq!(unique.len(), 1);
+        assert_eq!(unique[0].name, "beta_task");
+        assert_eq!(unique[0].filepath, "/repo/crates/a/src/study.rs");
+    }
+
+    #[test]
+    fn document_file_candidates_include_rust_files() {
+        let symbols = vec![
+            test_symbol("alpha_task", "/repo/crates/a/src/study.rs", 10),
+            test_symbol("beta_task", "/repo/crates/a/src/study.rs", 20),
+            test_symbol("gamma_task", "/repo/crates/a/src/study.rs", 30),
+            test_symbol("delta_task", "/repo/crates/a/src/study.rs", 40),
+        ];
+
+        let candidates = collect_document_files(&symbols, "/repo");
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].relative_file, "crates/a/src/study.rs");
+        assert_eq!(
+            candidates[0].expected_symbols,
+            vec!["alpha_task", "beta_task", "gamma_task"]
+        );
+    }
 }
