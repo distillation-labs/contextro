@@ -10,11 +10,11 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use contextro_config::{get_settings, Settings};
-use contextro_core::ContextroError;
 use contextro_core::graph::{
     RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
 };
 use contextro_core::models::{Symbol, SymbolType};
+use contextro_core::ContextroError;
 use contextro_core::NodeType;
 use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
@@ -58,8 +58,7 @@ struct PersistedRepoScopeState {
 impl AppState {
     pub fn new() -> Self {
         let settings = get_settings().read().clone();
-        Self::from_settings(settings)
-            .expect("failed to initialize persistent app state storage")
+        Self::from_settings(settings).expect("failed to initialize persistent app state storage")
     }
 
     pub(crate) fn from_settings(settings: Settings) -> Result<Self, ContextroError> {
@@ -276,7 +275,10 @@ mod tests {
         let state = AppState::from_settings(settings).expect("state should load");
 
         assert_eq!(*state.codebase_path.read(), Some("/tmp/repo-b".into()));
-        assert_eq!(&*state.repo_scope_history.read(), &vec!["/tmp/repo-a".to_string()]);
+        assert_eq!(
+            &*state.repo_scope_history.read(),
+            &vec!["/tmp/repo-a".to_string()]
+        );
 
         *state.codebase_path.write() = None;
         state.repo_scope_history.write().clear();
