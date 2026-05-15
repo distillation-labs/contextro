@@ -61,6 +61,10 @@ fn get_document_symbols(args: &Value, codebase: Option<&str>) -> Value {
         Some(path) => path,
         None => return json!({"error": "Missing required parameter: path"}),
     };
+    let include_signature = args
+        .get("include_signature")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let abs_path = match resolve_existing_path(file_path, codebase) {
         Ok(path) => path,
         Err(error) => return error,
@@ -72,32 +76,53 @@ fn get_document_symbols(args: &Value, codebase: Option<&str>) -> Value {
     let parser = TreeSitterParser::new();
     match parser.parse_file(abs_path.to_string_lossy().as_ref()) {
         Ok(parsed) => {
+            let mut columns = vec![json!("name"), json!("type"), json!("line")];
+            let has_multiline = parsed
+                .symbols
+                .iter()
+                .any(|symbol| symbol.line_end > symbol.line_start + 1);
+            if has_multiline {
+                columns.push(json!("end_line"));
+            }
+            if include_signature {
+                columns.push(json!("signature"));
+            }
+
             let symbols: Vec<Value> = parsed
                 .symbols
                 .iter()
                 .map(|s| {
-                    let mut sym = json!({
-                        "name": s.name,
-                        "type": s.symbol_type.to_string(),
-                        "line": s.line_start,
-                    });
-                    // Only include end_line if multi-line
-                    if s.line_end > s.line_start + 1 {
-                        sym["end_line"] = json!(s.line_end);
+                    let mut row = vec![
+                        json!(s.name),
+                        json!(s.symbol_type.to_string()),
+                        json!(s.line_start),
+                    ];
+                    if has_multiline {
+                        if s.line_end > s.line_start + 1 {
+                            row.push(json!(s.line_end));
+                        } else {
+                            row.push(Value::Null);
+                        }
                     }
-                    // Truncate long signatures to save tokens
-                    let sig = if s.signature.chars().count() > 60 {
-                        truncate_chars(&s.signature, 57)
-                    } else {
-                        s.signature.clone()
-                    };
-                    if !sig.is_empty() {
-                        sym["signature"] = json!(sig);
+                    if include_signature {
+                        // Truncate long signatures to bound payload size when callers opt in.
+                        let sig = if s.signature.chars().count() > 60 {
+                            truncate_chars(&s.signature, 57)
+                        } else {
+                            s.signature.clone()
+                        };
+                        row.push(json!(sig));
                     }
-                    sym
+                    Value::Array(row)
                 })
                 .collect();
-            json!({"file": strip_base(&abs_path.to_string_lossy(), codebase), "symbols": symbols, "total": symbols.len()})
+
+            json!({
+                "file": strip_base(&abs_path.to_string_lossy(), codebase),
+                "columns": columns,
+                "symbols": symbols,
+                "total": symbols.len()
+            })
         }
         Err(e) => json!({"error": format!("Parse failed: {}", e)}),
     }
@@ -919,6 +944,24 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
                 .unwrap_or(Ordering::Equal)
                 .then_with(|| a.0.cmp(&b.0))
         });
+
+        if codebase_map_query_is_narrow_explanatory(raw_query, &query_tokens) && grouped.len() > 1 {
+            let lead_score = grouped[0].2;
+            let second_score = grouped[1].2;
+            let max_files = if lead_score >= second_score + 0.35 {
+                1
+            } else {
+                2
+            };
+            let retain_floor = if max_files == 1 {
+                lead_score - 0.01
+            } else {
+                (lead_score - 0.18).max(0.5)
+            };
+
+            grouped.retain(|(_, _, top_score)| *top_score >= retain_floor);
+            grouped.truncate(max_files);
+        }
     }
 
     let files: Vec<Value> = grouped
@@ -1240,6 +1283,16 @@ fn codebase_map_query_prefers_subsystem_closure(query: &str) -> bool {
     !trimmed.is_empty()
         && trimmed.split_whitespace().count() >= 3
         && !codebase_map_query_targets_tests(query)
+}
+
+fn codebase_map_query_is_narrow_explanatory(query: &str, query_tokens: &[String]) -> bool {
+    let lowered = query.to_ascii_lowercase();
+    let has_explanatory_prefix = lowered.contains("how does")
+        || lowered.contains("how do")
+        || lowered.contains("what does")
+        || lowered.starts_with("explain ");
+
+    has_explanatory_prefix && !query_tokens.is_empty() && query_tokens.len() <= 4
 }
 
 fn apply_dominant_file_focus(
@@ -4524,11 +4577,171 @@ mod tests {
     }
 
     #[test]
-    fn test_list_symbols_truncates_unicode_signatures_safely() {
-        let dir = temp_dir("unicode-signature");
+    fn test_search_codebase_map_avoids_padding_narrow_commit_search_queries() {
+        let graph = CodeGraph::new();
+        let commit_file = "/tmp/contextro/crates/contextro-tools/src/git.rs";
+        let search_file = "/tmp/contextro/crates/contextro-tools/src/search.rs";
+        let code_file = "/tmp/contextro/crates/contextro-tools/src/code.rs";
+
+        graph.add_node(test_node(
+            "handle-commit-search",
+            "handle_commit_search",
+            commit_file,
+            12,
+            "pub fn handle_commit_search() { search_commit_history(); index_commit_messages(); }",
+        ));
+        graph.add_node(test_node(
+            "search-commit-history",
+            "search_commit_history",
+            commit_file,
+            48,
+            "fn search_commit_history() { commit search history ranking query }",
+        ));
+        graph.add_node(test_node(
+            "index-commit-messages",
+            "index_commit_messages",
+            commit_file,
+            88,
+            "fn index_commit_messages() { index commit messages for search history }",
+        ));
+
+        graph.add_node(test_node(
+            "handle-search",
+            "handle_search",
+            search_file,
+            17,
+            "pub fn handle_search() { rerank_results(); search query results }",
+        ));
+        graph.add_node(test_node(
+            "rerank-results",
+            "rerank_results",
+            search_file,
+            120,
+            "fn rerank_results() { search ranking output results }",
+        ));
+        graph.add_node(test_node(
+            "search-codebase-map",
+            "search_codebase_map",
+            code_file,
+            220,
+            "fn search_codebase_map() { search query symbols files }",
+        ));
+
+        add_call(&graph, "handle-commit-search", "search-commit-history");
+        add_call(&graph, "search-commit-history", "index-commit-messages");
+        add_call(&graph, "handle-search", "rerank-results");
+
+        let result = search_codebase_map(
+            &json!({"query":"how does commit search work"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["total_files"], 1, "unexpected result: {result}");
+        assert_eq!(
+            result["files"][0]["file"],
+            "crates/contextro-tools/src/git.rs"
+        );
+
+        let names: Vec<&str> = result["files"][0]["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        assert!(
+            names.contains(&"handle_commit_search"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"search_commit_history"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"handle_search"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"search_codebase_map"),
+            "unexpected names: {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn test_search_codebase_map_keeps_broad_architectural_queries_multi_file() {
+        let graph = CodeGraph::new();
+        let tool_file = "/tmp/contextro/crates/contextro-tools/src/git.rs";
+        let git_file = "/tmp/contextro/crates/contextro-git/src/commit_index.rs";
+
+        graph.add_node(test_node(
+            "handle-commit-search",
+            "handle_commit_search",
+            tool_file,
+            12,
+            "pub fn handle_commit_search() { search_commit_history(); }",
+        ));
+        graph.add_node(test_node(
+            "search-commit-history",
+            "search_commit_history",
+            tool_file,
+            48,
+            "fn search_commit_history() { commit search architecture pipeline routes queries to git history }",
+        ));
+        graph.add_node(test_node(
+            "commit-index",
+            "CommitIndex",
+            git_file,
+            20,
+            "pub struct CommitIndex { commit search architecture pipeline storage }",
+        ));
+        graph.add_node(test_node(
+            "search-commit-messages",
+            "search_commit_messages",
+            git_file,
+            75,
+            "fn search_commit_messages() { commit search architecture pipeline ranking }",
+        ));
+
+        add_call(&graph, "handle-commit-search", "search-commit-history");
+        add_call(&graph, "search-commit-history", "search-commit-messages");
+
+        let result = search_codebase_map(
+            &json!({"query":"commit search architecture pipeline"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert!(
+            result["total_files"].as_u64().unwrap_or(0) >= 2,
+            "unexpected result: {result}"
+        );
+        let files: Vec<&str> = result["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|file| file["file"].as_str())
+            .collect();
+        assert!(
+            files.contains(&"crates/contextro-tools/src/git.rs"),
+            "unexpected files: {:?}",
+            files
+        );
+        assert!(
+            files.contains(&"crates/contextro-git/src/commit_index.rs"),
+            "unexpected files: {:?}",
+            files
+        );
+    }
+
+    #[test]
+    fn test_get_document_symbols_omits_signatures_by_default() {
+        let dir = temp_dir("default-signature");
         let file = dir.join("main.py");
-        let signature = format!("def hello({}) -> str:", "─".repeat(80));
-        std::fs::write(&file, format!("{signature}\n    return 'ok'\n")).unwrap();
+        std::fs::write(&file, "def hello(name):\n    return name\n").unwrap();
 
         let result = get_document_symbols(
             &json!({"path": file.to_string_lossy().to_string()}),
@@ -4536,10 +4749,57 @@ mod tests {
         );
 
         assert_eq!(result["total"], 1);
-        let rendered = result["symbols"][0]["signature"].as_str().unwrap();
+        assert_eq!(result["columns"], json!(["name", "type", "line"]));
+        assert_eq!(result["symbols"][0], json!(["hello", "function", 1]));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_get_document_symbols_truncates_unicode_signatures_when_requested() {
+        let dir = temp_dir("unicode-signature");
+        let file = dir.join("main.py");
+        let signature = format!("def hello({}) -> str:", "─".repeat(80));
+        std::fs::write(&file, format!("{signature}\n    return 'ok'\n")).unwrap();
+
+        let result = get_document_symbols(
+            &json!({
+                "path": file.to_string_lossy().to_string(),
+                "include_signature": true
+            }),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 1);
+        assert_eq!(result["columns"], json!(["name", "type", "line", "signature"]));
+        let rendered = result["symbols"][0][3].as_str().unwrap();
         assert!(rendered.ends_with('…'));
         assert!(rendered.chars().count() <= 58);
 
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    #[test]
+    fn test_get_document_symbols_uses_shared_columns_for_multiline_symbols() {
+        let dir = temp_dir("shared-columns");
+        let file = dir.join("main.py");
+        std::fs::write(
+            &file,
+            "class Hello:\n    def first(self):\n        return 1\n\ndef second():\n    return 2\n",
+        )
+        .unwrap();
+
+        let result = get_document_symbols(
+            &json!({"path": file.to_string_lossy().to_string()}),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["columns"], json!(["name", "type", "line", "end_line"]));
+        assert_eq!(result["symbols"][0], json!(["Hello", "class", 1, 3]));
+        assert_eq!(result["symbols"][1], json!(["first", "method", 2, null]));
+        assert_eq!(result["symbols"][2], json!(["second", "function", 5, null]));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
 }
