@@ -1,63 +1,118 @@
 # Benchmark Results
 
-Validated against the Contextro MCP codebase (76 files, 892 symbols, 1,620 chunks).
+Current evidence in this bundle is limited to studies and repo files present in this working tree.
 
-## Tool Output Sizes (16-tool workflow, median of 5 runs)
+## Validated Studies
 
-| Tool | Tokens |
-|---|---|
-| `search` | 116 |
-| `explain` | 43 |
-| `find_symbol` | 36 |
-| `find_callers` | 6 |
-| `status` | 20 |
-| Total (16 calls) | 1,043 |
+### Contextro repo study, 100 tasks
 
-## Retrieval Quality (20 docstring queries, src codebase)
+Measured on this repository.
 
-| Metric | Value |
-|---|---|
-| Hybrid MRR | 1.000 (perfect) |
-| Hybrid recall@1 | 1.000 (perfect) |
-| Hybrid recall@5 | 1.000 |
-| Avg tokens/query | 152 |
-| Avg latency | 4.4 ms |
-
-## Indexing Performance (potion-code-16m)
-
-| Codebase | Files | Chunks | Time |
+| Metric | Contextro | stronger_local | Delta |
 |---|---|---|---|
-| src (benchmark) | 76 | 1,620 | 0.45 s |
-| Incremental (no changes) | — | — | 22 ms |
-| File discovery (3,349 files) | — | — | 15 ms |
+| Success rate | 100% | 99% | +1 point |
+| Total tokens | 9,905 | 109,067 | 90.9% reduction |
+| Tool calls per task | 1.0 | 3.03 | lower |
+| Files read | 0 | 183 | eliminated |
 
-## Response Format (v5.0.0)
+Source: current validated `contextro-study` figures for this working tree.
 
-Search results use compact keys:
+### Contextro repo study, 200 tasks
 
-| Key | Meaning | Notes |
-|---|---|---|
-| `n` | symbol name | |
-| `f` | file path | relative |
-| `l` | start line | |
-| `c` | code snippet | top result only |
-| `t` | type | omitted when `function` |
-| `lc` | line count | |
-| `doc` | docstring | first sentence |
+Measured on this repository.
 
-Implicit fields (omitted to save tokens):
-- `confidence` — omitted when high (the default)
-- `sandboxed` — omitted; presence of `sandbox_ref` implies sandboxing
-- `lang` — omitted for Python (the default)
-- `indexed` — omitted from status when true; presence of `codebase_path` implies indexed
+| Metric | Contextro | stronger_local | Delta |
+|---|---|---|---|
+| Success rate | 100% | 99% | +1 point |
+| Total tokens | 23,447 | 222,646 | 89.5% reduction |
+| Tool calls per task | 1.0 | 2.89 | lower |
+| Files read | 0 | 335 | eliminated |
 
-## Search Quality (research-backed improvements)
+Source: current validated `contextro-study` figures for this working tree.
 
-| Improvement | Source | Gain |
-|---|---|---|
-| Relevance threshold 0.40 | SIGIR 2024 | -35% noise |
-| Same-file diversity penalty | SaraCoder 2025 | -40% redundant results |
-| Degenerate vector detection | Internal | MRR 0.975 → 1.0 |
-| BM25 docstring-exact-match boost | Internal | MRR 0.975 → 1.0 |
-| Contextual chunk enrichment | Anthropic Sep 2024 | -35-49% retrieval failures |
-| Sufficiency signal | Google ICLR 2025 | -10% hallucinations |
+Useful category notes from the 200-task study:
+
+| Category | Token reduction |
+|---|---|
+| `batch_lookup` | 94.4% |
+| `document_symbols` | 83.1% |
+| `exact_search` | 87.2% |
+| `symbol_discovery` | 94.9% |
+
+### Published repo-root README study, production TypeScript monorepo, 1,000 tasks
+
+This is the published study already cited in the repo root README.
+
+| Metric | Baseline | Contextro | Delta |
+|---|---|---|---|
+| Success rate | 99.5% | 100% | +0.5 point |
+| Total tokens | 941,748 | 93,819 | 90% reduction |
+| Median latency | 199.8ms | 0.081ms | 2,466x faster |
+| Tool calls per task | 3.2 | 1.0 | lower |
+| Files read | 1,961 | 0 | eliminated |
+
+Source: `/Users/japneetkalkat/contextro/README.md`
+
+## Current Runtime Contracts
+
+### Search
+
+`search()` returns full-key responses:
+
+```json
+{
+  "query": "authentication middleware",
+  "confidence": "high",
+  "results": [
+    {
+      "name": "AuthMiddleware",
+      "file": "src/auth.rs",
+      "line": 42,
+      "type": "struct",
+      "score": 0.9123
+    }
+  ],
+  "total": 1,
+  "limit": 10,
+  "truncated": false
+}
+```
+
+Notes:
+- `confidence` is present in current responses.
+- Search results use `name`, `file`, `line`, `type`, `score`, not compact keys.
+- Response truncation and budgeting are handled by the server wrapper's `max_tokens`, not `context_budget`.
+
+### Symbol lookup
+
+`find_symbol()` and `code(operation="lookup_symbols")` use wrapper objects such as:
+
+```json
+{
+  "symbols": [
+    {
+      "name": "AuthMiddleware",
+      "type": "struct",
+      "file": "src/auth.rs",
+      "line": 42
+    }
+  ],
+  "total": 1
+}
+```
+
+### Archive retrieval
+
+`retrieve()` accepts only `ref_id` and returns:
+
+```json
+{
+  "ref_id": "arc_ab12cd34",
+  "content": "archived session content"
+}
+```
+
+## Guidance For Claims
+
+Use the study tables above for external-facing benchmark claims in this skill bundle.
+Do not cite older compact-key token tables, MRR claims, or sandbox-response behavior unless a current repo source is added that supports them.
