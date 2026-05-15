@@ -119,6 +119,9 @@ code(operation="pattern_search", pattern="fn $F($$$) -> Result", language="rust"
 code(operation="pattern_rewrite", pattern="console.log($MSG)", replacement="logger.info($MSG)", dry_run=True)
 ```
 
+`get_document_symbols` returns a compact columnar payload: `{ file, columns, symbols, total }`.
+Pass `include_signature=true` only when you need signatures; `list_symbols(path=<file>)` uses the same file contract, while `list_symbols(path=<dir>)` returns object rows with `callers` and `callees`.
+
 ### Search git history
 
 ```
