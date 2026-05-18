@@ -8,7 +8,7 @@ use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
 use contextro_engines::fusion::ReciprocalRankFusion;
 use contextro_engines::graph::CodeGraph;
-use contextro_engines::search::{execute_search, SearchOptions};
+use contextro_engines::search::{classify_query, execute_search, QueryType, SearchOptions};
 use contextro_engines::vector::VectorIndex;
 use contextro_indexing::embed;
 use serde_json::{json, Value};
@@ -62,10 +62,14 @@ pub fn handle_search(
                 core_results,
                 bm25,
             );
-            let vec_results = filter_results_by_language(
-                vector_search(query, candidate_limit, vector_index),
-                language.as_deref(),
-            );
+            let vec_results = if should_include_vector_signal_in_hybrid(query) {
+                filter_results_by_language(
+                    vector_search(query, candidate_limit, vector_index),
+                    language.as_deref(),
+                )
+            } else {
+                vec![]
+            };
             if vec_results.is_empty() {
                 core_results
             } else {
@@ -1118,6 +1122,10 @@ fn is_expanded_natural_language_query(query: &str) -> bool {
     terms.len() >= 2 || (raw_terms.len() >= 2 && query_is_explanatory(query))
 }
 
+fn should_include_vector_signal_in_hybrid(query: &str) -> bool {
+    classify_query(query) != QueryType::Symbol
+}
+
 fn query_is_explanatory(query: &str) -> bool {
     let lowered = query.to_ascii_lowercase();
     lowered.contains("how does")
@@ -1325,6 +1333,16 @@ mod tests {
         assert_eq!(rerank_result_limit("observability config", 5), 20);
         assert_eq!(rerank_result_limit("how does caching work", 5), 20);
         assert_eq!(rerank_result_limit("BrowserSession", 5), 5);
+    }
+
+    #[test]
+    fn test_hybrid_vector_signal_skips_symbol_like_queries() {
+        assert!(!should_include_vector_signal_in_hybrid("BrowserSession"));
+        assert!(!should_include_vector_signal_in_hybrid("get_settings"));
+        assert!(should_include_vector_signal_in_hybrid(
+            "how does caching work"
+        ));
+        assert!(should_include_vector_signal_in_hybrid("caching"));
     }
 
     #[test]
