@@ -113,6 +113,7 @@ Output is written to `./experiment_results/`:
 | Metric | Without MCP | With MCP | Improvement |
 |--------|-------------|----------|-------------|
 | Tokens (1,000-task production study) | 941,748 | 93,819 | **90% reduction** |
+| Tokens (100-task Contextro repo study) | 106,805 | 10,207 | **90.4% reduction** |
 | Tokens (200-task Contextro repo study) | 222,646 | 23,447 | **89.5% reduction** |
 | Tool calls per task (1,000-task production study) | 3.2 | 1.0 | lower |
 | Files read (1,000-task production study) | 1,961 | 0 | **100% reduction** |
