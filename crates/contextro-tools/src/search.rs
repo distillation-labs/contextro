@@ -38,7 +38,11 @@ pub fn handle_search(
         .map(String::from);
 
     let mut results = match mode.as_str() {
-        "vector" => vector_search(query, vector_candidate_limit(query, limit), vector_index),
+        "vector" => {
+            let vector_results =
+                vector_search(query, vector_candidate_limit(query, limit), vector_index);
+            filter_results_by_language(vector_results, language.as_deref())
+        }
         "hybrid" => {
             let candidate_limit = hybrid_candidate_limit(query, limit);
             let rerank_limit = rerank_result_limit(query, limit);
@@ -58,7 +62,10 @@ pub fn handle_search(
                 core_results,
                 bm25,
             );
-            let vec_results = vector_search(query, candidate_limit, vector_index);
+            let vec_results = filter_results_by_language(
+                vector_search(query, candidate_limit, vector_index),
+                language.as_deref(),
+            );
             if vec_results.is_empty() {
                 core_results
             } else {
@@ -994,6 +1001,21 @@ fn vector_search(query: &str, limit: usize, index: &VectorIndex) -> Vec<SearchRe
     }
 }
 
+fn filter_results_by_language(
+    mut results: Vec<SearchResult>,
+    language: Option<&str>,
+) -> Vec<SearchResult> {
+    let Some(language) = language
+        .map(str::trim)
+        .filter(|language| !language.is_empty())
+    else {
+        return results;
+    };
+
+    results.retain(|result| result.language.eq_ignore_ascii_case(language));
+    results
+}
+
 /// Combine lexical/graph and vector signals without collapsing both tops to 1.0.
 fn fuse_results(
     query: &str,
@@ -1218,6 +1240,19 @@ mod tests {
             signature: "pub fn sample()".into(),
             match_sources: sources.iter().map(|source| (*source).to_string()).collect(),
         }
+    }
+
+    fn make_named_result_with_language(
+        id: &str,
+        symbol_name: &str,
+        filepath: &str,
+        language: &str,
+        score: f64,
+        sources: &[&str],
+    ) -> SearchResult {
+        let mut result = make_named_result(id, symbol_name, filepath, score, sources);
+        result.language = language.into();
+        result
     }
 
     fn make_chunk(id: &str, text: &str, name: &str, filepath: &str) -> CodeChunk {
@@ -2375,5 +2410,33 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].symbol_name, "handle_repo_add_v2");
+    }
+
+    #[test]
+    fn test_handle_search_vector_mode_respects_language_filter() {
+        let filtered = filter_results_by_language(
+            vec![
+                make_named_result_with_language(
+                    "rust-hit",
+                    "RustSearch",
+                    "crates/contextro-tools/src/search.rs",
+                    "rust",
+                    0.42,
+                    &["vector"],
+                ),
+                make_named_result_with_language(
+                    "python-hit",
+                    "PythonSearch",
+                    "crates/contextro-tools/src/search.py",
+                    "python",
+                    0.39,
+                    &["vector"],
+                ),
+            ],
+            Some("Python"),
+        );
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].symbol_name, "PythonSearch");
     }
 }

@@ -1,8 +1,20 @@
-use std::collections::HashMap;
-use std::path::Path;
-use std::time::Instant;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-type GraphOp<'a> = (&'static str, Box<dyn Fn() -> usize + 'a>);
+use contextro_core::traits::Parser;
+use rmcp::model::{CallToolResult, RawContent};
+use serde_json::{json, Value};
+
+#[allow(dead_code)]
+#[path = "main.rs"]
+mod server;
+
+use server::ContextroServer;
+
+const ITERATIONS: usize = 25;
+const INDEX_ITERATIONS: usize = 3;
+const REPO_MUTATION_ITERATIONS: usize = 10;
 
 fn main() {
     let codebase = std::env::args().nth(1).unwrap_or_else(|| {
@@ -23,240 +35,135 @@ fn main() {
     );
     println!("╠══════════════════════════════════════════════════════════════╣");
 
-    let settings = contextro_config::Settings::default();
-    let pipeline = contextro_indexing::IndexingPipeline::new(settings);
+    let storage_dir = temp_storage_dir("bench-storage");
+    let server = new_bench_server(&storage_dir);
 
-    // ═══ INDEXING ═══
-    let start = Instant::now();
-    let (result, symbols) = pipeline.index(platform_path).unwrap();
-    let idx_time = start.elapsed();
+    let index_start = Instant::now();
+    let index_result = parse_tool_json(server.dispatch("index", json!({"path": codebase})));
+    let idx_time = index_start.elapsed();
+    ensure_success("index", &index_result);
 
     println!("║  INDEXING                                                    ║");
     println!(
         "║  Files: {:>5}  Symbols: {:>6}  Chunks: {:>6}               ║",
-        result.total_files, result.total_symbols, result.total_chunks
+        index_result["total_files"].as_u64().unwrap_or(0),
+        index_result["total_symbols"].as_u64().unwrap_or(0),
+        index_result["total_chunks"].as_u64().unwrap_or(0)
     );
     println!(
         "║  Time: {:>8.2}ms                                            ║",
         idx_time.as_secs_f64() * 1000.0
     );
+    let total_symbols = index_result["total_symbols"].as_f64().unwrap_or(0.0);
+    let symbols_per_sec = if idx_time.is_zero() {
+        0.0
+    } else {
+        total_symbols / idx_time.as_secs_f64()
+    };
     println!(
         "║  Symbols/sec: {:>10.0}                                      ║",
-        result.total_symbols as f64 / idx_time.as_secs_f64()
+        symbols_per_sec
     );
-
-    // ═══ BM25 INDEX BUILD ═══
-    let chunks = contextro_indexing::create_chunks(&symbols);
-    let bm25 = contextro_engines::bm25::Bm25Engine::new_in_memory();
-    let bm25_start = Instant::now();
-    bm25.index_chunks(&chunks);
-    let bm25_idx_time = bm25_start.elapsed();
-    println!(
-        "║  BM25 index: {:>6.1}ms ({} chunks)                          ║",
-        bm25_idx_time.as_secs_f64() * 1000.0,
-        chunks.len()
-    );
-
-    // ═══ GRAPH BUILD ═══
-    let graph = contextro_engines::graph::CodeGraph::new();
-    let graph_start = Instant::now();
-    let mut known: HashMap<String, String> = HashMap::with_capacity(symbols.len());
-    for (i, sym) in symbols.iter().enumerate() {
-        let node_id = format!("n{}", i);
-        known.insert(sym.name.clone(), node_id.clone());
-        graph.add_node(contextro_core::UniversalNode {
-            id: node_id,
-            name: sym.name.clone(),
-            node_type: contextro_core::NodeType::Function,
-            location: contextro_core::UniversalLocation {
-                file_path: sym.filepath.clone(),
-                start_line: sym.line_start,
-                end_line: sym.line_end,
-                start_column: 0,
-                end_column: 0,
-                language: sym.language.clone(),
-            },
-            language: sym.language.clone(),
-            line_count: sym.line_count(),
-            ..Default::default()
-        });
-    }
-    let mut rc = 0;
-    for sym in &symbols {
-        if let Some(cid) = known.get(&sym.name) {
-            for call in &sym.calls {
-                if let Some(tid) = known.get(call) {
-                    if cid != tid {
-                        graph.add_relationship(contextro_core::UniversalRelationship {
-                            id: format!("r{}", rc),
-                            source_id: cid.clone(),
-                            target_id: tid.clone(),
-                            relationship_type: contextro_core::RelationshipType::Calls,
-                            strength: 1.0,
-                        });
-                        rc += 1;
-                    }
-                }
-            }
-        }
-    }
-    let graph_time = graph_start.elapsed();
     println!(
         "║  Graph: {:>5} nodes, {:>5} edges ({:.1}ms)                  ║",
-        graph.node_count(),
-        graph.relationship_count(),
-        graph_time.as_secs_f64() * 1000.0
+        index_result["graph_nodes"].as_u64().unwrap_or(0),
+        index_result["graph_relationships"].as_u64().unwrap_or(0),
+        idx_time.as_secs_f64() * 1000.0
     );
 
-    // ═══ SEARCH LATENCY ═══
+    let fixture = BenchmarkFixture::from_codebase(platform_path);
+    let retrieve_ref = seed_retrieve_ref(&server);
+    let extra_repo = temp_fixture_repo();
+    let tool_cases = build_tool_cases(&fixture, &codebase, retrieve_ref.as_deref());
+    let public_tools = ContextroServer::tool_definitions();
+
     println!("╠══════════════════════════════════════════════════════════════╣");
-    println!("║  SEARCH LATENCY (1000 iterations each)                      ║");
+    println!("║  PUBLIC MCP TOOL LATENCY (25 iterations each)               ║");
 
-    let queries = &[
-        ("bm25_narrow", "authentication middleware"),
-        ("bm25_broad", "how does the API handle requests"),
-        ("bm25_symbol", "IndexingPipeline"),
-        ("bm25_exact", "create_user"),
-    ];
+    let mut tool_benchmarks = Vec::with_capacity(tool_cases.len() + 4);
 
-    // Warm up
-    for (_, q) in queries {
-        bm25.search(q, 10);
+    let index_benchmark = bench_cold_index_tool(&codebase);
+    print_tool_benchmark(&index_benchmark);
+    tool_benchmarks.push(index_benchmark);
+
+    for case in &tool_cases {
+        let benchmark = bench_tool_case(&server, case, ITERATIONS);
+        print_tool_benchmark(&benchmark);
+        tool_benchmarks.push(benchmark);
     }
 
-    for (name, query) in queries {
-        let mut times = Vec::with_capacity(1000);
-        for _ in 0..1000 {
-            let start = Instant::now();
-            let _ = bm25.search(query, 10);
-            times.push(start.elapsed());
-        }
-        times.sort();
-        let avg_us = times
-            .iter()
-            .map(|t| t.as_nanos() as f64 / 1000.0)
-            .sum::<f64>()
-            / times.len() as f64;
-        let p50 = times[500].as_nanos() as f64 / 1000.0;
-        let p99 = times[990].as_nanos() as f64 / 1000.0;
-        println!(
-            "║  {:15} avg:{:>7.1}µs  p50:{:>6.1}µs  p99:{:>7.1}µs  ║",
-            name, avg_us, p50, p99
-        );
-    }
+    let repo_add_benchmark = bench_repo_add_tool(&extra_repo);
+    print_tool_benchmark(&repo_add_benchmark);
+    tool_benchmarks.push(repo_add_benchmark);
 
-    // ═══ GRAPH OPERATIONS ═══
-    println!("╠══════════════════════════════════════════════════════════════╣");
-    println!("║  GRAPH OPERATIONS (100k iterations each)                    ║");
+    let repo_remove_idle_benchmark = bench_repo_remove_tool(&codebase, &extra_repo, false);
+    print_tool_benchmark(&repo_remove_idle_benchmark);
+    tool_benchmarks.push(repo_remove_idle_benchmark);
 
-    let graph_ops: Vec<GraphOp<'_>> = vec![
-        (
-            "find_exact",
-            Box::new(|| graph.find_nodes_by_name("create_user", true).len()),
-        ),
-        (
-            "find_fuzzy",
-            Box::new(|| graph.find_nodes_by_name("auth", false).len()),
-        ),
-        (
-            "get_callers",
-            Box::new(|| {
-                let m = graph.find_nodes_by_name("create_user", true);
-                m.first()
-                    .map(|n| graph.get_callers(&n.id).len())
-                    .unwrap_or(0)
-            }),
-        ),
-        (
-            "get_callees",
-            Box::new(|| {
-                let m = graph.find_nodes_by_name("create_user", true);
-                m.first()
-                    .map(|n| graph.get_callees(&n.id).len())
-                    .unwrap_or(0)
-            }),
-        ),
-    ];
+    let repo_remove_active_benchmark = bench_repo_remove_tool(&codebase, &extra_repo, true);
+    print_tool_benchmark(&repo_remove_active_benchmark);
+    tool_benchmarks.push(repo_remove_active_benchmark);
 
-    for (name, op) in &graph_ops {
-        let mut times = Vec::with_capacity(100_000);
-        for _ in 0..100_000 {
-            let start = Instant::now();
-            let _ = op();
-            times.push(start.elapsed());
-        }
-        times.sort();
-        let avg_ns = times.iter().map(|t| t.as_nanos() as f64).sum::<f64>() / times.len() as f64;
-        let p50 = times[50_000].as_nanos() as f64;
-        println!(
-            "║  {:15} avg:{:>7.0}ns  p50:{:>6.0}ns                    ║",
-            name, avg_ns, p50
-        );
-    }
-
-    // ═══ CACHE OPERATIONS ═══
-    println!("╠══════════════════════════════════════════════════════════════╣");
-    println!("║  CACHE OPERATIONS                                           ║");
-
-    let cache = contextro_engines::cache::QueryCache::new(256, 300.0);
-    // Populate cache
-    for (_, q) in queries {
-        let results = bm25.search(q, 10);
-        cache.put(q, serde_json::to_value(&results).unwrap_or_default());
-    }
-
-    let mut cache_times = Vec::with_capacity(100_000);
-    for _ in 0..100_000 {
-        let start = Instant::now();
-        let _ = cache.get("authentication middleware");
-        cache_times.push(start.elapsed());
-    }
-    cache_times.sort();
-    let cache_avg = cache_times
+    let benchmarked_tools: BTreeSet<&str> = tool_benchmarks
         .iter()
-        .map(|t| t.as_nanos() as f64 / 1000.0)
-        .sum::<f64>()
-        / cache_times.len() as f64;
-    let cache_p50 = cache_times[50_000].as_nanos() as f64 / 1000.0;
-    println!(
-        "║  cache_hit       avg:{:>7.2}µs  p50:{:>6.2}µs                ║",
-        cache_avg, cache_p50
-    );
+        .map(|benchmark| benchmark.tool_name)
+        .collect();
+    let missing_tools: Vec<String> = public_tools
+        .iter()
+        .map(|tool| tool.name.to_string())
+        .filter(|name| !benchmarked_tools.contains(name.as_str()))
+        .collect();
 
-    // ═══ THROUGHPUT ═══
     println!("╠══════════════════════════════════════════════════════════════╣");
-    println!("║  THROUGHPUT (mixed workload, 5 seconds)                     ║");
-
-    let throughput_start = Instant::now();
-    let mut ops_count = 0u64;
-    while throughput_start.elapsed().as_secs() < 5 {
-        // Mix of operations
-        bm25.search("authentication", 10);
-        ops_count += 1;
-        let _ = graph.find_nodes_by_name("create", false);
-        ops_count += 1;
-        let _ = cache.get("authentication middleware");
-        ops_count += 1;
-        bm25.search("database connection", 5);
-        ops_count += 1;
-    }
-    let throughput_time = throughput_start.elapsed();
-    let ops_per_sec = ops_count as f64 / throughput_time.as_secs_f64();
+    println!("║  TOOL COVERAGE                                               ║");
     println!(
-        "║  {:>10.0} ops/sec ({} ops in {:.1}s)                    ║",
-        ops_per_sec,
-        ops_count,
-        throughput_time.as_secs_f64()
+        "║  Benchmarked tools: {:>2}/{:<2}                                   ║",
+        benchmarked_tools.len(),
+        public_tools.len()
     );
+    println!(
+        "║  Benchmark cases: {:>2}                                         ║",
+        tool_benchmarks.len()
+    );
+    if missing_tools.is_empty() {
+        println!("║  Missing: none                                              ║");
+    } else {
+        for line in wrap_list(&missing_tools, 52) {
+            println!("║  Missing: {:<52}║", line);
+        }
+    }
 
-    // ═══ SUMMARY ═══
+    let mut ranked = tool_benchmarks.clone();
+    ranked.sort_by(|a, b| {
+        b.avg_ms
+            .partial_cmp(&a.avg_ms)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    println!("╠══════════════════════════════════════════════════════════════╣");
+    println!("║  HOTTEST TOOLS                                               ║");
+    for benchmark in ranked.into_iter().take(5) {
+        println!(
+            "║  {:15} {:>7.2}ms avg  {:<24}║",
+            benchmark.display_name,
+            benchmark.avg_ms,
+            benchmark.notes.chars().take(24).collect::<String>()
+        );
+    }
+
+    let search_avg = tool_benchmarks
+        .iter()
+        .find(|benchmark| benchmark.tool_name == "search")
+        .map(|benchmark| benchmark.avg_ms * 1000.0)
+        .unwrap_or_default();
+    let ops_per_sec = mixed_workload_ops_per_sec(&server, &tool_cases);
+
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║  SUMMARY vs TARGETS                                         ║");
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║  Metric          │ Target    │ Actual    │ Status           ║");
     println!("╟──────────────────┼───────────┼───────────┼──────────────────╢");
     let idx_ms = idx_time.as_secs_f64() * 1000.0;
-    // Warm incremental indexing on this repo is expected to stay under this guardrail.
     let idx_status = if idx_ms <= 40.0 {
         "✓ PASS"
     } else {
@@ -266,19 +173,6 @@ fn main() {
         "║  Index time      │ ≤40.0ms   │ {:>6.1}ms  │ {:16}║",
         idx_ms, idx_status
     );
-    let search_avg = queries
-        .iter()
-        .map(|(_, q)| {
-            let mut t = Vec::new();
-            for _ in 0..100 {
-                let s = Instant::now();
-                bm25.search(q, 10);
-                t.push(s.elapsed());
-            }
-            t.iter().map(|x| x.as_nanos() as f64 / 1000.0).sum::<f64>() / t.len() as f64
-        })
-        .sum::<f64>()
-        / queries.len() as f64;
     let search_status = if search_avg <= 137.0 {
         "✓ PASS"
     } else {
@@ -288,14 +182,597 @@ fn main() {
         "║  Search latency  │ ≤137µs    │ {:>6.1}µs  │ {:16}║",
         search_avg, search_status
     );
-    let tp_status = if ops_per_sec >= 7281.0 {
+    let tp_status = if ops_per_sec >= 500.0 {
         "✓ PASS"
     } else {
         "✗ NEEDS WORK"
     };
     println!(
-        "║  Throughput      │ ≥7281/s   │ {:>7.0}/s │ {:16}║",
+        "║  MCP throughput  │ ≥500/s    │ {:>7.0}/s │ {:16}║",
         ops_per_sec, tp_status
     );
     println!("╚══════════════════════════════════════════════════════════════╝");
+
+    let _ = std::fs::remove_dir_all(storage_dir);
+    let _ = std::fs::remove_dir_all(extra_repo);
+}
+
+#[derive(Clone)]
+struct ToolCase {
+    display_name: &'static str,
+    tool_name: &'static str,
+    args: Value,
+    notes: &'static str,
+    allow_error: bool,
+}
+
+#[derive(Clone)]
+struct ToolBenchmark {
+    display_name: &'static str,
+    tool_name: &'static str,
+    avg_ms: f64,
+    p50_ms: f64,
+    p95_ms: f64,
+    notes: &'static str,
+}
+
+struct BenchmarkFixture {
+    code_dir_rel: String,
+    code_file_rel: String,
+    symbol_exact: String,
+    commit_query: String,
+}
+
+impl BenchmarkFixture {
+    fn from_codebase(platform_path: &Path) -> Self {
+        let files = contextro_indexing::discover_files(
+            platform_path,
+            &contextro_config::Settings::default(),
+        );
+        let code_file = files
+            .iter()
+            .find(|path| {
+                matches!(
+                    path.extension().and_then(|ext| ext.to_str()),
+                    Some("rs" | "py" | "ts" | "tsx" | "js" | "java" | "go")
+                )
+            })
+            .cloned()
+            .unwrap_or_else(|| {
+                files
+                    .first()
+                    .cloned()
+                    .expect("codebase contains indexable files")
+            });
+
+        let parser = contextro_parsing::TreeSitterParser::new();
+        let parsed = parser
+            .parse_file(code_file.to_string_lossy().as_ref())
+            .expect("parse benchmark fixture file");
+        let symbol = parsed
+            .symbols
+            .iter()
+            .find(|symbol| !symbol.name.is_empty())
+            .expect("fixture file contains symbols");
+        let code_dir_rel = code_file
+            .parent()
+            .and_then(|parent| parent.strip_prefix(platform_path).ok())
+            .map(path_to_string)
+            .filter(|path| !path.is_empty())
+            .unwrap_or_else(|| ".".into());
+        let code_file_rel = code_file
+            .strip_prefix(platform_path)
+            .map(path_to_string)
+            .unwrap_or_else(|_| code_file.to_string_lossy().to_string());
+
+        Self {
+            code_dir_rel,
+            code_file_rel,
+            symbol_exact: symbol.name.clone(),
+            commit_query: symbol.name.to_ascii_lowercase(),
+        }
+    }
+}
+
+fn build_tool_cases(
+    fixture: &BenchmarkFixture,
+    codebase: &str,
+    retrieve_ref: Option<&str>,
+) -> Vec<ToolCase> {
+    let knowledge_path = Path::new(codebase).join("README.md");
+    let knowledge_value = if knowledge_path.exists() {
+        knowledge_path.to_string_lossy().to_string()
+    } else {
+        "Contextro benchmark note".to_string()
+    };
+    let retrieve_ref = retrieve_ref.unwrap_or("missing-bench-ref");
+
+    vec![
+        ToolCase {
+            display_name: "status",
+            tool_name: "status",
+            args: json!({}),
+            notes: "server status",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "health",
+            tool_name: "health",
+            args: json!({}),
+            notes: "health report",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "search",
+            tool_name: "search",
+            args: json!({"query": fixture.symbol_exact, "limit": 5, "mode": "hybrid"}),
+            notes: "hybrid search",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "find_symbol",
+            tool_name: "find_symbol",
+            args: json!({"symbol_name": fixture.symbol_exact, "exact": true}),
+            notes: "exact symbol lookup",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "find_callers",
+            tool_name: "find_callers",
+            args: json!({"symbol_name": fixture.symbol_exact, "limit": 10}),
+            notes: "graph callers",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "find_callees",
+            tool_name: "find_callees",
+            args: json!({"symbol_name": fixture.symbol_exact, "limit": 10}),
+            notes: "graph callees",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "explain",
+            tool_name: "explain",
+            args: json!({"symbol_name": fixture.symbol_exact}),
+            notes: "symbol explanation",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "impact",
+            tool_name: "impact",
+            args: json!({"symbol_name": fixture.symbol_exact, "max_depth": 3}),
+            notes: "impact analysis",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "overview",
+            tool_name: "overview",
+            args: json!({}),
+            notes: "project overview",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "architecture",
+            tool_name: "architecture",
+            args: json!({"limit": 5}),
+            notes: "architecture hubs",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "analyze",
+            tool_name: "analyze",
+            args: json!({"path": fixture.code_dir_rel, "top_n": 5}),
+            notes: "hotspot analysis",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "focus",
+            tool_name: "focus",
+            args: json!({"path": fixture.code_dir_rel}),
+            notes: "file focus",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "dead_code",
+            tool_name: "dead_code",
+            args: json!({"path": fixture.code_dir_rel, "limit": 5}),
+            notes: "dead code heuristic",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "circular_deps",
+            tool_name: "circular_dependencies",
+            args: json!({}),
+            notes: "cycle detection",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "test_coverage",
+            tool_name: "test_coverage_map",
+            args: json!({}),
+            notes: "coverage heuristic",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "code",
+            tool_name: "code",
+            args: json!({"operation": "get_document_symbols", "path": fixture.code_file_rel}),
+            notes: "document symbols",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "remember",
+            tool_name: "remember",
+            args: json!({"content": "Contextro benchmark memory", "memory_type": "note", "tags": ["bench"]}),
+            notes: "memory write",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "recall",
+            tool_name: "recall",
+            args: json!({"query": "benchmark", "limit": 5}),
+            notes: "memory recall",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "tags",
+            tool_name: "tags",
+            args: json!({}),
+            notes: "memory tags",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "forget",
+            tool_name: "forget",
+            args: json!({"tags": "bench"}),
+            notes: "memory delete by tag",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "knowledge",
+            tool_name: "knowledge",
+            args: json!({"command": "add", "name": "bench-doc", "value": knowledge_value}),
+            notes: "knowledge add",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "compact",
+            tool_name: "compact",
+            args: json!({"content": "Contextro benchmark compact payload"}),
+            notes: "session archive",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "session_snap",
+            tool_name: "session_snapshot",
+            args: json!({"limit": 5}),
+            notes: "session events",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "restore",
+            tool_name: "restore",
+            args: json!({}),
+            notes: "restore status",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "retrieve",
+            tool_name: "retrieve",
+            args: json!({"ref_id": retrieve_ref}),
+            notes: "archive lookup",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "commit_search",
+            tool_name: "commit_search",
+            args: json!({"query": fixture.commit_query, "limit": 5}),
+            notes: "git commit search",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "commit_history",
+            tool_name: "commit_history",
+            args: json!({"limit": 5}),
+            notes: "git history",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "repo_status",
+            tool_name: "repo_status",
+            args: json!({}),
+            notes: "repo registry list",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "audit",
+            tool_name: "audit",
+            args: json!({}),
+            notes: "quality audit",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "docs_bundle",
+            tool_name: "docs_bundle",
+            args: json!({"output_dir": temp_output_dir("bench-docs")}),
+            notes: "docs bundle",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "sidecar_export",
+            tool_name: "sidecar_export",
+            args: json!({"path": fixture.code_dir_rel, "output_dir": temp_output_dir("bench-sidecars")}),
+            notes: "sidecar export",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "skill_prompt",
+            tool_name: "skill_prompt",
+            args: json!({}),
+            notes: "skill prompt",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "introspect",
+            tool_name: "introspect",
+            args: json!({"tool": "search"}),
+            notes: "tool introspection",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "refactor_chk",
+            tool_name: "refactor_check",
+            args: json!({"symbol_name": fixture.symbol_exact, "max_depth": 3}),
+            notes: "pre-refactor analysis",
+            allow_error: false,
+        },
+    ]
+}
+
+fn seed_retrieve_ref(server: &ContextroServer) -> Option<String> {
+    let result =
+        parse_tool_json(server.dispatch("compact", json!({"content": "seed retrieve payload"})));
+    result
+        .get("ref_id")
+        .and_then(Value::as_str)
+        .map(String::from)
+}
+
+fn temp_fixture_repo() -> PathBuf {
+    let root = temp_path("bench-repo-remove");
+    std::fs::create_dir_all(root.join("src")).expect("create fixture repo src");
+    std::fs::write(root.join("src/lib.rs"), "pub fn bench_fixture() {}\n")
+        .expect("write fixture repo file");
+    root
+}
+
+fn bench_tool_case(server: &ContextroServer, case: &ToolCase, iterations: usize) -> ToolBenchmark {
+    let mut times = Vec::with_capacity(iterations);
+    for _ in 0..iterations {
+        let start = Instant::now();
+        let result = parse_tool_json(server.dispatch(case.tool_name, case.args.clone()));
+        let elapsed = start.elapsed();
+        ensure_case_result(case, &result);
+        times.push(elapsed);
+    }
+    times.sort();
+
+    make_tool_benchmark(case.display_name, case.tool_name, case.notes, &times)
+}
+
+fn bench_cold_index_tool(codebase: &str) -> ToolBenchmark {
+    let mut times = Vec::with_capacity(INDEX_ITERATIONS);
+    for _ in 0..INDEX_ITERATIONS {
+        let storage_dir = temp_storage_dir("bench-index");
+        let server = new_bench_server(&storage_dir);
+        let start = Instant::now();
+        let result = parse_tool_json(server.dispatch("index", json!({"path": codebase})));
+        let elapsed = start.elapsed();
+        ensure_success("index", &result);
+        times.push(elapsed);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+    times.sort();
+    make_tool_benchmark("index", "index", "cold index", &times)
+}
+
+fn bench_repo_add_tool(extra_repo: &Path) -> ToolBenchmark {
+    let mut times = Vec::with_capacity(REPO_MUTATION_ITERATIONS);
+    let repo_path = extra_repo.to_string_lossy().to_string();
+    for _ in 0..REPO_MUTATION_ITERATIONS {
+        let storage_dir = temp_storage_dir("bench-repo-add");
+        let server = new_bench_server(&storage_dir);
+        let start = Instant::now();
+        let result = parse_tool_json(server.dispatch("repo_add", json!({"path": repo_path})));
+        let elapsed = start.elapsed();
+        ensure_success("repo_add", &result);
+        times.push(elapsed);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+    times.sort();
+    make_tool_benchmark("repo_add", "repo_add", "repo register", &times)
+}
+
+fn bench_repo_remove_tool(codebase: &str, extra_repo: &Path, active_scope: bool) -> ToolBenchmark {
+    let mut times = Vec::with_capacity(REPO_MUTATION_ITERATIONS);
+    let repo_path = extra_repo.to_string_lossy().to_string();
+    for _ in 0..REPO_MUTATION_ITERATIONS {
+        let storage_dir = temp_storage_dir(if active_scope {
+            "bench-repo-remove-active"
+        } else {
+            "bench-repo-remove-idle"
+        });
+        let server = new_bench_server(&storage_dir);
+
+        let base_index = parse_tool_json(server.dispatch("index", json!({"path": codebase})));
+        ensure_success("index", &base_index);
+        let add_result = parse_tool_json(server.dispatch("repo_add", json!({"path": repo_path})));
+        ensure_success("repo_add", &add_result);
+
+        if !active_scope {
+            let restore_base = parse_tool_json(server.dispatch("index", json!({"path": codebase})));
+            ensure_success("index", &restore_base);
+        }
+
+        let start = Instant::now();
+        let result = parse_tool_json(server.dispatch("repo_remove", json!({"path": repo_path})));
+        let elapsed = start.elapsed();
+        ensure_success("repo_remove", &result);
+        times.push(elapsed);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+    times.sort();
+
+    let display_name = if active_scope {
+        "repo_rm_active"
+    } else {
+        "repo_rm_idle"
+    };
+    let notes = if active_scope {
+        "active scope restore"
+    } else {
+        "inactive repo remove"
+    };
+    make_tool_benchmark(display_name, "repo_remove", notes, &times)
+}
+
+fn mixed_workload_ops_per_sec(server: &ContextroServer, tool_cases: &[ToolCase]) -> f64 {
+    let selected: Vec<&ToolCase> = tool_cases
+        .iter()
+        .filter(|case| {
+            matches!(
+                case.tool_name,
+                "search" | "find_symbol" | "code" | "overview" | "status" | "session_snapshot"
+            )
+        })
+        .collect();
+
+    let start = Instant::now();
+    let mut ops = 0u64;
+    while start.elapsed() < Duration::from_secs(3) {
+        for case in &selected {
+            let result = parse_tool_json(server.dispatch(case.tool_name, case.args.clone()));
+            ensure_case_result(case, &result);
+            ops += 1;
+        }
+    }
+
+    ops as f64 / start.elapsed().as_secs_f64()
+}
+
+fn make_tool_benchmark(
+    display_name: &'static str,
+    tool_name: &'static str,
+    notes: &'static str,
+    times: &[Duration],
+) -> ToolBenchmark {
+    let avg_ms = times
+        .iter()
+        .map(|duration| duration.as_secs_f64() * 1000.0)
+        .sum::<f64>()
+        / times.len() as f64;
+    let p50_ms = percentile_ms(times, 0.50);
+    let p95_ms = percentile_ms(times, 0.95);
+
+    ToolBenchmark {
+        display_name,
+        tool_name,
+        avg_ms,
+        p50_ms,
+        p95_ms,
+        notes,
+    }
+}
+
+fn print_tool_benchmark(benchmark: &ToolBenchmark) {
+    println!(
+        "║  {:15} avg:{:>7.2}ms  p50:{:>6.2}ms  p95:{:>7.2}ms  ║",
+        benchmark.display_name, benchmark.avg_ms, benchmark.p50_ms, benchmark.p95_ms
+    );
+}
+
+fn parse_tool_json(result: CallToolResult) -> Value {
+    let Some(content) = result.content.first() else {
+        panic!("tool returned no content");
+    };
+    let text = match &content.raw {
+        RawContent::Text(text) => text.text.clone(),
+        other => panic!("unexpected non-text tool content: {other:?}"),
+    };
+    serde_json::from_str(&text)
+        .unwrap_or_else(|error| panic!("failed to parse tool json: {error}; payload={text}"))
+}
+
+fn ensure_success(tool_name: &str, result: &Value) {
+    if result.get("error").is_some() {
+        panic!("tool '{tool_name}' failed: {result}");
+    }
+}
+
+fn ensure_case_result(case: &ToolCase, result: &Value) {
+    if result.get("error").is_some() && !case.allow_error {
+        panic!(
+            "tool '{}' failed during benchmark: {}",
+            case.tool_name, result
+        );
+    }
+}
+
+fn percentile_ms(times: &[Duration], percentile: f64) -> f64 {
+    let index = ((times.len().saturating_sub(1)) as f64 * percentile).round() as usize;
+    times[index].as_secs_f64() * 1000.0
+}
+
+fn wrap_list(items: &[String], width: usize) -> Vec<String> {
+    if items.is_empty() {
+        return vec!["none".into()];
+    }
+
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for item in items {
+        let candidate = if current.is_empty() {
+            item.clone()
+        } else {
+            format!("{current}, {item}")
+        };
+        if candidate.chars().count() > width && !current.is_empty() {
+            lines.push(current);
+            current = item.clone();
+        } else {
+            current = candidate;
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+fn new_bench_server(storage_dir: &Path) -> ContextroServer {
+    std::fs::create_dir_all(storage_dir).expect("create bench storage dir");
+
+    let mut settings = contextro_config::Settings::default();
+    settings.storage_dir = storage_dir.to_string_lossy().to_string();
+    ContextroServer::with_settings(settings)
+}
+
+fn temp_storage_dir(name: &str) -> PathBuf {
+    temp_path(name)
+}
+
+fn temp_output_dir(name: &str) -> String {
+    temp_path(name).to_string_lossy().to_string()
+}
+
+fn temp_path(name: &str) -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time after epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("contextro-bench-{unique}-{name}"))
 }

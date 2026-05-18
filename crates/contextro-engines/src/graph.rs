@@ -6,6 +6,26 @@ use std::collections::{HashMap, HashSet};
 use contextro_core::graph::{RelationshipType, UniversalNode, UniversalRelationship};
 use parking_lot::RwLock;
 
+#[derive(Debug, Clone)]
+pub struct GraphSnapshot {
+    nodes: Vec<UniversalNode>,
+    degrees: HashMap<String, (usize, usize)>,
+}
+
+impl GraphSnapshot {
+    pub fn nodes(&self) -> &[UniversalNode] {
+        &self.nodes
+    }
+
+    pub fn into_nodes(self) -> Vec<UniversalNode> {
+        self.nodes
+    }
+
+    pub fn degree(&self, node_id: &str) -> (usize, usize) {
+        self.degrees.get(node_id).copied().unwrap_or((0, 0))
+    }
+}
+
 /// Thread-safe code graph with O(1) caller/callee lookups and token-indexed fuzzy search.
 pub struct CodeGraph {
     inner: RwLock<GraphInner>,
@@ -192,11 +212,44 @@ impl CodeGraph {
         self.inner.read().nodes.get(id).cloned()
     }
 
+    pub fn get_nodes_by_file(&self, file_path: &str) -> Vec<UniversalNode> {
+        let inner = self.inner.read();
+        inner
+            .nodes_by_file
+            .get(file_path)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| inner.nodes.get(id).cloned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn get_node_degree(&self, node_id: &str) -> (usize, usize) {
         let inner = self.inner.read();
         let in_deg = inner.callers.get(node_id).map(|v| v.len()).unwrap_or(0);
         let out_deg = inner.callees.get(node_id).map(|v| v.len()).unwrap_or(0);
         (in_deg, out_deg)
+    }
+
+    pub fn snapshot(&self) -> GraphSnapshot {
+        let inner = self.inner.read();
+        let nodes = inner.nodes.values().cloned().collect();
+        let degrees = inner
+            .nodes
+            .keys()
+            .map(|node_id| {
+                let in_deg = inner.callers.get(node_id).map(|v| v.len()).unwrap_or(0);
+                let out_deg = inner.callees.get(node_id).map(|v| v.len()).unwrap_or(0);
+                (node_id.clone(), (in_deg, out_deg))
+            })
+            .collect();
+
+        GraphSnapshot { nodes, degrees }
+    }
+
+    pub fn all_nodes(&self) -> Vec<UniversalNode> {
+        self.snapshot().into_nodes()
     }
 
     pub fn node_count(&self) -> usize {
@@ -384,5 +437,45 @@ mod tests {
             tokenize_name("find_nodes_by_name"),
             vec!["find", "nodes", "by", "name", "find_nodes_by_name"]
         );
+    }
+
+    #[test]
+    fn test_snapshot_preserves_nodes_and_degrees() {
+        let graph = CodeGraph::new();
+        graph.add_node(make_node("1", "createUser"));
+        graph.add_node(make_node("2", "deleteUser"));
+        graph.add_relationship(UniversalRelationship {
+            id: "r1".into(),
+            source_id: "1".into(),
+            target_id: "2".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+
+        let snapshot = graph.snapshot();
+
+        assert_eq!(snapshot.nodes().len(), 2);
+        assert_eq!(snapshot.degree("1"), (0, 1));
+        assert_eq!(snapshot.degree("2"), (1, 0));
+    }
+
+    #[test]
+    fn test_get_nodes_by_file_returns_file_scoped_nodes() {
+        let graph = CodeGraph::new();
+        let mut first = make_node("1", "createUser");
+        first.location.file_path = "src/a.rs".into();
+        let mut second = make_node("2", "deleteUser");
+        second.location.file_path = "src/a.rs".into();
+        let mut third = make_node("3", "authenticate");
+        third.location.file_path = "src/b.rs".into();
+
+        graph.add_node(first);
+        graph.add_node(second);
+        graph.add_node(third);
+
+        let nodes = graph.get_nodes_by_file("src/a.rs");
+        let names: Vec<&str> = nodes.iter().map(|node| node.name.as_str()).collect();
+
+        assert_eq!(names, vec!["createUser", "deleteUser"]);
     }
 }

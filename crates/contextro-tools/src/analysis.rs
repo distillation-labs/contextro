@@ -116,7 +116,7 @@ pub fn handle_overview(
     total_chunks: usize,
     vector_chunks: usize,
 ) -> Value {
-    let nodes = graph.find_nodes_by_name("", false);
+    let nodes = graph.all_nodes();
     let node_count = nodes.len();
     let rel_count = graph.relationship_count();
     let mut file_counts: HashMap<String, usize> = HashMap::new();
@@ -174,13 +174,14 @@ pub fn handle_overview(
 
 pub fn handle_architecture(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-    let nodes = graph.find_nodes_by_name("", false);
+    let snapshot = graph.snapshot();
+    let nodes = snapshot.nodes();
     let mut scored: Vec<(String, String, usize)> = nodes
         .iter()
         .filter(|n| !is_generic_symbol_name(&n.name))
         .filter(|n| !is_test_file(&n.location.file_path))
         .map(|n| {
-            let (in_d, out_d) = graph.get_node_degree(&n.id);
+            let (in_d, out_d) = snapshot.degree(&n.id);
             (n.name.clone(), n.location.file_path.clone(), in_d + out_d)
         })
         .collect();
@@ -205,20 +206,29 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         .and_then(|v| v.as_u64())
         .unwrap_or(6) as usize;
     let top_n = args.get("top_n").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-    let all_nodes = graph.find_nodes_by_name("", false);
+    let snapshot = graph.snapshot();
+    let mut normalized_paths = HashMap::new();
 
     // Filter nodes to the requested path prefix if specified
     let nodes: Vec<_> = if path_filter.is_empty() {
-        all_nodes
+        snapshot.nodes().iter().collect()
     } else {
         let abs_filter = match resolve_existing_path(path_filter, codebase) {
             Ok(path) => path,
             Err(error) => return error,
         };
         let is_dir = abs_filter.is_dir();
-        all_nodes
-            .into_iter()
-            .filter(|n| path_matches(&n.location.file_path, &abs_filter, is_dir))
+        snapshot
+            .nodes()
+            .iter()
+            .filter(|n| {
+                path_matches_cached(
+                    &n.location.file_path,
+                    &abs_filter,
+                    is_dir,
+                    &mut normalized_paths,
+                )
+            })
             .collect()
     };
 
@@ -232,7 +242,7 @@ pub fn handle_analyze(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -
         if is_generic_symbol_name(&node.name) || is_test_file(&node.location.file_path) {
             continue;
         }
-        let (in_d, out_d) = graph.get_node_degree(&node.id);
+        let (in_d, out_d) = snapshot.degree(&node.id);
         if in_d + out_d >= min_connections {
             complex_fns.push(json!({"name": node.name, "file": strip_base(&node.location.file_path, codebase), "connections": in_d + out_d}));
         }
@@ -269,17 +279,23 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
         Err(error) => return error,
     };
 
-    let nodes = graph.find_nodes_by_name("", false);
+    let snapshot = graph.snapshot();
+    let nodes = snapshot.nodes();
+    let mut normalized_paths = HashMap::new();
 
     // Directory: list top symbols grouped by file
     if abs_path.is_dir() {
         let mut by_file: std::collections::BTreeMap<String, Vec<Value>> =
             std::collections::BTreeMap::new();
-        for n in nodes
-            .iter()
-            .filter(|n| path_matches(&n.location.file_path, &abs_path, true))
-        {
-            let (in_d, out_d) = graph.get_node_degree(&n.id);
+        for n in nodes.iter().filter(|n| {
+            path_matches_cached(
+                &n.location.file_path,
+                &abs_path,
+                true,
+                &mut normalized_paths,
+            )
+        }) {
+            let (in_d, out_d) = snapshot.degree(&n.id);
             by_file.entry(strip_base(&n.location.file_path, codebase)).or_default().push(
                 json!({"name": n.name, "type": n.node_type.to_string(), "line": n.location.start_line, "callers": in_d, "callees": out_d})
             );
@@ -301,7 +317,7 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
     let file_symbols: Vec<Value> = nodes.iter()
         .filter(|n| n.location.file_path == abs_path.to_string_lossy())
         .map(|n| {
-            let (in_d, out_d) = graph.get_node_degree(&n.id);
+            let (in_d, out_d) = snapshot.degree(&n.id);
             json!({"name": n.name, "type": n.node_type.to_string(), "line": n.location.start_line, "callers": in_d, "callees": out_d})
         })
         .collect();
@@ -320,9 +336,11 @@ pub fn handle_focus(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> 
 
 /// Dead code analysis: find symbols with zero callers that aren't entry points.
 pub fn handle_dead_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let nodes = graph.find_nodes_by_name("", false);
+    let snapshot = graph.snapshot();
+    let nodes = snapshot.nodes();
     let mut dead: Vec<Value> = Vec::new();
     let mut file_cache: HashMap<String, Option<String>> = HashMap::new();
+    let mut normalized_paths = HashMap::new();
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
     let include_public_api = args
         .get("include_public_api")
@@ -350,18 +368,28 @@ pub fn handle_dead_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>)
     let mut skipped_tests = 0usize;
     let mut skipped_excluded = 0usize;
 
-    for node in &nodes {
+    for node in nodes {
         // Skip classes and variables — focus on functions/methods
         if node.node_type != NodeType::Function {
             continue;
         }
         if let Some((target_path, is_dir)) = &path_filter {
-            if !path_matches(&node.location.file_path, target_path, *is_dir) {
+            if !path_matches_cached(
+                &node.location.file_path,
+                target_path,
+                *is_dir,
+                &mut normalized_paths,
+            ) {
                 continue;
             }
         }
         if excluded_paths.iter().any(|(target_path, is_dir)| {
-            path_matches(&node.location.file_path, target_path, *is_dir)
+            path_matches_cached(
+                &node.location.file_path,
+                target_path,
+                *is_dir,
+                &mut normalized_paths,
+            )
         }) {
             skipped_excluded += 1;
             continue;
@@ -370,7 +398,7 @@ pub fn handle_dead_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>)
             skipped_tests += 1;
             continue;
         }
-        let (in_degree, _) = graph.get_node_degree(&node.id);
+        let (in_degree, _) = snapshot.degree(&node.id);
         if in_degree == 0 {
             let name_lower = node.name.to_lowercase();
             let is_entry = name_lower == "main"
@@ -427,10 +455,30 @@ pub fn handle_dead_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>)
 /// Scans `use crate::` and `use super::` statements — not call edges — to avoid
 /// false positives from normal cross-module function calls.
 pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let nodes = graph.find_nodes_by_name("", false);
+    let nodes = graph.all_nodes();
     let mut all_files: HashSet<String> = HashSet::new();
     for node in &nodes {
         all_files.insert(node.location.file_path.clone());
+    }
+
+    let mut rust_files_by_stem: HashMap<String, Vec<String>> = HashMap::new();
+    let mut js_relative_imports: HashMap<String, String> = HashMap::new();
+    for file_path in &all_files {
+        if file_path.ends_with(".rs") {
+            if let Some(stem) = Path::new(file_path)
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().to_string())
+            {
+                rust_files_by_stem
+                    .entry(stem)
+                    .or_default()
+                    .push(file_path.clone());
+            }
+        }
+
+        if is_javascript_like_file(file_path) {
+            register_js_import_candidates(file_path, &mut js_relative_imports);
+        }
     }
 
     let mut file_deps: HashMap<String, HashSet<String>> = HashMap::new();
@@ -456,55 +504,35 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
                         .unwrap_or("")
                         .trim();
                     if !segment.is_empty() {
-                        if let Some(dep) = all_files.iter().find(|f| {
-                            let stem = Path::new(f)
-                                .file_stem()
-                                .map(|s| s.to_string_lossy().to_string());
-                            stem.as_deref() == Some(segment) && f.as_str() != file_path.as_str()
-                        }) {
-                            file_deps
-                                .entry(file_path.clone())
-                                .or_default()
-                                .insert(dep.clone());
+                        if let Some(candidates) = rust_files_by_stem.get(segment) {
+                            if let Some(dep) =
+                                candidates.iter().find(|candidate| *candidate != file_path)
+                            {
+                                file_deps
+                                    .entry(file_path.clone())
+                                    .or_default()
+                                    .insert(dep.clone());
+                            }
                         }
                     }
                 }
             }
 
             // TypeScript/JavaScript: import ... from './relative/path'
-            if (file_path.ends_with(".ts")
-                || file_path.ends_with(".tsx")
-                || file_path.ends_with(".js")
-                || file_path.ends_with(".jsx"))
-                && trimmed.starts_with("import ")
-            {
+            if is_javascript_like_file(file_path) && trimmed.starts_with("import ") {
                 // Extract the path from: import ... from './foo' or import ... from '../bar'
                 if let Some(from_pos) = trimmed.find("from ") {
-                    let after_from = &trimmed[from_pos + 5..];
-                    let path_str = after_from
-                        .trim_start_matches(['\'', '"'])
-                        .trim_end_matches(['\'', '"', ';']);
+                    let after_from = trimmed[from_pos + 5..].trim();
+                    let path_str = after_from.trim_end_matches(';').trim_matches(['\'', '"']);
                     // Only relative imports can form cycles
                     if path_str.starts_with('.') {
-                        let dir = Path::new(file_path).parent().unwrap_or(Path::new(""));
-                        let resolved = dir.join(path_str);
-                        // Try common extensions
-                        let candidates = [
-                            resolved.with_extension("ts"),
-                            resolved.with_extension("tsx"),
-                            resolved.with_extension("js"),
-                            resolved.with_extension("jsx"),
-                            resolved.join("index.ts"),
-                            resolved.join("index.tsx"),
-                        ];
-                        for candidate in &candidates {
-                            let cand_str = candidate.to_string_lossy().to_string();
-                            if all_files.contains(&cand_str) && cand_str != *file_path {
+                        let import_key = javascript_import_lookup_key(file_path, path_str);
+                        if let Some(dep) = js_relative_imports.get(&import_key) {
+                            if dep != file_path {
                                 file_deps
                                     .entry(file_path.clone())
                                     .or_default()
-                                    .insert(cand_str);
-                                break;
+                                    .insert(dep.clone());
                             }
                         }
                     }
@@ -532,7 +560,7 @@ pub fn handle_circular_dependencies(graph: &CodeGraph, codebase: Option<&str>) -
 /// Recognises test files by: test_*.rs, *_test.rs, *.test.ts/tsx, *.spec.ts/tsx,
 /// __tests__/ directories, tests/ directories, and Rust inline #[cfg(test)] blocks.
 pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let nodes = graph.find_nodes_by_name("", false);
+    let nodes = graph.all_nodes();
     let mut source_files: HashSet<String> = HashSet::new();
     let mut test_files: HashSet<String> = HashSet::new();
     let mut source_tokens: HashMap<String, HashSet<String>> = HashMap::new();
@@ -700,6 +728,61 @@ fn coverage_tokens(text: &str) -> HashSet<String> {
         .collect()
 }
 
+fn is_javascript_like_file(file_path: &str) -> bool {
+    file_path.ends_with(".ts")
+        || file_path.ends_with(".tsx")
+        || file_path.ends_with(".js")
+        || file_path.ends_with(".jsx")
+}
+
+fn register_js_import_candidates(file_path: &str, imports: &mut HashMap<String, String>) {
+    let file_path_buf = PathBuf::from(file_path);
+    let Some(parent) = file_path_buf.parent() else {
+        return;
+    };
+    let stem = file_path_buf
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if stem.is_empty() {
+        return;
+    }
+
+    let dir = parent.to_path_buf();
+    let mut candidates = vec![dir.join(&stem)];
+    if stem == "index" {
+        candidates.push(dir.clone());
+    }
+
+    for candidate in candidates {
+        let key = normalize_lookup_path(&candidate);
+        imports.entry(key).or_insert_with(|| file_path.to_string());
+    }
+}
+
+fn javascript_import_lookup_key(file_path: &str, import_path: &str) -> String {
+    normalize_lookup_path(
+        &Path::new(file_path)
+            .parent()
+            .unwrap_or(Path::new(""))
+            .join(import_path),
+    )
+}
+
+fn normalize_lookup_path(path: &Path) -> String {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized.to_string_lossy().replace('\\', "/")
+}
+
 fn has_probable_test_signal(
     source_tokens: &HashSet<String>,
     test_tokens: &HashSet<String>,
@@ -815,13 +898,21 @@ fn resolve_existing_path(path: &str, codebase: Option<&str>) -> Result<PathBuf, 
     }
 }
 
-fn path_matches(file_path: &str, target_path: &Path, target_is_dir: bool) -> bool {
-    let normalized_file =
-        std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path));
+fn path_matches_cached(
+    file_path: &str,
+    target_path: &Path,
+    target_is_dir: bool,
+    normalized_paths: &mut HashMap<String, PathBuf>,
+) -> bool {
+    let normalized_file = normalized_paths
+        .entry(file_path.to_string())
+        .or_insert_with(|| {
+            std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path))
+        });
     if target_is_dir {
-        normalized_file == target_path || normalized_file.starts_with(target_path)
+        *normalized_file == target_path || normalized_file.starts_with(target_path)
     } else {
-        normalized_file == target_path
+        *normalized_file == target_path
     }
 }
 
@@ -1301,6 +1392,100 @@ mod tests {
             1
         );
         assert_eq!(result["high_connectivity_symbols"][0]["name"], "dispatch");
+    }
+
+    #[test]
+    fn test_circular_dependencies_detects_rust_use_cycles() {
+        let dir = temp_dir("circular-rust");
+        let src = dir.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let alpha = src.join("alpha.rs");
+        let beta = src.join("beta.rs");
+        std::fs::write(&alpha, "use crate::beta;\n").unwrap();
+        std::fs::write(&beta, "use crate::alpha;\n").unwrap();
+
+        let graph = CodeGraph::new();
+        for (id, name, file_path) in [
+            ("alpha", "alpha", alpha.to_string_lossy().to_string()),
+            ("beta", "beta", beta.to_string_lossy().to_string()),
+        ] {
+            graph.add_node(UniversalNode {
+                id: id.into(),
+                name: name.into(),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path,
+                    start_line: 1,
+                    end_line: 1,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "rust".into(),
+                },
+                language: "rust".into(),
+                ..Default::default()
+            });
+        }
+
+        let result = handle_circular_dependencies(&graph, Some(dir.to_string_lossy().as_ref()));
+
+        assert_eq!(result["total"], 1);
+        let cycle_files = result["circular_dependencies"][0]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>();
+        assert!(cycle_files.contains(&"src/alpha.rs"));
+        assert!(cycle_files.contains(&"src/beta.rs"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_circular_dependencies_detects_relative_typescript_cycles() {
+        let dir = temp_dir("circular-ts");
+        let src = dir.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let alpha = src.join("alpha.ts");
+        let beta = src.join("beta.ts");
+        std::fs::write(&alpha, "import { beta } from './beta';\n").unwrap();
+        std::fs::write(&beta, "import { alpha } from './alpha';\n").unwrap();
+
+        let graph = CodeGraph::new();
+        for (id, name, file_path) in [
+            ("alpha", "alpha", alpha.to_string_lossy().to_string()),
+            ("beta", "beta", beta.to_string_lossy().to_string()),
+        ] {
+            graph.add_node(UniversalNode {
+                id: id.into(),
+                name: name.into(),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path,
+                    start_line: 1,
+                    end_line: 1,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "typescript".into(),
+                },
+                language: "typescript".into(),
+                ..Default::default()
+            });
+        }
+
+        let result = handle_circular_dependencies(&graph, Some(dir.to_string_lossy().as_ref()));
+
+        assert_eq!(result["total"], 1);
+        let cycle_files = result["circular_dependencies"][0]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>();
+        assert!(cycle_files.contains(&"src/alpha.ts"));
+        assert!(cycle_files.contains(&"src/beta.ts"));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

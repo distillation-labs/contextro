@@ -4,6 +4,20 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.16] - 2026-05-18
+
+### Fixed
+
+- **Search caching and language filters now stay correct under repeated MCP queries** - engine cache keys now include `query`, `limit`, `language`, and `mode`, and `language` filtering is honored across vector and hybrid results instead of only lexical paths.
+- **Public-tool benchmark numbers are now measured against the real MCP dispatch surface** - `contextro-bench` exercises `ContextroServer::dispatch()` for all 37 public tools, benchmarks `index()`, and splits `repo_remove` into idle vs active-scope restore cases so release decisions use honest product-layer latencies.
+- **Several hot-path tools avoid unnecessary work on real repos** - `get_document_symbols(path)` uses indexed graph rows by default when signatures are not requested, `analyze` / `focus` / `dead_code` reuse per-request canonical paths and graph snapshots, `circular_dependencies` detects relative TypeScript cycles, `sidecar_export` avoids repeated path matching, and `commit_search` no longer eagerly expands to the 5k fallback corpus on cold queries that already match in the initial scan.
+- **The local release candidate gate was rerun on the built release wrapper before cut** - the RC passed over TypeScript, Python, mixed-language, and Rust repos through the MCP transport, including wrong-path error checks, `code` contract checks, and restart-sensitive `compact` / `retrieve` plus `repo_add` / `repo_status` flows.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are stronger now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
 ## [1.6.15] - 2026-05-15
 
 ### Fixed

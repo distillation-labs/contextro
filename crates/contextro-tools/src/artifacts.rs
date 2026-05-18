@@ -435,6 +435,10 @@ fn sidecar_target_matches(
     target_is_dir: bool,
     codebase: Option<&str>,
 ) -> bool {
+    if target_rel.is_empty() {
+        return true;
+    }
+
     let normalized_file =
         std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path));
     if target_is_dir {
@@ -449,9 +453,6 @@ fn sidecar_target_matches(
     let normalized_target_rel = target_rel.trim_matches('/').replace('\\', "/");
     let normalized_relative = relative_file.replace('\\', "/");
     let normalized_original = file_path.replace('\\', "/");
-    if target_rel.is_empty() {
-        return true;
-    }
     if target_is_dir {
         normalized_relative == normalized_target_rel
             || normalized_relative.starts_with(&format!("{normalized_target_rel}/"))
@@ -465,10 +466,15 @@ fn sidecar_target_matches(
 
 /// Generate an audit report with recommendations.
 pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
-    let all_nodes = graph.find_nodes_by_name("", false);
+    let snapshot = graph.snapshot();
+    let degree_by_id: HashMap<String, (usize, usize)> = snapshot
+        .nodes()
+        .iter()
+        .map(|node| (node.id.clone(), snapshot.degree(&node.id)))
+        .collect();
+    let all_nodes = snapshot.into_nodes();
     let total_symbols = all_nodes.len();
     let nodes: Vec<_> = all_nodes
-        .into_iter()
         .into_iter()
         .filter(|node| !is_generic_symbol_name(&node.name))
         .filter(|node| !is_audit_noise_file(&node.location.file_path))
@@ -478,7 +484,7 @@ pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
     // Check for high-complexity symbols and keep only the top offenders.
     let mut high_conn: Vec<_> = Vec::new();
     for node in &nodes {
-        let (in_d, out_d) = graph.get_node_degree(&node.id);
+        let (in_d, out_d) = degree_by_id.get(&node.id).copied().unwrap_or((0, 0));
         let connections = in_d + out_d;
         if connections > AUDIT_CONNECTION_THRESHOLD {
             high_conn.push((
@@ -524,7 +530,7 @@ pub fn handle_audit(graph: &CodeGraph, codebase: Option<&str>) -> Value {
 
     // Check file concentration and surface the biggest files first.
     let mut file_counts: HashMap<String, usize> = HashMap::new();
-    for node in &nodes {
+    for node in nodes {
         *file_counts
             .entry(node.location.file_path.clone())
             .or_default() += 1;
@@ -608,13 +614,14 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
 
     std::fs::create_dir_all(&target).ok();
 
-    let nodes = graph.find_nodes_by_name("", false);
+    let snapshot = graph.snapshot();
+    let nodes = snapshot.nodes();
     let mut file_counts: HashMap<String, usize> = HashMap::new();
     let mut language_counts: HashMap<String, usize> = HashMap::new();
     let mut type_counts: HashMap<String, usize> = HashMap::new();
     let mut directory_counts: HashMap<String, usize> = HashMap::new();
 
-    for node in &nodes {
+    for node in nodes {
         *file_counts
             .entry(node.location.file_path.clone())
             .or_default() += 1;
@@ -645,7 +652,7 @@ pub fn handle_docs_bundle(args: &Value, graph: &CodeGraph, codebase: Option<&str
         .filter(|n| !is_generic_symbol_name(&n.name))
         .filter(|n| !is_test_file(&n.location.file_path))
         .map(|n| {
-            let (i, o) = graph.get_node_degree(&n.id);
+            let (i, o) = snapshot.degree(&n.id);
             (
                 n.name.clone(),
                 strip_base(&n.location.file_path, codebase),
@@ -747,19 +754,26 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
     };
     std::fs::create_dir_all(&out_base).ok();
 
-    let nodes = graph.find_nodes_by_name("", false);
+    let snapshot = graph.snapshot();
+    let nodes = snapshot.nodes();
     let mut files_written = 0;
+    let mut matches_by_file: HashMap<String, bool> = HashMap::new();
 
     // Group symbols by file
     let mut by_file: HashMap<String, Vec<&_>> = HashMap::new();
-    for node in &nodes {
-        if sidecar_target_matches(
-            &node.location.file_path,
-            &target_abs,
-            &target_rel,
-            target_is_dir,
-            codebase,
-        ) {
+    for node in nodes {
+        let matches_target = *matches_by_file
+            .entry(node.location.file_path.clone())
+            .or_insert_with(|| {
+                sidecar_target_matches(
+                    &node.location.file_path,
+                    &target_abs,
+                    &target_rel,
+                    target_is_dir,
+                    codebase,
+                )
+            });
+        if matches_target {
             by_file
                 .entry(node.location.file_path.clone())
                 .or_default()
@@ -788,7 +802,7 @@ pub fn handle_sidecar_export(args: &Value, graph: &CodeGraph, codebase: Option<&
                 .to_string_lossy()
         );
         for sym in syms {
-            let (in_d, out_d) = graph.get_node_degree(&sym.id);
+            let (in_d, out_d) = snapshot.degree(&sym.id);
             content.push_str(&format!(
                 "- `{}` ({}) L{} — {} callers, {} callees\n",
                 sym.name, sym.node_type, sym.location.start_line, in_d, out_d

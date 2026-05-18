@@ -11,8 +11,11 @@ use tracing::info;
 
 use contextro_config::get_settings;
 
+#[path = "http.rs"]
 mod http;
+#[path = "state.rs"]
 mod state;
+#[path = "update_check.rs"]
 mod update_check;
 use state::AppState;
 
@@ -35,8 +38,8 @@ impl ContextroServer {
         server
     }
 
-    #[cfg(test)]
-    fn with_settings(settings: contextro_config::Settings) -> Self {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn with_settings(settings: contextro_config::Settings) -> Self {
         let state = AppState::from_settings(settings).expect("failed to initialize app state");
         Self::from_state(state)
     }
@@ -59,7 +62,7 @@ impl ContextroServer {
         normalize_repo_dir(requested_path) == normalize_repo_dir(loaded_path)
     }
 
-    fn dispatch(&self, name: &str, args: Value) -> CallToolResult {
+    pub(crate) fn dispatch(&self, name: &str, args: Value) -> CallToolResult {
         let s = &self.state;
         let codebase = s.codebase_path.read().clone();
         let cb = codebase.as_deref();
@@ -720,7 +723,7 @@ impl ContextroServer {
         })
     }
 
-    fn tool_definitions() -> Vec<Tool> {
+    pub(crate) fn tool_definitions() -> Vec<Tool> {
         let mk = |schema_json: &str| -> Arc<serde_json::Map<String, Value>> {
             Arc::new(serde_json::from_str(schema_json).unwrap_or_default())
         };

@@ -65,8 +65,10 @@ pub fn execute_search(
     cache: &QueryCache,
     fusion: &ReciprocalRankFusion,
 ) -> SearchResponse {
+    let cache_key = cache_key(options);
+
     // Check cache first (fast path)
-    if let Some(cached) = cache.get(&options.query) {
+    if let Some(cached) = cache.get(&cache_key) {
         if let Ok(resp) = serde_json::from_value(cached) {
             return resp;
         }
@@ -80,7 +82,10 @@ pub fn execute_search(
 
     // BM25 retrieval
     if matches!(options.mode.as_str(), "hybrid" | "bm25") {
-        let bm25_results = bm25.search(&options.query, limit * 2);
+        let bm25_results = filter_results_by_language(
+            bm25.search(&options.query, limit * 2),
+            options.language.as_deref(),
+        );
         if !bm25_results.is_empty() {
             ranked_lists.insert("bm25".into(), bm25_results);
         }
@@ -88,7 +93,10 @@ pub fn execute_search(
 
     // Graph relevance retrieval (skip for natural language queries)
     if options.mode == "hybrid" && route != QueryType::Natural {
-        let graph_results = graph_relevance_search(graph, &options.query, limit);
+        let graph_results = filter_results_by_language(
+            graph_relevance_search(graph, &options.query, limit),
+            options.language.as_deref(),
+        );
         if !graph_results.is_empty() {
             ranked_lists.insert("graph".into(), graph_results);
         }
@@ -113,6 +121,8 @@ pub fn execute_search(
     // Graph consensus: boost results that are graph-neighbors of other results
     apply_graph_consensus(&mut results, graph);
 
+    results = filter_results_by_language(results, options.language.as_deref());
+
     results.truncate(limit);
 
     let confidence = calculate_confidence(&results);
@@ -127,10 +137,39 @@ pub fn execute_search(
 
     // Cache the response
     if let Ok(val) = serde_json::to_value(&response) {
-        cache.put(&options.query, val);
+        cache.put(&cache_key, val);
     }
 
     response
+}
+
+fn cache_key(options: &SearchOptions) -> String {
+    serde_json::json!({
+        "query": options.query,
+        "limit": options.limit,
+        "language": normalized_language(options.language.as_deref()),
+        "mode": options.mode,
+    })
+    .to_string()
+}
+
+fn filter_results_by_language(
+    mut results: Vec<SearchResult>,
+    language: Option<&str>,
+) -> Vec<SearchResult> {
+    let Some(language) = normalized_language(language) else {
+        return results;
+    };
+
+    results.retain(|result| result.language.eq_ignore_ascii_case(&language));
+    results
+}
+
+fn normalized_language(language: Option<&str>) -> Option<String> {
+    language
+        .map(str::trim)
+        .filter(|language| !language.is_empty())
+        .map(|language| language.to_ascii_lowercase())
 }
 
 /// Graph-based relevance search using node centrality.
@@ -256,7 +295,7 @@ pub struct SearchResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_query, execute_search, QueryType, SearchOptions};
+    use super::{cache_key, classify_query, execute_search, QueryType, SearchOptions};
     use crate::bm25::Bm25Engine;
     use crate::cache::QueryCache;
     use crate::fusion::ReciprocalRankFusion;
@@ -280,13 +319,23 @@ mod tests {
     }
 
     fn make_chunk(id: &str, text: &str, name: &str, filepath: &str) -> CodeChunk {
+        make_chunk_with_language(id, text, name, filepath, "rust")
+    }
+
+    fn make_chunk_with_language(
+        id: &str,
+        text: &str,
+        name: &str,
+        filepath: &str,
+        language: &str,
+    ) -> CodeChunk {
         CodeChunk {
             id: id.into(),
             text: text.into(),
             filepath: filepath.into(),
             symbol_name: name.into(),
             symbol_type: "function".into(),
-            language: "rust".into(),
+            language: language.into(),
             line_start: 1,
             line_end: 10,
             signature: format!("pub fn {name}()"),
@@ -438,5 +487,70 @@ mod tests {
             .to_ascii_lowercase()
             .contains("ttl eviction"));
         assert!(VectorIndex::new().is_empty());
+    }
+
+    #[test]
+    fn test_execute_search_cache_key_includes_limit() {
+        let cache = QueryCache::new(16, 60.0);
+
+        let first_key = cache_key(&SearchOptions {
+            query: "query cache".into(),
+            limit: 1,
+            language: None,
+            mode: "bm25".into(),
+        });
+        let second_key = cache_key(&SearchOptions {
+            query: "query cache".into(),
+            limit: 2,
+            language: None,
+            mode: "bm25".into(),
+        });
+
+        cache.put(&first_key, serde_json::json!({"limit": 1}));
+        cache.put(&second_key, serde_json::json!({"limit": 2}));
+
+        assert_eq!(cache.get(&first_key), Some(serde_json::json!({"limit": 1})));
+        assert_eq!(
+            cache.get(&second_key),
+            Some(serde_json::json!({"limit": 2}))
+        );
+    }
+
+    #[test]
+    fn test_execute_search_respects_language_filter() {
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[
+            make_chunk_with_language(
+                "rust-cache",
+                "Query cache stores cached search responses with TTL eviction and invalidation.",
+                "RustCache",
+                "crates/contextro-engines/src/cache.rs",
+                "rust",
+            ),
+            make_chunk_with_language(
+                "python-cache",
+                "Query cache stores cached search responses with TTL eviction and invalidation.",
+                "PythonCache",
+                "crates/contextro-engines/src/cache.py",
+                "python",
+            ),
+        ]);
+
+        let response = execute_search(
+            &SearchOptions {
+                query: "query cache".into(),
+                limit: 10,
+                language: Some("Python".into()),
+                mode: "bm25".into(),
+            },
+            &bm25,
+            &CodeGraph::new(),
+            &QueryCache::new(16, 60.0),
+            &ReciprocalRankFusion::default(),
+        );
+
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(response.results[0].symbol_name, "PythonCache");
+        assert_eq!(response.results[0].language, "python");
     }
 }

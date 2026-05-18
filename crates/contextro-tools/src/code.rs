@@ -29,7 +29,7 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
         .and_then(|v| v.as_str())
         .unwrap_or("");
     match operation {
-        "get_document_symbols" => get_document_symbols(args, codebase),
+        "get_document_symbols" => get_document_symbols(args, Some(graph), codebase),
         // v0.4.0 name alias
         "list_symbols" => {
             // If `file_path` or `path` point to a file, use get_document_symbols;
@@ -39,7 +39,7 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
                 .map(|path| path.is_file())
                 .unwrap_or(false);
             if has_file {
-                get_document_symbols(args, codebase)
+                get_document_symbols(args, Some(graph), codebase)
             } else {
                 list_symbols(args, graph, codebase)
             }
@@ -56,7 +56,7 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
     }
 }
 
-fn get_document_symbols(args: &Value, codebase: Option<&str>) -> Value {
+fn get_document_symbols(args: &Value, graph: Option<&CodeGraph>, codebase: Option<&str>) -> Value {
     let file_path = match get_document_path_arg(args) {
         Some(path) => path,
         None => return json!({"error": "Missing required parameter: path"}),
@@ -73,59 +73,171 @@ fn get_document_symbols(args: &Value, codebase: Option<&str>) -> Value {
         return json!({"error": format!("Path is not a file: {}", file_path)});
     }
 
+    if !include_signature {
+        if let Some(graph) = graph {
+            for candidate in graph_document_path_candidates(&abs_path, file_path, codebase) {
+                let indexed = graph.get_nodes_by_file(&candidate);
+                if !indexed.is_empty() {
+                    return render_indexed_document_symbols(&abs_path, &indexed, codebase);
+                }
+            }
+        }
+    }
+
     let parser = TreeSitterParser::new();
     match parser.parse_file(abs_path.to_string_lossy().as_ref()) {
         Ok(parsed) => {
-            let mut columns = vec![json!("name"), json!("type"), json!("line")];
-            let has_multiline = parsed
-                .symbols
-                .iter()
-                .any(|symbol| symbol.line_end > symbol.line_start + 1);
-            if has_multiline {
-                columns.push(json!("end_line"));
-            }
-            if include_signature {
-                columns.push(json!("signature"));
-            }
-
-            let symbols: Vec<Value> = parsed
-                .symbols
-                .iter()
-                .map(|s| {
-                    let mut row = vec![
-                        json!(s.name),
-                        json!(s.symbol_type.to_string()),
-                        json!(s.line_start),
-                    ];
-                    if has_multiline {
-                        if s.line_end > s.line_start + 1 {
-                            row.push(json!(s.line_end));
-                        } else {
-                            row.push(Value::Null);
-                        }
-                    }
-                    if include_signature {
-                        // Truncate long signatures to bound payload size when callers opt in.
-                        let sig = if s.signature.chars().count() > 60 {
-                            truncate_chars(&s.signature, 57)
-                        } else {
-                            s.signature.clone()
-                        };
-                        row.push(json!(sig));
-                    }
-                    Value::Array(row)
-                })
-                .collect();
-
-            json!({
-                "file": strip_base(&abs_path.to_string_lossy(), codebase),
-                "columns": columns,
-                "symbols": symbols,
-                "total": symbols.len()
-            })
+            render_parsed_document_symbols(&abs_path, &parsed.symbols, include_signature, codebase)
         }
         Err(e) => json!({"error": format!("Parse failed: {}", e)}),
     }
+}
+
+fn render_parsed_document_symbols(
+    abs_path: &Path,
+    symbols: &[contextro_core::models::Symbol],
+    include_signature: bool,
+    codebase: Option<&str>,
+) -> Value {
+    let mut columns = vec![json!("name"), json!("type"), json!("line")];
+    let has_multiline = symbols
+        .iter()
+        .any(|symbol| symbol.line_end > symbol.line_start + 1);
+    if has_multiline {
+        columns.push(json!("end_line"));
+    }
+    if include_signature {
+        columns.push(json!("signature"));
+    }
+
+    let symbols: Vec<Value> = symbols
+        .iter()
+        .map(|s| {
+            let mut row = vec![
+                json!(s.name),
+                json!(s.symbol_type.to_string()),
+                json!(s.line_start),
+            ];
+            if has_multiline {
+                if s.line_end > s.line_start + 1 {
+                    row.push(json!(s.line_end));
+                } else {
+                    row.push(Value::Null);
+                }
+            }
+            if include_signature {
+                // Truncate long signatures to bound payload size when callers opt in.
+                let sig = if s.signature.chars().count() > 60 {
+                    truncate_chars(&s.signature, 57)
+                } else {
+                    s.signature.clone()
+                };
+                row.push(json!(sig));
+            }
+            Value::Array(row)
+        })
+        .collect();
+
+    json!({
+        "file": strip_base(&abs_path.to_string_lossy(), codebase),
+        "columns": columns,
+        "symbols": symbols,
+        "total": symbols.len()
+    })
+}
+
+fn render_indexed_document_symbols(
+    abs_path: &Path,
+    indexed: &[UniversalNode],
+    codebase: Option<&str>,
+) -> Value {
+    let mut sorted = indexed.to_vec();
+    sorted.sort_by(|a, b| {
+        a.location
+            .start_line
+            .cmp(&b.location.start_line)
+            .then_with(|| a.location.end_line.cmp(&b.location.end_line))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    let has_multiline = sorted
+        .iter()
+        .any(|symbol| symbol.location.end_line > symbol.location.start_line + 1);
+    let mut columns = vec![json!("name"), json!("type"), json!("line")];
+    if has_multiline {
+        columns.push(json!("end_line"));
+    }
+
+    let symbols: Vec<Value> = sorted
+        .iter()
+        .map(|symbol| {
+            let mut row = vec![
+                json!(symbol.name),
+                json!(document_symbol_type(symbol)),
+                json!(symbol.location.start_line),
+            ];
+            if has_multiline {
+                if symbol.location.end_line > symbol.location.start_line + 1 {
+                    row.push(json!(symbol.location.end_line));
+                } else {
+                    row.push(Value::Null);
+                }
+            }
+            Value::Array(row)
+        })
+        .collect();
+
+    json!({
+        "file": strip_base(&abs_path.to_string_lossy(), codebase),
+        "columns": columns,
+        "symbols": symbols,
+        "total": symbols.len()
+    })
+}
+
+fn document_symbol_type(node: &UniversalNode) -> &'static str {
+    match node.node_type {
+        contextro_core::graph::NodeType::Class => "class",
+        contextro_core::graph::NodeType::Variable => "variable",
+        contextro_core::graph::NodeType::Function if node.parent.is_some() => "method",
+        contextro_core::graph::NodeType::Function => "function",
+        _ => "function",
+    }
+}
+
+fn graph_document_path_candidates(
+    abs_path: &Path,
+    requested_path: &str,
+    codebase: Option<&str>,
+) -> Vec<String> {
+    let mut candidates = Vec::with_capacity(4);
+
+    let abs = abs_path.to_string_lossy().to_string();
+    candidates.push(abs.clone());
+
+    if let Some(base) = codebase {
+        let canonical_base = std::fs::canonicalize(base).unwrap_or_else(|_| PathBuf::from(base));
+        if let Ok(relative) = abs_path.strip_prefix(&canonical_base) {
+            let relative = relative.to_string_lossy().to_string();
+            if !relative.is_empty() && !candidates.contains(&relative) {
+                candidates.push(relative.clone());
+            }
+
+            let dotted = format!("./{relative}");
+            if !relative.is_empty() && !candidates.contains(&dotted) {
+                candidates.push(dotted);
+            }
+        }
+    }
+
+    if !Path::new(requested_path).is_absolute() {
+        let requested = requested_path.to_string();
+        if !candidates.contains(&requested) {
+            candidates.push(requested);
+        }
+    }
+
+    candidates
 }
 
 fn search_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
@@ -3282,6 +3394,7 @@ mod tests {
 
         let result = get_document_symbols(
             &json!({"path": file.to_string_lossy().to_string()}),
+            None,
             Some(dir.to_string_lossy().as_ref()),
         );
         assert_eq!(result["total"], 1);
@@ -5035,6 +5148,7 @@ mod tests {
 
         let result = get_document_symbols(
             &json!({"path": file.to_string_lossy().to_string()}),
+            None,
             Some(dir.to_string_lossy().as_ref()),
         );
 
@@ -5057,6 +5171,7 @@ mod tests {
                 "path": file.to_string_lossy().to_string(),
                 "include_signature": true
             }),
+            None,
             Some(dir.to_string_lossy().as_ref()),
         );
 
@@ -5084,6 +5199,7 @@ mod tests {
 
         let result = get_document_symbols(
             &json!({"path": file.to_string_lossy().to_string()}),
+            None,
             Some(dir.to_string_lossy().as_ref()),
         );
 
@@ -5094,6 +5210,124 @@ mod tests {
         assert_eq!(result["symbols"][0], json!(["Hello", "class", 1, 3]));
         assert_eq!(result["symbols"][1], json!(["first", "method", 2, null]));
         assert_eq!(result["symbols"][2], json!(["second", "function", 5, null]));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_get_document_symbols_uses_indexed_graph_for_file_queries() {
+        let dir = temp_dir("indexed-document-symbols");
+        let nested = dir.join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+        let file = nested.join("main.py");
+        std::fs::write(
+            &file,
+            "class Hello:\n    def first(self):\n        return 1\n\ndef second():\n    return 2\n",
+        )
+        .unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "hello-class".into(),
+            name: "Hello".into(),
+            node_type: NodeType::Class,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 1,
+                end_line: 3,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "first-method".into(),
+            name: "first".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 2,
+                end_line: 3,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            parent: Some("Hello".into()),
+            ..Default::default()
+        });
+        graph.add_node(UniversalNode {
+            id: "second-function".into(),
+            name: "second".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 5,
+                end_line: 6,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let result = get_document_symbols(
+            &json!({"path":"src/main.py"}),
+            Some(&graph),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(
+            result["columns"],
+            json!(["name", "type", "line", "end_line"])
+        );
+        assert_eq!(result["symbols"][0], json!(["Hello", "class", 1, 3]));
+        assert_eq!(result["symbols"][1], json!(["first", "method", 2, null]));
+        assert_eq!(result["symbols"][2], json!(["second", "function", 5, null]));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_get_document_symbols_falls_back_to_parser_when_signatures_requested() {
+        let dir = temp_dir("document-symbols-signature-fallback");
+        let file = dir.join("main.py");
+        std::fs::write(&file, "def hello(name):\n    return name\n").unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "hello".into(),
+            name: "hello".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 1,
+                end_line: 2,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let result = get_document_symbols(
+            &json!({
+                "path": file.to_string_lossy().to_string(),
+                "include_signature": true
+            }),
+            Some(&graph),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(
+            result["columns"],
+            json!(["name", "type", "line", "signature"])
+        );
+        assert_eq!(result["symbols"][0][3], json!("def hello(name):"));
 
         let _ = std::fs::remove_dir_all(dir);
     }
