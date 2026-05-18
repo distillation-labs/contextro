@@ -11,9 +11,9 @@ Measured on this repository.
 | Metric | Contextro | stronger_local | Delta |
 |---|---|---|---|
 | Success rate | 100% | 99% | +1 point |
-| Total tokens | 9,905 | 109,067 | 90.9% reduction |
-| Tool calls per task | 1.0 | 3.03 | lower |
-| Files read | 0 | 183 | eliminated |
+| Total tokens | 10,207 | 106,805 | 90.4% reduction |
+| Tool calls per task | 1.0 | 2.97 | lower |
+| Files read | 0 | 177 | eliminated |
 
 Source: current validated `contextro-study` figures for this working tree.
 
