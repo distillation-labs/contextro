@@ -187,7 +187,7 @@ Current study-backed evidence to cite safely:
 
 | Study | Contextro success | Baseline success | Contextro tokens | Baseline tokens | Reduction | Tool calls/task | Files read |
 |---|---|---|---|---|---|---|---|
-| Contextro repo, 100 tasks | 100% | 99% | 9,905 | 109,067 | 90.9% | 1.0 | 0 |
+| Contextro repo, 100 tasks | 100% | 99% | 10,207 | 106,805 | 90.4% | 1.0 | 0 |
 | Contextro repo, 200 tasks | 100% | 99% | 23,447 | 222,646 | 89.5% | 1.0 | 0 |
 | Production TypeScript monorepo, 1,000 tasks | 100% | 99.5% | 93,819 | 941,748 | 90.0% | 1.0 | 0 |
 
