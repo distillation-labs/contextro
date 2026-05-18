@@ -38,6 +38,10 @@ pub enum QueryType {
     Hybrid,
 }
 
+fn should_include_graph_signal(mode: &str, route: QueryType) -> bool {
+    mode == "hybrid" && route == QueryType::Hybrid
+}
+
 /// Options for search execution.
 pub struct SearchOptions {
     pub query: String,
@@ -91,8 +95,7 @@ pub fn execute_search(
         }
     }
 
-    // Graph relevance retrieval (skip for natural language queries)
-    if options.mode == "hybrid" && route != QueryType::Natural {
+    if should_include_graph_signal(options.mode.as_str(), route) {
         let graph_results = filter_results_by_language(
             graph_relevance_search(graph, &options.query, limit),
             options.language.as_deref(),
@@ -295,7 +298,10 @@ pub struct SearchResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{cache_key, classify_query, execute_search, QueryType, SearchOptions};
+    use super::{
+        cache_key, classify_query, execute_search, should_include_graph_signal, QueryType,
+        SearchOptions,
+    };
     use crate::bm25::Bm25Engine;
     use crate::cache::QueryCache;
     use crate::fusion::ReciprocalRankFusion;
@@ -316,6 +322,14 @@ mod tests {
     fn test_classify_query_keeps_symbol_like_queries_out_of_natural() {
         assert_eq!(classify_query("BrowserSession"), QueryType::Symbol);
         assert_eq!(classify_query("repo_add"), QueryType::Symbol);
+    }
+
+    #[test]
+    fn test_graph_signal_only_runs_for_hybrid_queries() {
+        assert!(should_include_graph_signal("hybrid", QueryType::Hybrid));
+        assert!(!should_include_graph_signal("hybrid", QueryType::Symbol));
+        assert!(!should_include_graph_signal("hybrid", QueryType::Natural));
+        assert!(!should_include_graph_signal("bm25", QueryType::Hybrid));
     }
 
     fn make_chunk(id: &str, text: &str, name: &str, filepath: &str) -> CodeChunk {
