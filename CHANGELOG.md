@@ -4,6 +4,18 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.17] - 2026-05-18
+
+### Fixed
+
+- **Symbol-like hybrid search no longer pays vector or graph costs it does not need** - `search(..., mode="hybrid")` now skips both vector embedding and graph-relevance passes for exact identifier-style queries, cutting `contextro-bench` search latency on this repo from about `1.13ms` to `0.21ms` in the release-candidate benchmark without changing the successful lookup path.
+- **Shipped benchmark baselines now match the post-routing measurements for this working tree** - the `dev-contextro-mcp` bundle and package docs now cite the current 100-task repo study (`10,207` Contextro tokens vs `106,805` for `stronger_local`, `90.4%` reduction, `100%` vs `99%` success) instead of the older pre-breakthrough baseline.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are stronger now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
 ## [1.6.16] - 2026-05-18
 
 ### Fixed
