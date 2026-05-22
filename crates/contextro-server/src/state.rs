@@ -13,12 +13,12 @@ use contextro_config::{get_settings, Settings};
 use contextro_core::graph::{
     RelationshipType, UniversalLocation, UniversalNode, UniversalRelationship,
 };
-use contextro_core::models::{Symbol, SymbolType};
+use contextro_core::models::{CodeChunk, Symbol, SymbolType};
 use contextro_core::ContextroError;
 use contextro_core::NodeType;
 use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
-use contextro_engines::graph::CodeGraph;
+use contextro_engines::graph::{CodeGraph, GraphSnapshot};
 use contextro_engines::sandbox::OutputSandbox;
 use contextro_engines::vector::VectorIndex;
 use contextro_memory::archive::CompactionArchive;
@@ -40,11 +40,20 @@ pub struct AppState {
     pub archive: Arc<CompactionArchive>,
     pub knowledge: Arc<KnowledgeStore>,
     pub repo_registry: Arc<RepoRegistry>,
+    pub repo_snapshots: RwLock<HashMap<String, RepoScopeSnapshot>>,
     pub repo_scope_history: RwLock<Vec<String>>,
     pub indexed: RwLock<bool>,
     pub codebase_path: RwLock<Option<String>>,
     pub chunk_count: AtomicUsize,
     repo_scope_state_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct RepoScopeSnapshot {
+    pub symbols: Vec<Symbol>,
+    pub chunks: Vec<CodeChunk>,
+    #[serde(default)]
+    pub graph: GraphSnapshot,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,6 +107,7 @@ impl AppState {
             repo_registry: Arc::new(RepoRegistry::with_path(
                 storage_dir.join("repo-registry.json"),
             )),
+            repo_snapshots: RwLock::new(HashMap::new()),
             repo_scope_history: RwLock::new(
                 persisted_repo_scope
                     .history
@@ -122,6 +132,27 @@ impl AppState {
             history: self.repo_scope_history.read().clone(),
         };
         save_repo_scope_state(&self.repo_scope_state_path, &persisted);
+    }
+
+    pub fn remember_repo_snapshot(&self, path: String, snapshot: RepoScopeSnapshot) {
+        self.repo_snapshots.write().insert(path, snapshot);
+    }
+
+    pub fn persist_repo_snapshot(&self, path: &str, snapshot: &RepoScopeSnapshot) {
+        self.remember_repo_snapshot(path.to_string(), snapshot.clone());
+        save_repo_snapshot(&repo_snapshot_path(path), snapshot);
+    }
+
+    pub fn repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
+        self.repo_snapshots.read().get(path).cloned()
+    }
+
+    pub fn load_persisted_repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
+        load_repo_snapshot(&repo_snapshot_path(path))
+    }
+
+    pub fn prune_repo_snapshot(&self, path: &str) {
+        self.repo_snapshots.write().remove(path);
     }
 
     /// Build the code graph from parsed symbols.
@@ -207,6 +238,16 @@ fn load_repo_scope_state(path: &Path) -> PersistedRepoScopeState {
         .unwrap_or_default()
 }
 
+fn repo_snapshot_path(path: &str) -> PathBuf {
+    contextro_config::project_storage_dir(path).join("repo-snapshot.json")
+}
+
+fn load_repo_snapshot(path: &Path) -> Option<RepoScopeSnapshot> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<RepoScopeSnapshot>(&bytes).ok())
+}
+
 fn save_repo_scope_state(path: &Path, state: &PersistedRepoScopeState) {
     if state.active_scope.is_none() && state.history.is_empty() {
         let _ = std::fs::remove_file(path);
@@ -217,7 +258,19 @@ fn save_repo_scope_state(path: &Path, state: &PersistedRepoScopeState) {
         let _ = std::fs::create_dir_all(parent);
     }
     let tmp_path = path.with_extension("json.tmp");
-    if let Ok(bytes) = serde_json::to_vec_pretty(state) {
+    if let Ok(bytes) = serde_json::to_vec(state) {
+        if std::fs::write(&tmp_path, bytes).is_ok() {
+            let _ = std::fs::rename(&tmp_path, path);
+        }
+    }
+}
+
+fn save_repo_snapshot(path: &Path, snapshot: &RepoScopeSnapshot) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let tmp_path = path.with_extension("json.tmp");
+    if let Ok(bytes) = serde_json::to_vec(snapshot) {
         if std::fs::write(&tmp_path, bytes).is_ok() {
             let _ = std::fs::rename(&tmp_path, path);
         }
@@ -287,5 +340,68 @@ mod tests {
         assert!(!persisted_path.exists());
 
         let _ = fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_repo_snapshot_round_trips_to_project_storage() {
+        let storage_dir = temp_path("snapshot-storage-dir");
+        fs::create_dir_all(&storage_dir).unwrap();
+
+        let mut settings = Settings::default();
+        settings.storage_dir = storage_dir.to_string_lossy().to_string();
+        let state = AppState::from_settings(settings).expect("state should load");
+        let repo_path = temp_path("snapshot-repo");
+        let symbols = vec![Symbol {
+            name: "snapshot_symbol".into(),
+            symbol_type: SymbolType::Function,
+            filepath: "src/lib.rs".into(),
+            line_start: 1,
+            line_end: 1,
+            language: "rust".into(),
+            signature: "pub fn snapshot_symbol()".into(),
+            docstring: String::new(),
+            parent: None,
+            code_snippet: "pub fn snapshot_symbol() {}".into(),
+            imports: vec![],
+            calls: vec![],
+        }];
+        state.build_graph(&symbols);
+        state.graph.compute_pagerank();
+
+        let snapshot = RepoScopeSnapshot {
+            symbols,
+            chunks: vec![CodeChunk {
+                id: "chunk-1".into(),
+                text: "pub fn snapshot_symbol() {}".into(),
+                filepath: "src/lib.rs".into(),
+                symbol_name: "snapshot_symbol".into(),
+                symbol_type: "function".into(),
+                language: "rust".into(),
+                line_start: 1,
+                line_end: 1,
+                signature: "pub fn snapshot_symbol()".into(),
+                parent: String::new(),
+                docstring: String::new(),
+                vector: vec![0.1, 0.2, 0.3],
+            }],
+            graph: state.graph.snapshot(),
+        };
+
+        state.persist_repo_snapshot(repo_path.to_string_lossy().as_ref(), &snapshot);
+
+        let restored = state
+            .load_persisted_repo_snapshot(repo_path.to_string_lossy().as_ref())
+            .expect("snapshot should load");
+
+        assert_eq!(restored.symbols.len(), 1);
+        assert_eq!(restored.symbols[0].name, "snapshot_symbol");
+        assert_eq!(restored.chunks.len(), 1);
+        assert_eq!(restored.chunks[0].vector, vec![0.1, 0.2, 0.3]);
+        assert!(!restored.graph.is_empty());
+
+        let _ = fs::remove_dir_all(storage_dir);
+        let _ = fs::remove_dir_all(contextro_config::project_storage_dir(
+            repo_path.to_string_lossy().as_ref(),
+        ));
     }
 }
