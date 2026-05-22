@@ -398,7 +398,7 @@ impl KnowledgeStore {
             let _ = std::fs::create_dir_all(parent);
         }
         let tmp_path = self.file_path.with_extension("json.tmp");
-        if let Ok(bytes) = serde_json::to_vec_pretty(state) {
+        if let Ok(bytes) = serde_json::to_vec(state) {
             if std::fs::write(&tmp_path, bytes).is_ok() {
                 let _ = std::fs::rename(&tmp_path, &self.file_path);
             }
