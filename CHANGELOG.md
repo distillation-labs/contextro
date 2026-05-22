@@ -4,6 +4,20 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.18] - 2026-05-22
+
+### Fixed
+
+- **Unchanged repo scopes now restore from persisted snapshots instead of paying a full re-index on restart or active-scope fallback** - `index(path)` persists symbols, chunks, vectors, and graph state for unchanged repos, validates the snapshot against on-disk hashes before reuse, and falls back to a rebuild when the cached snapshot is stale.
+- **Pure graph-analysis tools now reuse deterministic responses across render-only budget changes** - `overview`, `architecture`, `analyze`, `focus`, `dead_code`, `circular_dependencies`, `test_coverage_map`, and `audit` now share cached results when only `max_tokens` changes, while reindex still invalidates the cache before fresh analysis.
+- **`commit_search` stays warm after direct indexing without slowing repo-mutation or restart flows** - direct `index(path)` now asynchronously prewarms the commit-search record cache, while `repo_add` and persisted-scope restore skip that prewarm so repo switching stays fast.
+- **Session and state persistence now write much less overhead on hot paths** - session events append line-delimited JSON with periodic compaction and legacy-array compatibility, while repo registry, repo scope, archive, and knowledge-store persistence all use compact JSON writes.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are stronger now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
 ## [1.6.17] - 2026-05-18
 
 ### Fixed
