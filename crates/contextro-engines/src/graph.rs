@@ -5,11 +5,26 @@ use std::collections::{HashMap, HashSet};
 
 use contextro_core::graph::{RelationshipType, UniversalNode, UniversalRelationship};
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GraphSnapshot {
     nodes: Vec<UniversalNode>,
     degrees: HashMap<String, (usize, usize)>,
+    #[serde(default)]
+    relationships: Vec<UniversalRelationship>,
+    #[serde(default)]
+    callers: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    callees: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    nodes_by_name: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    nodes_by_file: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    token_index: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pagerank: HashMap<String, f64>,
 }
 
 impl GraphSnapshot {
@@ -23,6 +38,10 @@ impl GraphSnapshot {
 
     pub fn degree(&self, node_id: &str) -> (usize, usize) {
         self.degrees.get(node_id).copied().unwrap_or((0, 0))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty() && self.relationships.is_empty()
     }
 }
 
@@ -235,6 +254,7 @@ impl CodeGraph {
     pub fn snapshot(&self) -> GraphSnapshot {
         let inner = self.inner.read();
         let nodes = inner.nodes.values().cloned().collect();
+        let relationships = inner.relationships.values().cloned().collect();
         let degrees = inner
             .nodes
             .keys()
@@ -245,7 +265,39 @@ impl CodeGraph {
             })
             .collect();
 
-        GraphSnapshot { nodes, degrees }
+        GraphSnapshot {
+            nodes,
+            degrees,
+            relationships,
+            callers: inner.callers.clone(),
+            callees: inner.callees.clone(),
+            nodes_by_name: inner.nodes_by_name.clone(),
+            nodes_by_file: inner.nodes_by_file.clone(),
+            token_index: inner.token_index.clone(),
+            pagerank: inner.pagerank.clone(),
+        }
+    }
+
+    pub fn restore_snapshot(&self, snapshot: &GraphSnapshot) {
+        let mut inner = self.inner.write();
+        inner.nodes = snapshot
+            .nodes
+            .iter()
+            .cloned()
+            .map(|node| (node.id.clone(), node))
+            .collect();
+        inner.relationships = snapshot
+            .relationships
+            .iter()
+            .cloned()
+            .map(|relationship| (relationship.id.clone(), relationship))
+            .collect();
+        inner.callers = snapshot.callers.clone();
+        inner.callees = snapshot.callees.clone();
+        inner.nodes_by_name = snapshot.nodes_by_name.clone();
+        inner.nodes_by_file = snapshot.nodes_by_file.clone();
+        inner.token_index = snapshot.token_index.clone();
+        inner.pagerank = snapshot.pagerank.clone();
     }
 
     pub fn all_nodes(&self) -> Vec<UniversalNode> {
@@ -457,6 +509,32 @@ mod tests {
         assert_eq!(snapshot.nodes().len(), 2);
         assert_eq!(snapshot.degree("1"), (0, 1));
         assert_eq!(snapshot.degree("2"), (1, 0));
+    }
+
+    #[test]
+    fn test_restore_snapshot_rehydrates_relationship_indexes() {
+        let graph = CodeGraph::new();
+        graph.add_node(make_node("1", "createUser"));
+        graph.add_node(make_node("2", "deleteUser"));
+        graph.add_relationship(UniversalRelationship {
+            id: "r1".into(),
+            source_id: "1".into(),
+            target_id: "2".into(),
+            relationship_type: RelationshipType::Calls,
+            strength: 1.0,
+        });
+        graph.compute_pagerank();
+
+        let snapshot = graph.snapshot();
+        let restored = CodeGraph::new();
+        restored.restore_snapshot(&snapshot);
+
+        assert_eq!(restored.node_count(), 2);
+        assert_eq!(restored.relationship_count(), 1);
+        assert_eq!(restored.get_node_degree("1"), (0, 1));
+        assert_eq!(restored.get_node_degree("2"), (1, 0));
+        assert_eq!(restored.find_nodes_by_name("create", false).len(), 1);
+        assert!(restored.get_pagerank("1") > 0.0);
     }
 
     #[test]
