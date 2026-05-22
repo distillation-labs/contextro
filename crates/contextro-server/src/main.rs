@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use contextro_core::models::SearchResult;
 use rmcp::model::*;
 use rmcp::Error as McpError;
 use rmcp::{ServerHandler, ServiceExt};
@@ -17,7 +18,7 @@ mod http;
 mod state;
 #[path = "update_check.rs"]
 mod update_check;
-use state::AppState;
+use state::{AppState, RepoScopeSnapshot};
 
 /// The Contextro MCP server.
 #[derive(Clone)]
@@ -66,6 +67,24 @@ impl ContextroServer {
         let s = &self.state;
         let codebase = s.codebase_path.read().clone();
         let cb = codebase.as_deref();
+        let cache_args = strip_render_only_args(&args);
+        let tool_response_cache_key = response_cache_key(name, &cache_args, cb);
+        let tracked_args = {
+            let sanitized = sanitize_tool_args(&args, cb);
+            match sanitized.as_object() {
+                Some(map) if !map.is_empty() => Some(sanitized),
+                _ => None,
+            }
+        };
+
+        s.session_tracker
+            .track(name, &summarize_tool_call(name, &args, cb), tracked_args);
+
+        if let Some(cache_key) = tool_response_cache_key.as_deref() {
+            if let Some(cached) = s.query_cache.get(cache_key) {
+                return cached_tool_result(cached, &args);
+            }
+        }
 
         let result = match name {
             "status" => self.handle_status(),
@@ -122,7 +141,7 @@ impl ContextroServer {
                     reg_result
                 } else {
                     // Auto-index the added repo
-                    let index_result = self.handle_index(&args);
+                    let index_result = self.handle_index_internal(&args, false);
                     let mut combined = reg_result;
                     if index_result.get("status") == Some(&json!("done")) {
                         combined["indexed"] = json!(true);
@@ -162,21 +181,25 @@ impl ContextroServer {
             }
         };
 
-        s.session_tracker.track(
-            name,
-            &summarize_tool_call(name, &args, cb),
-            Some(sanitize_tool_args(&args, cb)),
-        );
-
         // ── Response optimization (#1, #5, #7, #9) ──────────────────────────
         let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
         // #5: Strip absolute codebase prefix from all file paths in response
         let result = if let Some(base) = cb {
-            strip_response_paths(result, base)
+            if response_needs_path_stripping(&result, base) {
+                strip_response_paths(result, base)
+            } else {
+                result
+            }
         } else {
             result
         };
+
+        if let Some(cache_key) = tool_response_cache_key.as_deref() {
+            if result.get("error").is_none() {
+                s.query_cache.put(cache_key, result.clone());
+            }
+        }
 
         if result.get("error").is_some() {
             // #8: Actionable errors — add fuzzy suggestions for symbol-not-found
@@ -279,6 +302,10 @@ impl ContextroServer {
     }
 
     fn handle_index(&self, args: &Value) -> Value {
+        self.handle_index_internal(args, true)
+    }
+
+    fn handle_index_internal(&self, args: &Value, prewarm_commit_search: bool) -> Value {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         if path.is_empty() {
             return json!({"error": "Missing required parameter: path"});
@@ -288,14 +315,15 @@ impl ContextroServer {
         }
 
         let requested_path = normalize_repo_dir(path);
+        let requested_path_ref = std::path::Path::new(&requested_path);
         let settings = get_settings().read().clone();
-        let storage_dir = contextro_config::project_storage_dir(path);
+        let storage_dir = contextro_config::project_storage_dir(&requested_path);
         std::fs::create_dir_all(&storage_dir).ok();
 
         let pipeline = contextro_indexing::IndexingPipeline::new(settings.clone());
 
         // #1: Incremental re-indexing — check if files changed since last index
-        let files = contextro_indexing::discover_files(std::path::Path::new(path), &settings);
+        let files = contextro_indexing::discover_files(requested_path_ref, &settings);
         let current_hashes = contextro_indexing::hash_files(&files);
         let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
         let (added, modified, deleted) =
@@ -325,18 +353,42 @@ impl ContextroServer {
             });
         }
 
-        match pipeline.index(std::path::Path::new(path)) {
+        if is_incremental && changed_count == 0 {
+            if let Some(snapshot) = self.load_valid_repo_snapshot(&requested_path) {
+                if let Some(previous_active) = loaded_codebase
+                    .as_deref()
+                    .map(normalize_repo_dir)
+                    .filter(|previous_active| previous_active != &requested_path)
+                {
+                    self.remember_repo_scope(previous_active, requested_path.clone());
+                }
+
+                let mut resp = self.restore_repo_snapshot(&requested_path, &snapshot);
+                resp["total_files"] = json!(files.len());
+                resp["message"] = json!("Restored from persisted repo snapshot.");
+                if prewarm_commit_search {
+                    maybe_prewarm_commit_search_cache(&requested_path);
+                }
+                let kb_populated = auto_populate_knowledge(&requested_path, &self.state.knowledge);
+                if kb_populated > 0 {
+                    resp["knowledge_docs_indexed"] = serde_json::json!(kb_populated);
+                }
+                return resp;
+            }
+        }
+
+        match pipeline.index(requested_path_ref) {
             Ok((result, symbols)) => {
                 self.state.graph.clear();
                 self.state.build_graph(&symbols);
                 self.state.graph.compute_pagerank();
 
                 // Index chunks into the shared BM25 engine
-                self.state.bm25.clear();
-                let chunks = contextro_indexing::create_chunks(&symbols);
+                let mut chunks = contextro_indexing::create_chunks(&symbols);
 
                 // Save hashes for next incremental run
                 contextro_indexing::save_hashes(&current_hashes, &storage_dir);
+                self.state.bm25.clear();
                 self.state.bm25.index_chunks(&chunks);
                 self.state
                     .chunk_count
@@ -345,24 +397,38 @@ impl ContextroServer {
                 // Populate vector index
                 self.state.vector_index.clear();
                 let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
-                if let Some(vectors) = contextro_indexing::embed_batch(&texts) {
-                    for (chunk, vector) in chunks.iter().zip(vectors) {
-                        let sr = contextro_core::models::SearchResult {
-                            id: chunk.id.clone(),
-                            filepath: chunk.filepath.clone(),
-                            symbol_name: chunk.symbol_name.clone(),
-                            symbol_type: chunk.symbol_type.clone(),
-                            language: chunk.language.clone(),
-                            line_start: chunk.line_start,
-                            line_end: chunk.line_end,
-                            score: 0.0,
-                            code: chunk.text.clone(),
-                            signature: chunk.signature.clone(),
-                            match_sources: vec!["vector".into()],
-                        };
-                        self.state.vector_index.insert(vector, sr);
+                if should_build_vector_index(texts.len()) {
+                    if let Some(vectors) = contextro_indexing::embed_batch(&texts) {
+                        for (chunk, vector) in chunks.iter_mut().zip(vectors) {
+                            chunk.vector = vector.clone();
+                            self.state.vector_index.insert(
+                                vector,
+                                SearchResult {
+                                    id: chunk.id.clone(),
+                                    filepath: chunk.filepath.clone(),
+                                    symbol_name: chunk.symbol_name.clone(),
+                                    symbol_type: chunk.symbol_type.clone(),
+                                    language: chunk.language.clone(),
+                                    line_start: chunk.line_start,
+                                    line_end: chunk.line_end,
+                                    score: 0.0,
+                                    code: chunk.text.clone(),
+                                    signature: chunk.signature.clone(),
+                                    match_sources: vec!["vector".into()],
+                                },
+                            );
+                        }
                     }
                 }
+
+                self.state.persist_repo_snapshot(
+                    &requested_path,
+                    &RepoScopeSnapshot {
+                        symbols: symbols.clone(),
+                        chunks: chunks.clone(),
+                        graph: self.state.graph.snapshot(),
+                    },
+                );
 
                 // Swap in the persistent BM25 engine
                 if let Some(previous_active) = loaded_codebase
@@ -378,9 +444,12 @@ impl ContextroServer {
                 self.state.query_cache.invalidate();
                 self.state.knowledge.set_active_scope(Some(&requested_path));
                 self.state.persist_repo_scope_state();
+                if prewarm_commit_search {
+                    maybe_prewarm_commit_search_cache(&requested_path);
+                }
 
                 // Auto-populate knowledge base with project docs
-                let kb_populated = auto_populate_knowledge(path, &self.state.knowledge);
+                let kb_populated = auto_populate_knowledge(&requested_path, &self.state.knowledge);
 
                 let mut resp = json!({
                     "status": "done",
@@ -445,6 +514,7 @@ impl ContextroServer {
         });
 
         if !removed_is_active {
+            self.state.persist_repo_scope_state();
             if !path.is_empty() {
                 response.as_object_mut().unwrap().remove("name");
             } else {
@@ -456,7 +526,11 @@ impl ContextroServer {
         if let Some(previous_path) = self.take_previous_repo_scope_candidate() {
             *self.state.indexed.write() = false;
             *self.state.codebase_path.write() = None;
-            let restore_result = self.handle_index(&json!({"path": previous_path}));
+            let restore_result = self
+                .try_restore_cached_repo_scope(&previous_path)
+                .unwrap_or_else(|| {
+                    self.handle_index_internal(&json!({"path": previous_path}), false)
+                });
             if restore_result.get("status") == Some(&json!("done")) {
                 response["active_scope_restored"] = json!(true);
                 response["restored_path"] = self
@@ -503,30 +577,119 @@ impl ContextroServer {
         if history.last() != Some(&previous_path) {
             history.push(previous_path);
         }
-        drop(history);
-        self.state.persist_repo_scope_state();
     }
 
     fn prune_repo_scope_history(&self, removed_path: &str) {
+        self.state.prune_repo_snapshot(removed_path);
         self.state
             .repo_scope_history
             .write()
             .retain(|path| path != removed_path);
-        self.state.persist_repo_scope_state();
     }
 
     fn take_previous_repo_scope_candidate(&self) -> Option<String> {
         let mut history = self.state.repo_scope_history.write();
         while let Some(candidate) = history.pop() {
             if std::path::Path::new(&candidate).is_dir() {
-                drop(history);
-                self.state.persist_repo_scope_state();
                 return Some(candidate);
             }
         }
-        drop(history);
-        self.state.persist_repo_scope_state();
         None
+    }
+
+    fn repo_snapshot_matches_disk(path: &str) -> bool {
+        let settings = get_settings().read().clone();
+        let files = contextro_indexing::discover_files(std::path::Path::new(path), &settings);
+        let current_hashes = contextro_indexing::hash_files(&files);
+        let storage_dir = contextro_config::project_storage_dir(path);
+        let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
+        if stored_hashes.is_empty() {
+            return false;
+        }
+
+        let (added, modified, deleted) =
+            contextro_indexing::diff_file_states(&current_hashes, &stored_hashes);
+        added.is_empty() && modified.is_empty() && deleted.is_empty()
+    }
+
+    fn restore_repo_snapshot(&self, path: &str, snapshot: &RepoScopeSnapshot) -> Value {
+        self.state.graph.clear();
+        if snapshot.graph.is_empty() {
+            self.state.build_graph(&snapshot.symbols);
+            self.state.graph.compute_pagerank();
+        } else {
+            self.state.graph.restore_snapshot(&snapshot.graph);
+        }
+
+        self.state.bm25.clear();
+        self.state.bm25.index_chunks(&snapshot.chunks);
+        self.state
+            .chunk_count
+            .store(snapshot.chunks.len(), std::sync::atomic::Ordering::Relaxed);
+
+        self.state.vector_index.clear();
+        for chunk in &snapshot.chunks {
+            if chunk.vector.is_empty() {
+                continue;
+            }
+            self.state.vector_index.insert(
+                chunk.vector.clone(),
+                SearchResult {
+                    id: chunk.id.clone(),
+                    filepath: chunk.filepath.clone(),
+                    symbol_name: chunk.symbol_name.clone(),
+                    symbol_type: chunk.symbol_type.clone(),
+                    language: chunk.language.clone(),
+                    line_start: chunk.line_start,
+                    line_end: chunk.line_end,
+                    score: 0.0,
+                    code: chunk.text.clone(),
+                    signature: chunk.signature.clone(),
+                    match_sources: vec!["vector".into()],
+                },
+            );
+        }
+
+        *self.state.indexed.write() = true;
+        *self.state.codebase_path.write() = Some(path.to_string());
+        self.state.query_cache.invalidate();
+        self.state.knowledge.set_active_scope(Some(path));
+        self.state.persist_repo_scope_state();
+
+        json!({
+            "status": "done",
+            "message": "Restored from cached repo snapshot.",
+            "total_symbols": snapshot.symbols.len(),
+            "total_chunks": snapshot.chunks.len(),
+            "graph_nodes": self.state.graph.node_count(),
+            "graph_relationships": self.state.graph.relationship_count(),
+            "vector_chunks": self.state.vector_index.len(),
+            "restored_from_cache": true,
+        })
+    }
+
+    fn try_restore_cached_repo_scope(&self, path: &str) -> Option<Value> {
+        let snapshot = self.load_valid_repo_snapshot(path)?;
+        Some(self.restore_repo_snapshot(path, &snapshot))
+    }
+
+    fn load_valid_repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
+        if let Some(snapshot) = self.state.repo_snapshot(path) {
+            if !Self::repo_snapshot_matches_disk(path) {
+                self.state.prune_repo_snapshot(path);
+                return None;
+            }
+            return Some(snapshot);
+        }
+
+        let snapshot = self.state.load_persisted_repo_snapshot(path)?;
+        if !Self::repo_snapshot_matches_disk(path) {
+            self.state.prune_repo_snapshot(path);
+            return None;
+        }
+        self.state
+            .remember_repo_snapshot(path.to_string(), snapshot.clone());
+        Some(snapshot)
     }
 
     fn clear_active_scope(&self) {
@@ -553,7 +716,7 @@ impl ContextroServer {
             return;
         }
 
-        let result = self.handle_index(&json!({"path": path}));
+        let result = self.handle_index_internal(&json!({"path": path}), false);
         if result.get("status") != Some(&json!("done")) {
             self.clear_active_scope();
         }
@@ -955,28 +1118,65 @@ fn is_empty_value(v: &Value) -> bool {
 /// Strip absolute codebase prefixes from display-oriented file paths in responses,
 /// while preserving identity-bearing root fields like `codebase_path` and repo `path`.
 fn strip_response_paths(value: Value, base: &str) -> Value {
-    strip_absolute_paths_impl(value, base, true, None)
+    let prefix = format!("{base}/");
+    strip_absolute_paths_impl(value, base, &prefix, true, None)
+}
+
+fn response_needs_path_stripping(value: &Value, base: &str) -> bool {
+    let prefix = format!("{base}/");
+    response_contains_path_prefix(value, base, &prefix, true, None)
+}
+
+fn response_contains_path_prefix(
+    value: &Value,
+    base: &str,
+    prefix: &str,
+    preserve_identity_paths: bool,
+    parent_key: Option<&str>,
+) -> bool {
+    match value {
+        Value::String(s) => {
+            if preserve_identity_paths && matches!(parent_key, Some("codebase_path" | "path")) {
+                return false;
+            }
+            s == base || s.starts_with(prefix)
+        }
+        Value::Object(map) => map.iter().any(|(key, value)| {
+            response_contains_path_prefix(
+                value,
+                base,
+                prefix,
+                preserve_identity_paths,
+                Some(key.as_str()),
+            )
+        }),
+        Value::Array(items) => items.iter().any(|value| {
+            response_contains_path_prefix(value, base, prefix, preserve_identity_paths, parent_key)
+        }),
+        _ => false,
+    }
 }
 
 /// Recursively replace any string value that starts with `base/` with the relative path.
 fn strip_absolute_paths(value: Value, base: &str) -> Value {
-    strip_absolute_paths_impl(value, base, false, None)
+    let prefix = format!("{base}/");
+    strip_absolute_paths_impl(value, base, &prefix, false, None)
 }
 
 fn strip_absolute_paths_impl(
     value: Value,
     base: &str,
+    prefix: &str,
     preserve_identity_paths: bool,
     parent_key: Option<&str>,
 ) -> Value {
-    let prefix = format!("{}/", base);
     match value {
         Value::String(s) => {
             if preserve_identity_paths && matches!(parent_key, Some("codebase_path" | "path")) {
                 return Value::String(s);
             }
-            if s.starts_with(&prefix) {
-                Value::String(s[prefix.len()..].to_string())
+            if let Some(stripped) = s.strip_prefix(prefix) {
+                Value::String(stripped.to_string())
             } else if s == base {
                 Value::String(".".to_string())
             } else {
@@ -989,6 +1189,7 @@ fn strip_absolute_paths_impl(
                     let stripped = strip_absolute_paths_impl(
                         v,
                         base,
+                        prefix,
                         preserve_identity_paths,
                         Some(k.as_str()),
                     );
@@ -998,7 +1199,9 @@ fn strip_absolute_paths_impl(
         ),
         Value::Array(arr) => Value::Array(
             arr.into_iter()
-                .map(|v| strip_absolute_paths_impl(v, base, preserve_identity_paths, parent_key))
+                .map(|v| {
+                    strip_absolute_paths_impl(v, base, prefix, preserve_identity_paths, parent_key)
+                })
                 .collect(),
         ),
         other => other,
@@ -1147,6 +1350,64 @@ fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeSto
     count
 }
 
+fn should_build_vector_index(chunk_count: usize) -> bool {
+    chunk_count > 1
+}
+
+fn response_cache_key(name: &str, args: &Value, codebase: Option<&str>) -> Option<String> {
+    if !is_response_cacheable_tool(name) {
+        return None;
+    }
+
+    let args = strip_render_only_args(args);
+    Some(
+        json!({
+            "tool": name,
+            "args": args,
+            "codebase": codebase.unwrap_or(""),
+        })
+        .to_string(),
+    )
+}
+
+fn is_response_cacheable_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "overview"
+            | "architecture"
+            | "analyze"
+            | "focus"
+            | "dead_code"
+            | "circular_dependencies"
+            | "test_coverage_map"
+            | "audit"
+    )
+}
+
+fn strip_render_only_args(args: &Value) -> Value {
+    match args {
+        Value::Object(map) => {
+            let mut cleaned = map.clone();
+            cleaned.remove("max_tokens");
+            Value::Object(cleaned)
+        }
+        other => other.clone(),
+    }
+}
+
+fn cached_tool_result(result: Value, args: &Value) -> CallToolResult {
+    let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    CallToolResult::success(vec![Content::text(format_response(&result, max_tokens))])
+}
+
+fn maybe_prewarm_commit_search_cache(path: &str) {
+    if !get_settings().read().search_prewarm_enabled {
+        return;
+    }
+
+    contextro_tools::git_tools::prewarm_commit_search_cache(Some(path));
+}
+
 impl ServerHandler for ContextroServer {
     fn get_info(&self) -> InitializeResult {
         InitializeResult {
@@ -1270,8 +1531,9 @@ fn rank_nodes_by_degree(
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        format_response, normalize_repo_dir, resolve_refactor_targets, strip_response_paths,
-        take_chars, ContextroServer,
+        format_response, normalize_repo_dir, resolve_refactor_targets,
+        response_needs_path_stripping, strip_render_only_args, strip_response_paths, take_chars,
+        ContextroServer,
     };
     use contextro_config::Settings;
     use contextro_core::graph::{
@@ -1677,6 +1939,47 @@ mod tests {
     }
 
     #[test]
+    fn test_repo_remove_reindexes_previous_scope_when_cached_snapshot_is_stale() {
+        let storage_dir = temp_storage_dir("repo-remove-stale-snapshot");
+        let server = test_server(&storage_dir);
+        let repo_a = temp_repo_dir("repo-stale-a");
+        let repo_b = temp_repo_dir("repo-stale-b");
+        write_indexable_repo(&repo_a, "repo_a_symbol");
+        write_indexable_repo(&repo_b, "repo_b_symbol");
+
+        let index_a = server.handle_index(&json!({"path": repo_a.to_string_lossy().to_string()}));
+        assert_eq!(index_a["status"], "done");
+        let add_b = server.dispatch(
+            "repo_add",
+            json!({"path": repo_b.to_string_lossy().to_string()}),
+        );
+        assert_ne!(add_b.is_error, Some(true));
+
+        write_indexable_repo(&repo_a, "repo_a_updated_symbol");
+
+        let remove_result =
+            server.handle_repo_remove(&json!({"path": repo_b.to_string_lossy().to_string()}));
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(remove_result["active_scope_restored"], true);
+
+        let search_updated = server.handle_search(&json!({"query": "repo_a_updated_symbol"}));
+        let updated_results = search_updated["results"].as_array().expect("results array");
+        assert!(updated_results
+            .iter()
+            .any(|result| result["name"] == "repo_a_updated_symbol"));
+
+        let search_old = server.handle_search(&json!({"query": "repo_a_symbol"}));
+        let old_results = search_old["results"].as_array().expect("results array");
+        assert!(!old_results
+            .iter()
+            .any(|result| result["name"] == "repo_a_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo_a);
+        let _ = std::fs::remove_dir_all(repo_b);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
     fn test_restart_restores_active_scope_and_search_after_repo_add() {
         let storage_dir = temp_storage_dir("restart-repo-add");
         let repo = temp_repo_dir("restart-repo-a");
@@ -1706,6 +2009,145 @@ mod tests {
         assert!(results
             .iter()
             .any(|result| result["name"] == "restart_repo_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_handle_index_restores_from_persisted_snapshot_when_repo_is_unchanged() {
+        let initial_storage_dir = temp_storage_dir("persisted-snapshot-source");
+        let restore_storage_dir = temp_storage_dir("persisted-snapshot-restore");
+        let repo = temp_repo_dir("persisted-snapshot-repo");
+        write_indexable_repo(&repo, "persisted_snapshot_symbol");
+
+        let server = test_server(&initial_storage_dir);
+        let initial_index =
+            server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(initial_index["status"], "done");
+        let normalized_repo = normalize_repo_dir(repo.to_string_lossy().as_ref());
+        let project_storage = contextro_config::project_storage_dir(&normalized_repo);
+        assert!(!contextro_indexing::load_hashes(&project_storage).is_empty());
+        assert!(server
+            .state
+            .load_persisted_repo_snapshot(&normalized_repo)
+            .is_some());
+
+        let restored_server = test_server(&restore_storage_dir);
+        let restored =
+            restored_server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(restored["status"], "done");
+        assert_eq!(restored["restored_from_cache"], true);
+        assert_eq!(
+            restored["message"],
+            "Restored from persisted repo snapshot."
+        );
+
+        let search = restored_server.handle_search(&json!({"query": "persisted_snapshot_symbol"}));
+        let results = search["results"].as_array().expect("results array");
+        assert!(results
+            .iter()
+            .any(|result| result["name"] == "persisted_snapshot_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo.clone());
+        let _ = std::fs::remove_dir_all(initial_storage_dir);
+        let _ = std::fs::remove_dir_all(restore_storage_dir);
+        let _ = std::fs::remove_dir_all(project_storage);
+    }
+
+    #[test]
+    fn test_handle_index_rebuilds_when_persisted_snapshot_is_stale() {
+        let initial_storage_dir = temp_storage_dir("persisted-snapshot-stale-source");
+        let restore_storage_dir = temp_storage_dir("persisted-snapshot-stale-restore");
+        let repo = temp_repo_dir("persisted-snapshot-stale-repo");
+        write_indexable_repo(&repo, "stale_snapshot_symbol");
+
+        let server = test_server(&initial_storage_dir);
+        let initial_index =
+            server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(initial_index["status"], "done");
+
+        write_indexable_repo(&repo, "fresh_snapshot_symbol");
+
+        let restored_server = test_server(&restore_storage_dir);
+        let restored =
+            restored_server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(restored["status"], "done");
+        assert_ne!(restored.get("restored_from_cache"), Some(&json!(true)));
+
+        let fresh_search =
+            restored_server.handle_search(&json!({"query": "fresh_snapshot_symbol"}));
+        let fresh_results = fresh_search["results"].as_array().expect("results array");
+        assert!(fresh_results
+            .iter()
+            .any(|result| result["name"] == "fresh_snapshot_symbol"));
+
+        let stale_search =
+            restored_server.handle_search(&json!({"query": "stale_snapshot_symbol"}));
+        let stale_results = stale_search["results"].as_array().expect("results array");
+        assert!(!stale_results
+            .iter()
+            .any(|result| result["name"] == "stale_snapshot_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo.clone());
+        let _ = std::fs::remove_dir_all(initial_storage_dir);
+        let _ = std::fs::remove_dir_all(restore_storage_dir);
+        let _ = std::fs::remove_dir_all(contextro_config::project_storage_dir(
+            &normalize_repo_dir(repo.to_string_lossy().as_ref()),
+        ));
+    }
+
+    #[test]
+    fn test_restore_repo_snapshot_falls_back_when_graph_snapshot_is_missing() {
+        let storage_dir = temp_storage_dir("persisted-snapshot-legacy-graph");
+        let repo = temp_repo_dir("persisted-snapshot-legacy-repo");
+        write_indexable_repo(&repo, "legacy_snapshot_symbol");
+
+        let server = test_server(&storage_dir);
+        let indexed = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(indexed["status"], "done");
+
+        let normalized_repo = normalize_repo_dir(repo.to_string_lossy().as_ref());
+        let mut snapshot = server
+            .state
+            .load_persisted_repo_snapshot(&normalized_repo)
+            .expect("snapshot should exist");
+        snapshot.graph = contextro_engines::graph::GraphSnapshot::default();
+
+        server.clear_active_scope();
+        let restored = server.restore_repo_snapshot(&normalized_repo, &snapshot);
+        assert_eq!(restored["status"], "done");
+        assert_eq!(restored["restored_from_cache"], true);
+
+        let search = server.handle_search(&json!({"query": "legacy_snapshot_symbol"}));
+        let results = search["results"].as_array().expect("results array");
+        assert!(results
+            .iter()
+            .any(|result| result["name"] == "legacy_snapshot_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo.clone());
+        let _ = std::fs::remove_dir_all(storage_dir);
+        let _ = std::fs::remove_dir_all(contextro_config::project_storage_dir(&normalized_repo));
+    }
+
+    #[test]
+    fn test_index_skips_vector_index_for_single_chunk_repo() {
+        let storage_dir = temp_storage_dir("single-chunk-vector-skip");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("single-chunk-repo");
+        write_indexable_repo(&repo, "single_chunk_symbol");
+
+        let result = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+
+        assert_eq!(result["status"], "done");
+        assert_eq!(result["total_chunks"], 1);
+        assert_eq!(result["vector_chunks"], 0);
+
+        let search = server.handle_search(&json!({"query": "single_chunk_symbol"}));
+        let results = search["results"].as_array().expect("results array");
+        assert!(results
+            .iter()
+            .any(|entry| entry["name"] == "single_chunk_symbol"));
 
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(storage_dir);
@@ -1792,6 +2234,70 @@ mod tests {
     }
 
     #[test]
+    fn test_graph_analysis_dispatch_reuses_cached_response_across_max_tokens_variants() {
+        let storage_dir = temp_storage_dir("analysis-response-cache");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("analysis-response-cache-repo");
+        write_indexable_repo(&repo, "cached_analysis_symbol");
+
+        let indexed = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(indexed["status"], "done");
+
+        let cache_hit_rate_before = server.state.query_cache.hit_rate();
+        let session_total_before = contextro_tools::session::handle_session_snapshot(
+            &json!({"limit": 20, "type": "overview"}),
+            &server.state.session_tracker,
+        )["total"]
+            .as_u64()
+            .unwrap_or(0);
+        let first = server.dispatch("overview", json!({"max_tokens": 1}));
+        assert_ne!(first.is_error, Some(true));
+
+        let second = server.dispatch("overview", json!({"max_tokens": 50}));
+        assert_ne!(second.is_error, Some(true));
+        assert!(
+            server.state.query_cache.hit_rate() > cache_hit_rate_before,
+            "expected cached overview response to increase hit rate"
+        );
+        let session_total_after = contextro_tools::session::handle_session_snapshot(
+            &json!({"limit": 20, "type": "overview"}),
+            &server.state.session_tracker,
+        )["total"]
+            .as_u64()
+            .unwrap_or(0);
+        assert_eq!(session_total_after, session_total_before + 2);
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_graph_analysis_cache_invalidates_after_reindex() {
+        let storage_dir = temp_storage_dir("analysis-response-cache-invalidation");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("analysis-response-cache-invalidation-repo");
+        write_indexable_repo(&repo, "cache_before_symbol");
+
+        let indexed = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(indexed["status"], "done");
+
+        let first = server.dispatch("overview", json!({}));
+        assert_ne!(first.is_error, Some(true));
+        let hit_rate_before = server.state.query_cache.hit_rate();
+
+        write_indexable_repo(&repo, "cache_after_symbol");
+        let reindexed = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(reindexed["status"], "done");
+
+        let second = server.dispatch("overview", json!({}));
+        assert_ne!(second.is_error, Some(true));
+        assert_eq!(server.state.query_cache.hit_rate(), hit_rate_before);
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
     fn test_restart_repo_remove_only_active_repo_clears_persisted_scope() {
         let storage_dir = temp_storage_dir("restart-repo-clear");
         let repo = temp_repo_dir("restart-clear-a");
@@ -1834,6 +2340,33 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_strip_render_only_args_removes_max_tokens_only() {
+        let stripped = strip_render_only_args(&json!({
+            "query": "overview",
+            "limit": 5,
+            "max_tokens": 123,
+        }));
+
+        assert_eq!(stripped, json!({"query": "overview", "limit": 5}));
+    }
+
+    #[test]
+    fn test_response_needs_path_stripping_skips_identity_paths() {
+        let base = "/tmp/contextro-repo";
+        let identity_only = json!({
+            "path": base,
+            "codebase_path": base,
+            "repos": [{"path": base, "name": "repo-a"}],
+        });
+        let nested_file = json!({
+            "results": [{"file": format!("{base}/src/lib.rs")}],
+        });
+
+        assert!(!response_needs_path_stripping(&identity_only, base));
+        assert!(response_needs_path_stripping(&nested_file, base));
     }
 }
 
