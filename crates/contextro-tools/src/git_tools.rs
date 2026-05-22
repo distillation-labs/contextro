@@ -29,9 +29,19 @@ struct CommitSearchCacheEntry {
 
 static COMMIT_SEARCH_CACHE: OnceLock<RwLock<HashMap<String, CommitSearchCacheEntry>>> =
     OnceLock::new();
+static COMMIT_SEARCH_RESULT_CACHE: OnceLock<RwLock<HashMap<String, Value>>> = OnceLock::new();
+static COMMIT_SEARCH_PREWARM_INFLIGHT: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
 
 fn commit_search_cache() -> &'static RwLock<HashMap<String, CommitSearchCacheEntry>> {
     COMMIT_SEARCH_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn commit_search_result_cache() -> &'static RwLock<HashMap<String, Value>> {
+    COMMIT_SEARCH_RESULT_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn commit_search_prewarm_inflight() -> &'static RwLock<HashSet<String>> {
+    COMMIT_SEARCH_PREWARM_INFLIGHT.get_or_init(|| RwLock::new(HashSet::new()))
 }
 
 /// Registered repos tracker.
@@ -122,7 +132,7 @@ impl RepoRegistry {
                 name: name.clone(),
             })
             .collect();
-        if let Ok(bytes) = serde_json::to_vec_pretty(&payload) {
+        if let Ok(bytes) = serde_json::to_vec(&payload) {
             if std::fs::write(&tmp_path, bytes).is_ok() {
                 let _ = std::fs::rename(&tmp_path, &self.file_path);
             }
@@ -203,6 +213,40 @@ pub fn handle_commit_history(args: &Value, codebase: Option<&str>) -> Value {
     })
 }
 
+pub fn prewarm_commit_search_cache(codebase: Option<&str>) {
+    let Some(repo_path) = codebase else {
+        return;
+    };
+    let Ok(repo) = git2::Repository::discover(repo_path) else {
+        return;
+    };
+
+    let initial_scan_limit = get_settings().read().commit_history_limit.max(500);
+    let repo_key = commit_search_repo_key(&repo);
+    let head_hash = commit_search_head_hash(&repo);
+
+    if let Some(entry) = commit_search_cache().read().get(&repo_key) {
+        if entry.head_hash == head_hash && entry.scan_limit >= initial_scan_limit {
+            return;
+        }
+    }
+
+    {
+        let mut inflight = commit_search_prewarm_inflight().write();
+        if !inflight.insert(repo_key.clone()) {
+            return;
+        }
+    }
+
+    let repo_path = repo_path.to_string();
+    std::thread::spawn(move || {
+        if let Ok(repo) = git2::Repository::discover(&repo_path) {
+            let _ = load_commit_search_records(&repo, initial_scan_limit);
+        }
+        commit_search_prewarm_inflight().write().remove(&repo_key);
+    });
+}
+
 /// Semantic commit search: tokenize query and score commits by token overlap.
 pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
@@ -221,6 +265,22 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
     let query_tokens: Vec<String> = tokenize(query);
     let query_lower = query.to_ascii_lowercase();
     let author_filter_lower = author_filter.map(|author| author.to_ascii_lowercase());
+    let repo_key = commit_search_repo_key(&repo);
+    let head_hash = commit_search_head_hash(&repo);
+    let result_cache_key = commit_search_result_cache_key(
+        &repo_key,
+        &head_hash,
+        &query_lower,
+        author_filter_lower.as_deref(),
+        limit,
+    );
+    if let Some(cached) = commit_search_result_cache()
+        .read()
+        .get(&result_cache_key)
+        .cloned()
+    {
+        return cached;
+    }
     let initial_scan_limit = get_settings().read().commit_history_limit.max(500);
     let fallback_scan_limit = initial_scan_limit.max(5000);
     let records = load_commit_search_records(&repo, initial_scan_limit);
@@ -247,7 +307,9 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
     scored_commits.truncate(limit);
 
     let commits: Vec<Value> = scored_commits.into_iter().map(|(_, v)| v).collect();
-    json!({"query": query, "commits": commits, "total": commits.len()})
+    let response = json!({"query": query, "commits": commits, "total": commits.len()});
+    store_commit_search_result_cache_entry(result_cache_key, &response);
+    response
 }
 
 fn commit_search_min_score(query: &str, query_tokens: &[String]) -> f64 {
@@ -370,6 +432,27 @@ fn commit_search_head_hash(repo: &git2::Repository) -> String {
         .and_then(|head| head.target())
         .map(|oid| oid.to_string())
         .unwrap_or_default()
+}
+
+fn commit_search_result_cache_key(
+    repo_key: &str,
+    head_hash: &str,
+    query_lower: &str,
+    author_filter_lower: Option<&str>,
+    limit: usize,
+) -> String {
+    format!(
+        "{repo_key}\u{1f}{head_hash}\u{1f}{}\u{1f}{limit}\u{1f}{query_lower}",
+        author_filter_lower.unwrap_or("")
+    )
+}
+
+fn store_commit_search_result_cache_entry(cache_key: String, response: &Value) {
+    let mut cache = commit_search_result_cache().write();
+    if cache.len() >= 256 {
+        cache.clear();
+    }
+    cache.insert(cache_key, response.clone());
 }
 
 pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
@@ -835,6 +918,115 @@ mod tests {
 
         assert_eq!(entry.head_hash, commit_search_head_hash(&repo));
         assert_eq!(entry.scan_limit, initial_scan_limit);
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_handle_commit_search_returns_cached_final_response() {
+        let repo_dir = temp_file("commit-search-result-cache-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+        std::fs::write(repo_dir.join("tracked.txt"), "seed\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "initial commit",
+            &tree,
+            &[],
+        )
+        .unwrap();
+
+        let repo_key = commit_search_repo_key(&repo);
+        let head_hash = commit_search_head_hash(&repo);
+        let cached = json!({
+            "query": "release",
+            "commits": [{
+                "hash": "deadbeef1234",
+                "message": "Release v9.9.9",
+                "author": "Cache",
+                "score": 1.0
+            }],
+            "total": 1
+        });
+        commit_search_result_cache().write().insert(
+            commit_search_result_cache_key(&repo_key, &head_hash, "release", None, 5),
+            cached.clone(),
+        );
+
+        let result = handle_commit_search(
+            &json!({"query":"release","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result, cached);
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_handle_commit_search_result_cache_invalidates_on_head_change() {
+        let repo_dir = temp_file("commit-search-result-cache-head-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+
+        std::fs::write(repo_dir.join("tracked.txt"), "seed\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let base = repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "initial import",
+                &tree,
+                &[],
+            )
+            .unwrap();
+
+        let before = handle_commit_search(
+            &json!({"query":"release","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+        assert_eq!(before["total"], 0);
+
+        std::fs::write(repo_dir.join("tracked.txt"), "release\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parent = repo.find_commit(base).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "release benchmark cache",
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+
+        let after = handle_commit_search(
+            &json!({"query":"release","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(after["total"], 1, "unexpected result: {after}");
+        assert_eq!(after["commits"][0]["message"], "release benchmark cache");
 
         let _ = std::fs::remove_dir_all(repo_dir);
     }
