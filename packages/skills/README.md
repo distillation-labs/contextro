@@ -37,7 +37,7 @@ When you install into a normal project, each skill target receives the full bund
 After installation, your AI agent will:
 
 1. **Search by meaning** instead of reading 5+ files to find one function
-2. **Check impact** before renaming or deleting anything
+2. **Check blast radius** with `impact` or `refactor_check` before renaming, deleting, or reshaping symbols
 3. **Trace call graphs** instead of grepping for usages
 4. **Use about 90% fewer tokens** for code discovery tasks in published and repo-local studies
 
@@ -130,7 +130,7 @@ Concept split:
 
 `dev-contextro-mcp` teaches agents to:
 - Use `search("query")` instead of reading multiple files
-- Run `impact("Symbol")` before any rename or delete
+- Run `impact("Symbol")` or `refactor_check("Symbol")` before higher-risk edits
 - Use `explain("Symbol")` before editing unfamiliar code
 - Prefer `find_callers()` over grep for usage discovery
 
