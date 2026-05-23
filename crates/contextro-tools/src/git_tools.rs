@@ -12,11 +12,19 @@ use serde_json::{json, Value};
 
 #[derive(Clone)]
 struct CachedCommitRecord {
+    oid: git2::Oid,
     hash: String,
     message: String,
     message_lower: String,
     author: String,
     author_lower: String,
+    diff_context: Arc<OnceLock<CommitDiffContext>>,
+    tokens: Vec<String>,
+}
+
+#[derive(Clone, Default)]
+struct CommitDiffContext {
+    text_lower: String,
     tokens: Vec<String>,
 }
 
@@ -29,9 +37,19 @@ struct CommitSearchCacheEntry {
 
 static COMMIT_SEARCH_CACHE: OnceLock<RwLock<HashMap<String, CommitSearchCacheEntry>>> =
     OnceLock::new();
+static COMMIT_SEARCH_RESULT_CACHE: OnceLock<RwLock<HashMap<String, Value>>> = OnceLock::new();
+static COMMIT_SEARCH_PREWARM_INFLIGHT: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
 
 fn commit_search_cache() -> &'static RwLock<HashMap<String, CommitSearchCacheEntry>> {
     COMMIT_SEARCH_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn commit_search_result_cache() -> &'static RwLock<HashMap<String, Value>> {
+    COMMIT_SEARCH_RESULT_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn commit_search_prewarm_inflight() -> &'static RwLock<HashSet<String>> {
+    COMMIT_SEARCH_PREWARM_INFLIGHT.get_or_init(|| RwLock::new(HashSet::new()))
 }
 
 /// Registered repos tracker.
@@ -122,7 +140,7 @@ impl RepoRegistry {
                 name: name.clone(),
             })
             .collect();
-        if let Ok(bytes) = serde_json::to_vec_pretty(&payload) {
+        if let Ok(bytes) = serde_json::to_vec(&payload) {
             if std::fs::write(&tmp_path, bytes).is_ok() {
                 let _ = std::fs::rename(&tmp_path, &self.file_path);
             }
@@ -203,6 +221,40 @@ pub fn handle_commit_history(args: &Value, codebase: Option<&str>) -> Value {
     })
 }
 
+pub fn prewarm_commit_search_cache(codebase: Option<&str>) {
+    let Some(repo_path) = codebase else {
+        return;
+    };
+    let Ok(repo) = git2::Repository::discover(repo_path) else {
+        return;
+    };
+
+    let initial_scan_limit = get_settings().read().commit_history_limit.max(500);
+    let repo_key = commit_search_repo_key(&repo);
+    let head_hash = commit_search_head_hash(&repo);
+
+    if let Some(entry) = commit_search_cache().read().get(&repo_key) {
+        if entry.head_hash == head_hash && entry.scan_limit >= initial_scan_limit {
+            return;
+        }
+    }
+
+    {
+        let mut inflight = commit_search_prewarm_inflight().write();
+        if !inflight.insert(repo_key.clone()) {
+            return;
+        }
+    }
+
+    let repo_path = repo_path.to_string();
+    std::thread::spawn(move || {
+        if let Ok(repo) = git2::Repository::discover(&repo_path) {
+            let _ = load_commit_search_records(&repo, initial_scan_limit);
+        }
+        commit_search_prewarm_inflight().write().remove(&repo_key);
+    });
+}
+
 /// Semantic commit search: tokenize query and score commits by token overlap.
 pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
@@ -221,11 +273,28 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
     let query_tokens: Vec<String> = tokenize(query);
     let query_lower = query.to_ascii_lowercase();
     let author_filter_lower = author_filter.map(|author| author.to_ascii_lowercase());
+    let repo_key = commit_search_repo_key(&repo);
+    let head_hash = commit_search_head_hash(&repo);
+    let result_cache_key = commit_search_result_cache_key(
+        &repo_key,
+        &head_hash,
+        &query_lower,
+        author_filter_lower.as_deref(),
+        limit,
+    );
+    if let Some(cached) = commit_search_result_cache()
+        .read()
+        .get(&result_cache_key)
+        .cloned()
+    {
+        return cached;
+    }
     let initial_scan_limit = get_settings().read().commit_history_limit.max(500);
     let fallback_scan_limit = initial_scan_limit.max(5000);
     let records = load_commit_search_records(&repo, initial_scan_limit);
 
     let mut scored_commits = score_commit_records(
+        &repo,
         records.iter().take(initial_scan_limit),
         &query_lower,
         &query_tokens,
@@ -234,6 +303,7 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
     if scored_commits.is_empty() && fallback_scan_limit > initial_scan_limit {
         let records = load_commit_search_records(&repo, fallback_scan_limit);
         scored_commits = score_commit_records(
+            &repo,
             records.iter(),
             &query_lower,
             &query_tokens,
@@ -247,7 +317,9 @@ pub fn handle_commit_search(args: &Value, codebase: Option<&str>) -> Value {
     scored_commits.truncate(limit);
 
     let commits: Vec<Value> = scored_commits.into_iter().map(|(_, v)| v).collect();
-    json!({"query": query, "commits": commits, "total": commits.len()})
+    let response = json!({"query": query, "commits": commits, "total": commits.len()});
+    store_commit_search_result_cache_entry(result_cache_key, &response);
+    response
 }
 
 fn commit_search_min_score(query: &str, query_tokens: &[String]) -> f64 {
@@ -303,8 +375,10 @@ fn scan_commit_records(repo: &git2::Repository, scan_limit: usize) -> Vec<Cached
             let message = commit.message().unwrap_or("").to_string();
             let author = commit.author().name().unwrap_or("").to_string();
             Some(CachedCommitRecord {
+                oid,
                 hash: oid.to_string()[..12].to_string(),
                 message_lower: message.to_lowercase(),
+                diff_context: Arc::new(OnceLock::new()),
                 tokens: tokenize(&message),
                 message,
                 author_lower: author.to_lowercase(),
@@ -315,6 +389,7 @@ fn scan_commit_records(repo: &git2::Repository, scan_limit: usize) -> Vec<Cached
 }
 
 fn score_commit_records<'a, I>(
+    repo: &git2::Repository,
     records: I,
     query_lower: &str,
     query_tokens: &[String],
@@ -332,12 +407,18 @@ where
                 }
             }
 
-            let score = token_overlap_score_lower(
+            let message_score = token_overlap_score_lower(
                 query_lower,
                 query_tokens,
                 &record.message_lower,
                 &record.tokens,
             );
+            let context_score = if message_score > 0.0 {
+                0.0
+            } else {
+                commit_diff_context_score(repo, record, query_lower, query_tokens)
+            };
+            let score = merge_commit_search_scores(message_score, context_score);
             if score > 0.0 {
                 Some((
                     score,
@@ -372,6 +453,153 @@ fn commit_search_head_hash(repo: &git2::Repository) -> String {
         .unwrap_or_default()
 }
 
+fn commit_search_result_cache_key(
+    repo_key: &str,
+    head_hash: &str,
+    query_lower: &str,
+    author_filter_lower: Option<&str>,
+    limit: usize,
+) -> String {
+    format!(
+        "{repo_key}\u{1f}{head_hash}\u{1f}{}\u{1f}{limit}\u{1f}{query_lower}",
+        author_filter_lower.unwrap_or("")
+    )
+}
+
+fn store_commit_search_result_cache_entry(cache_key: String, response: &Value) {
+    let mut cache = commit_search_result_cache().write();
+    if cache.len() >= 256 {
+        cache.clear();
+    }
+    cache.insert(cache_key, response.clone());
+}
+
+fn merge_commit_search_scores(message_score: f64, context_score: f64) -> f64 {
+    if message_score > 0.0 {
+        message_score
+    } else {
+        context_score * 0.70
+    }
+}
+
+fn commit_diff_context_score(
+    repo: &git2::Repository,
+    record: &CachedCommitRecord,
+    query_lower: &str,
+    query_tokens: &[String],
+) -> f64 {
+    if query_tokens.len() < 2 {
+        return 0.0;
+    }
+
+    let subject = record.message.lines().next().unwrap_or("");
+    if !commit_subject_needs_diff_context(subject) {
+        return 0.0;
+    }
+
+    let context = record
+        .diff_context
+        .get_or_init(|| collect_commit_diff_context(repo, record.oid).unwrap_or_default());
+    token_overlap_score_lower(
+        query_lower,
+        query_tokens,
+        &context.text_lower,
+        &context.tokens,
+    )
+}
+
+fn collect_commit_diff_context(
+    repo: &git2::Repository,
+    oid: git2::Oid,
+) -> Option<CommitDiffContext> {
+    let commit = repo.find_commit(oid).ok()?;
+
+    let Ok(tree) = commit.tree() else {
+        return None;
+    };
+    let parent_tree = commit.parent(0).ok().and_then(|parent| parent.tree().ok());
+    let Ok(diff) = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None) else {
+        return None;
+    };
+
+    let collector = std::cell::RefCell::new(CommitDiffContextCollector::default());
+    let mut file_cb = |_delta: git2::DiffDelta<'_>, _progress: f32| true;
+    let mut line_cb = |_delta: git2::DiffDelta<'_>,
+                       _hunk: Option<git2::DiffHunk<'_>>,
+                       line: git2::DiffLine<'_>| {
+        if !matches!(line.origin(), '+' | '-') {
+            return true;
+        }
+        if let Ok(content) = std::str::from_utf8(line.content()) {
+            collector.borrow_mut().push_text(content);
+        }
+        true
+    };
+
+    let _ = diff.foreach(&mut file_cb, None, None, Some(&mut line_cb));
+
+    let collector = collector.into_inner();
+    if collector.tokens.is_empty() {
+        None
+    } else {
+        Some(CommitDiffContext {
+            text_lower: collector.tokens.join(" "),
+            tokens: collector.tokens,
+        })
+    }
+}
+
+fn commit_subject_needs_diff_context(subject: &str) -> bool {
+    let lowered = subject.trim().to_ascii_lowercase();
+    lowered.starts_with("update ")
+        || lowered.starts_with("docs update ")
+        || lowered.starts_with("documentation update ")
+}
+
+#[derive(Default)]
+struct CommitDiffContextCollector {
+    seen: HashSet<String>,
+    tokens: Vec<String>,
+}
+
+impl CommitDiffContextCollector {
+    const TOKEN_LIMIT: usize = 48;
+
+    fn push_text(&mut self, text: &str) {
+        if self.tokens.len() >= Self::TOKEN_LIMIT {
+            return;
+        }
+
+        for token in tokenize(text) {
+            if is_commit_diff_context_stopword(&token) || !self.seen.insert(token.clone()) {
+                continue;
+            }
+            self.tokens.push(token);
+            if self.tokens.len() >= Self::TOKEN_LIMIT {
+                break;
+            }
+        }
+    }
+}
+
+fn is_commit_diff_context_stopword(token: &str) -> bool {
+    matches!(
+        token,
+        "else"
+            | "enum"
+            | "false"
+            | "from"
+            | "impl"
+            | "into"
+            | "none"
+            | "self"
+            | "some"
+            | "struct"
+            | "true"
+            | "use"
+    )
+}
+
 pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
     if path.is_empty() {
@@ -383,7 +611,7 @@ pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
     let name = args.get("name").and_then(|v| v.as_str());
     let normalized_path = normalize_repo_path(path);
     let is_git = git2::Repository::discover(&normalized_path).is_ok();
-    registry.add(path, name);
+    registry.add(&normalized_path, name);
     json!({
         "registered": true,
         "path": normalized_path,
@@ -840,6 +1068,115 @@ mod tests {
     }
 
     #[test]
+    fn test_handle_commit_search_returns_cached_final_response() {
+        let repo_dir = temp_file("commit-search-result-cache-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+        std::fs::write(repo_dir.join("tracked.txt"), "seed\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "initial commit",
+            &tree,
+            &[],
+        )
+        .unwrap();
+
+        let repo_key = commit_search_repo_key(&repo);
+        let head_hash = commit_search_head_hash(&repo);
+        let cached = json!({
+            "query": "release",
+            "commits": [{
+                "hash": "deadbeef1234",
+                "message": "Release v9.9.9",
+                "author": "Cache",
+                "score": 1.0
+            }],
+            "total": 1
+        });
+        commit_search_result_cache().write().insert(
+            commit_search_result_cache_key(&repo_key, &head_hash, "release", None, 5),
+            cached.clone(),
+        );
+
+        let result = handle_commit_search(
+            &json!({"query":"release","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result, cached);
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_handle_commit_search_result_cache_invalidates_on_head_change() {
+        let repo_dir = temp_file("commit-search-result-cache-head-repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+
+        std::fs::write(repo_dir.join("tracked.txt"), "seed\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let base = repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "initial import",
+                &tree,
+                &[],
+            )
+            .unwrap();
+
+        let before = handle_commit_search(
+            &json!({"query":"release","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+        assert_eq!(before["total"], 0);
+
+        std::fs::write(repo_dir.join("tracked.txt"), "release\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parent = repo.find_commit(base).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "release benchmark cache",
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+
+        let after = handle_commit_search(
+            &json!({"query":"release","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(after["total"], 1, "unexpected result: {after}");
+        assert_eq!(after["commits"][0]["message"], "release benchmark cache");
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
     fn test_handle_commit_search_falls_back_beyond_initial_scan_limit() {
         let repo_dir = temp_file("commit-search-fallback-repo");
         std::fs::create_dir_all(&repo_dir).unwrap();
@@ -917,6 +1254,72 @@ mod tests {
             "fix persistence regression in knowledge store"
         );
         assert_eq!(knowledge_result["total"], 2);
+
+        let _ = std::fs::remove_dir_all(repo_dir);
+    }
+
+    #[test]
+    fn test_handle_commit_search_matches_terse_update_commits_via_diff_context() {
+        let repo_dir = temp_file("commit-search-diff-context-repo");
+        let bm25_path = repo_dir.join("crates/contextro-engines/src");
+        std::fs::create_dir_all(&bm25_path).unwrap();
+
+        let repo = git2::Repository::init(&repo_dir).unwrap();
+        let signature = git2::Signature::now("Contextro Test", "test@example.com").unwrap();
+
+        let file = bm25_path.join("bm25.rs");
+        std::fs::write(&file, "pub fn build_query() { parse bm25 query terms }\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(Path::new("crates/contextro-engines/src/bm25.rs"))
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let base_commit = repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "initial import",
+                &tree,
+                &[],
+            )
+            .unwrap();
+
+        std::fs::write(
+            &file,
+            "pub fn build_query() { query aware confidence scoring for bm25 tokens }\n",
+        )
+        .unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(Path::new("crates/contextro-engines/src/bm25.rs"))
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parent = repo.find_commit(base_commit).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "Update crates/contextro-engines/src/bm25.rs",
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+
+        let result = handle_commit_search(
+            &json!({"query":"query aware confidence scoring","limit":5}),
+            Some(repo_dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 1, "unexpected result: {result}");
+        assert_eq!(
+            result["commits"][0]["message"],
+            "Update crates/contextro-engines/src/bm25.rs"
+        );
 
         let _ = std::fs::remove_dir_all(repo_dir);
     }
