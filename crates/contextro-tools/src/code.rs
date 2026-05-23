@@ -1340,11 +1340,51 @@ fn codebase_map_narrow_file_relevance_score(
         })
         .collect();
     if scores.is_empty() {
-        return hits.iter().map(|hit| hit.score).fold(0.0_f64, f64::max);
+        return hits.iter().map(|hit| hit.score).fold(0.0_f64, f64::max)
+            + hits
+                .first()
+                .map(|hit| codebase_map_file_owner_bonus(&hit.source_file, query_tokens))
+                .unwrap_or(0.0);
     }
 
     scores.sort_by(|a, b| b.partial_cmp(a).unwrap_or(Ordering::Equal));
-    scores.into_iter().take(2).sum()
+    scores.into_iter().take(2).sum::<f64>()
+        + hits
+            .first()
+            .map(|hit| codebase_map_file_owner_bonus(&hit.source_file, query_tokens))
+            .unwrap_or(0.0)
+}
+
+fn codebase_map_file_owner_bonus(file_path: &str, query_tokens: &[String]) -> f64 {
+    if query_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let file_stem = Path::new(file_path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("");
+    let stem_tokens = tokenize_codebase_map_text(file_stem);
+    if stem_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let overlap = query_tokens
+        .iter()
+        .filter(|term| {
+            stem_tokens.iter().any(|candidate| {
+                candidate == *term
+                    || candidate.contains(term.as_str())
+                    || term.contains(candidate.as_str())
+            })
+        })
+        .count() as f64;
+
+    if overlap == 0.0 {
+        0.0
+    } else {
+        0.12 + overlap.min(2.0) * 0.16
+    }
 }
 
 fn should_keep_codebase_map_neighbor(
@@ -1457,7 +1497,7 @@ fn detect_dominant_codebase_map_file(
         .iter()
         .map(|(file, stats)| {
             let weighted_score = if narrow_explanatory_query {
-                stats.total_score
+                stats.total_score + codebase_map_file_owner_bonus(file, query_tokens)
             } else {
                 stats.total_score
                     + stats.hit_count as f64 * 0.22
@@ -2139,16 +2179,23 @@ fn codebase_map_query_targets_product_surface(query: &str) -> bool {
 
 fn codebase_map_query_targets_engine_internals(lowered_query: &str) -> bool {
     [
+        "bm25",
         "cache",
         "cached",
         "caching",
+        "embedding",
         "evict",
         "eviction",
         "expire",
+        "hnsw",
         "expiry",
         "ttl",
         "invalidation",
         "invalidate",
+        "ivf",
+        "lancedb",
+        "model2vec",
+        "tantivy",
     ]
     .iter()
     .any(|token| lowered_query.contains(token))
@@ -5137,6 +5184,102 @@ mod tests {
             files[0]["file"],
             json!("crates/contextro-tools/src/git_tools.rs"),
             "unexpected result: {result}"
+        );
+    }
+
+    #[test]
+    fn test_search_codebase_map_prefers_engine_owner_file_for_bm25_indexing_queries() {
+        let graph = CodeGraph::new();
+        let main_file = "/tmp/contextro/crates/contextro-server/src/main.rs";
+        let bm25_file = "/tmp/contextro/crates/contextro-engines/src/bm25.rs";
+
+        graph.add_node(test_node(
+            "dispatch",
+            "dispatch",
+            main_file,
+            10,
+            "fn dispatch() { handle_index(); tool_definitions(); }",
+        ));
+        graph.add_node(test_node(
+            "handle-index",
+            "handle_index",
+            main_file,
+            44,
+            "fn handle_index() { initialize bm25 index and load search engine state }",
+        ));
+        graph.add_node(test_node(
+            "tool-definitions",
+            "tool_definitions",
+            main_file,
+            80,
+            "fn tool_definitions() { register index and search tools that rely on bm25 }",
+        ));
+
+        graph.add_node(test_node(
+            "bm25-engine",
+            "Bm25Engine",
+            bm25_file,
+            22,
+            "pub struct Bm25Engine { bm25 index reader writer schema }",
+        ));
+        graph.add_node(test_node(
+            "index-chunks",
+            "index_chunks",
+            bm25_file,
+            99,
+            "pub fn index_chunks() { build bm25 index from code chunks }",
+        ));
+        graph.add_node(test_node(
+            "build-query",
+            "build_query",
+            bm25_file,
+            180,
+            "fn build_query() { parse bm25 index query terms with tantivy }",
+        ));
+        graph.add_node(test_node(
+            "plain-query",
+            "build_plain_token_query",
+            bm25_file,
+            227,
+            "fn build_plain_token_query() { create bm25 token query for indexing terms }",
+        ));
+
+        add_call(&graph, "dispatch", "handle-index");
+        add_call(&graph, "handle-index", "index-chunks");
+        add_call(&graph, "index-chunks", "build-query");
+        add_call(&graph, "build-query", "plain-query");
+
+        let result = search_codebase_map(
+            &json!({"query":"how does BM25 indexing work"}),
+            &graph,
+            Some("/tmp/contextro"),
+        );
+
+        assert_eq!(result["total_files"], 1, "unexpected result: {result}");
+        assert_eq!(
+            result["files"][0]["file"],
+            "crates/contextro-engines/src/bm25.rs"
+        );
+        let names: Vec<&str> = result["files"][0]["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|symbol| symbol["name"].as_str())
+            .collect();
+        assert!(
+            names.contains(&"Bm25Engine"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"index_chunks"),
+            "unexpected names: {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"handle_index"),
+            "unexpected names: {:?}",
+            names
         );
     }
 
