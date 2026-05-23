@@ -21,6 +21,17 @@ pub fn handle_search(
     cache: &QueryCache,
     vector_index: &VectorIndex,
 ) -> Value {
+    handle_search_with_codebase(args, bm25, graph, cache, vector_index, None)
+}
+
+pub fn handle_search_with_codebase(
+    args: &Value,
+    bm25: &Bm25Engine,
+    graph: &CodeGraph,
+    cache: &QueryCache,
+    vector_index: &VectorIndex,
+    codebase: Option<&str>,
+) -> Value {
     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
     if query.is_empty() {
         return json!({"error": "Missing required parameter: query"});
@@ -36,6 +47,32 @@ pub fn handle_search(
         .get("language")
         .and_then(|v| v.as_str())
         .map(String::from);
+    let context_files: Vec<String> = match args.get("context_files") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        Some(Value::String(s)) => s
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => vec![],
+    };
+    let tool_cache_key = search_tool_cache_key(
+        query,
+        limit,
+        &mode,
+        language.as_deref(),
+        &context_files,
+        codebase,
+    );
+    if let Some(cached) = cache.get(&tool_cache_key) {
+        return cached;
+    }
 
     let mut results = match mode.as_str() {
         "vector" => {
@@ -89,11 +126,6 @@ pub fn handle_search(
     };
 
     // #2: Import-aware search — boost results from files connected to context_files
-    let context_files: Vec<&str> = match args.get("context_files") {
-        Some(Value::Array(arr)) => arr.iter().filter_map(|v| v.as_str()).collect(),
-        Some(Value::String(s)) => s.split(',').map(|s| s.trim()).collect(),
-        _ => vec![],
-    };
     if !context_files.is_empty() {
         for r in &mut results {
             // Boost results whose filepath shares a directory with any context file
@@ -120,13 +152,47 @@ pub fn handle_search(
     results.truncate(limit);
 
     let confidence = confidence_label(query, &results);
+    let response = build_search_response(query, limit, total, confidence, &results, codebase);
+    cache.put(&tool_cache_key, response.clone());
+    response
+}
 
+fn search_tool_cache_key(
+    query: &str,
+    limit: usize,
+    mode: &str,
+    language: Option<&str>,
+    context_files: &[String],
+    codebase: Option<&str>,
+) -> String {
+    let mut normalized_context_files = context_files.to_vec();
+    normalized_context_files.sort();
+    serde_json::json!({
+        "tool": "search",
+        "query": query,
+        "limit": limit,
+        "mode": mode,
+        "language": language.unwrap_or(""),
+        "context_files": normalized_context_files,
+        "codebase": codebase.unwrap_or(""),
+    })
+    .to_string()
+}
+
+fn build_search_response(
+    query: &str,
+    limit: usize,
+    total: usize,
+    confidence: &str,
+    results: &[SearchResult],
+    codebase: Option<&str>,
+) -> Value {
     let out: Vec<Value> = results
         .iter()
         .map(|r| {
             json!({
                 "name": r.symbol_name,
-                "file": r.filepath,
+                "file": strip_codebase_path(&r.filepath, codebase),
                 "line": r.line_start,
                 "type": r.symbol_type,
                 "score": (r.score * 10000.0).round() / 10000.0,
@@ -142,6 +208,13 @@ pub fn handle_search(
         "limit": limit,
         "truncated": total > limit,
     })
+}
+
+fn strip_codebase_path(path: &str, codebase: Option<&str>) -> String {
+    codebase
+        .and_then(|base| std::path::Path::new(path).strip_prefix(base).ok())
+        .map(|relative| relative.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string())
 }
 
 fn drop_low_confidence_noise(
@@ -1815,6 +1888,78 @@ mod tests {
                 "unexpected result for {query}: {result}"
             );
         }
+    }
+
+    #[test]
+    fn test_handle_search_returns_cached_tool_response() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+        let args = json!({
+            "query": "cached symbol",
+            "limit": 5,
+            "mode": "hybrid",
+            "context_files": ["src/main.rs", "src/lib.rs"],
+        });
+        let expected = json!({
+            "query": "cached symbol",
+            "confidence": "high",
+            "results": [{
+                "name": "CachedSymbol",
+                "file": "src/lib.rs",
+                "line": 1,
+                "type": "function",
+                "score": 1.0
+            }],
+            "total": 1,
+            "limit": 5,
+            "truncated": false
+        });
+
+        cache.put(
+            &search_tool_cache_key(
+                "cached symbol",
+                5,
+                "hybrid",
+                None,
+                &["src/lib.rs".into(), "src/main.rs".into()],
+                None,
+            ),
+            expected.clone(),
+        );
+
+        let result = handle_search(&args, &bm25, &graph, &cache, &vector);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_handle_search_with_codebase_returns_relative_file_paths() {
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[make_chunk(
+            "query-cache",
+            "cached search responses with ttl eviction",
+            "QueryCache",
+            "/repo/crates/contextro-engines/src/cache.rs",
+        )]);
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search_with_codebase(
+            &json!({"query": "QueryCache", "limit": 1, "mode": "bm25"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+            Some("/repo"),
+        );
+
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
     }
 
     #[test]
