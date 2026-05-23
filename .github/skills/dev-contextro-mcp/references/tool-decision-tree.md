@@ -22,6 +22,7 @@ Full routing table for Contextro MCP tools. Use this when the main SKILL.md tabl
 -> `search("X", mode="bm25")` - all text references including comments/docs
 
 ### "What breaks if I change X"
+-> `refactor_check("X")` - one-call definition + callers + callees + impact + risk
 -> `impact("X")` - ALWAYS before any rename/delete/signature change
 -> `find_callers("X")` - for the full caller list beyond the 20-item cap
 
@@ -54,6 +55,7 @@ Full routing table for Contextro MCP tools. Use this when the main SKILL.md tabl
 -> `session_snapshot()` - use when you need recent tool-call context or session re-entry help
 
 ### "Plan an edit"
+-> `refactor_check("X")` - start here when the edit centers on one known symbol
 -> `code(operation="edit_plan", goal="...")` - heuristic planning aid returning affected symbols/files, risks, and next steps
 -> Not a deterministic ordered edit script
 
