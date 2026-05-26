@@ -1,6 +1,7 @@
 //! Contextro MCP server binary — single compiled Rust binary.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Result;
 use contextro_core::models::SearchResult;
@@ -24,6 +25,23 @@ use state::{AppState, RepoScopeSnapshot};
 #[derive(Clone)]
 pub struct ContextroServer {
     state: Arc<AppState>,
+}
+
+#[derive(Debug, Default)]
+struct RestoreSnapshotMetrics {
+    graph_ms: f64,
+    bm25_ms: f64,
+    vector_ms: f64,
+    scope_ms: f64,
+    total_ms: f64,
+}
+
+fn round_ms(ms: f64) -> f64 {
+    (ms * 10.0).round() / 10.0
+}
+
+fn set_ms_field(response: &mut Value, key: &str, ms: f64) {
+    response[key] = json!(round_ms(ms));
 }
 
 impl ContextroServer {
@@ -292,12 +310,14 @@ impl ContextroServer {
             });
         }
 
-        contextro_tools::search::handle_search(
+        let codebase = self.state.codebase_path.read().clone();
+        contextro_tools::search::handle_search_with_codebase(
             args,
             &self.state.bm25,
             &self.state.graph,
             &self.state.query_cache,
             &self.state.vector_index,
+            codebase.as_deref(),
         )
     }
 
@@ -306,6 +326,7 @@ impl ContextroServer {
     }
 
     fn handle_index_internal(&self, args: &Value, prewarm_commit_search: bool) -> Value {
+        let request_start = Instant::now();
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         if path.is_empty() {
             return json!({"error": "Missing required parameter: path"});
@@ -324,7 +345,7 @@ impl ContextroServer {
 
         // #1: Incremental re-indexing — check if files changed since last index
         let files = contextro_indexing::discover_files(requested_path_ref, &settings);
-        let current_hashes = contextro_indexing::hash_files(&files);
+        let current_hashes = contextro_indexing::fingerprint_files(&files);
         let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
         let (added, modified, deleted) =
             contextro_indexing::diff_file_states(&current_hashes, &stored_hashes);
@@ -342,6 +363,7 @@ impl ContextroServer {
         ) {
             return json!({
                 "status": "done",
+                "index_mode": "skipped",
                 "message": "No files changed since last index.",
                 "total_files": files.len(),
                 "total_symbols": self.state.graph.node_count(),
@@ -350,11 +372,12 @@ impl ContextroServer {
                 "incremental": {"files_added": 0, "files_modified": 0, "files_deleted": 0, "files_unchanged": files.len()},
                 "graph_nodes": self.state.graph.node_count(),
                 "graph_relationships": self.state.graph.relationship_count(),
+                "request_ms": round_ms(request_start.elapsed().as_secs_f64() * 1000.0),
             });
         }
 
         if is_incremental && changed_count == 0 {
-            if let Some(snapshot) = self.load_valid_repo_snapshot(&requested_path) {
+            if let Some(snapshot) = self.load_repo_snapshot_if_hashes_match(&requested_path) {
                 if let Some(previous_active) = loaded_codebase
                     .as_deref()
                     .map(normalize_repo_dir)
@@ -363,13 +386,25 @@ impl ContextroServer {
                     self.remember_repo_scope(previous_active, requested_path.clone());
                 }
 
-                let mut resp = self.restore_repo_snapshot(&requested_path, &snapshot);
+                let (mut resp, restore_metrics) =
+                    self.restore_repo_snapshot(&requested_path, &snapshot);
                 resp["total_files"] = json!(files.len());
                 resp["message"] = json!("Restored from persisted repo snapshot.");
-                if prewarm_commit_search {
-                    maybe_prewarm_commit_search_cache(&requested_path);
-                }
+                resp["index_mode"] = json!("restored");
+                let knowledge_start = Instant::now();
                 let kb_populated = auto_populate_knowledge(&requested_path, &self.state.knowledge);
+                let knowledge_ms = knowledge_start.elapsed().as_secs_f64() * 1000.0;
+                set_ms_field(&mut resp, "graph_ms", restore_metrics.graph_ms);
+                set_ms_field(&mut resp, "bm25_ms", restore_metrics.bm25_ms);
+                set_ms_field(&mut resp, "vector_ms", restore_metrics.vector_ms);
+                set_ms_field(&mut resp, "scope_ms", restore_metrics.scope_ms);
+                set_ms_field(&mut resp, "knowledge_ms", knowledge_ms);
+                set_ms_field(&mut resp, "restore_ms", restore_metrics.total_ms);
+                set_ms_field(
+                    &mut resp,
+                    "request_ms",
+                    request_start.elapsed().as_secs_f64() * 1000.0,
+                );
                 if kb_populated > 0 {
                     resp["knowledge_docs_indexed"] = serde_json::json!(kb_populated);
                 }
@@ -378,23 +413,25 @@ impl ContextroServer {
         }
 
         match pipeline.index(requested_path_ref) {
-            Ok((result, symbols)) => {
+            Ok((result, symbols, mut chunks)) => {
+                let graph_start = Instant::now();
                 self.state.graph.clear();
                 self.state.build_graph(&symbols);
                 self.state.graph.compute_pagerank();
-
-                // Index chunks into the shared BM25 engine
-                let mut chunks = contextro_indexing::create_chunks(&symbols);
+                let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Save hashes for next incremental run
                 contextro_indexing::save_hashes(&current_hashes, &storage_dir);
+                let bm25_start = Instant::now();
                 self.state.bm25.clear();
                 self.state.bm25.index_chunks(&chunks);
+                let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
                 self.state
                     .chunk_count
                     .store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
 
                 // Populate vector index
+                let vector_start = Instant::now();
                 self.state.vector_index.clear();
                 let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
                 if should_build_vector_index(texts.len()) {
@@ -420,15 +457,19 @@ impl ContextroServer {
                         }
                     }
                 }
+                let vector_ms = vector_start.elapsed().as_secs_f64() * 1000.0;
+                let total_chunks = chunks.len();
 
+                let snapshot_start = Instant::now();
                 self.state.persist_repo_snapshot(
                     &requested_path,
-                    &RepoScopeSnapshot {
-                        symbols: symbols.clone(),
-                        chunks: chunks.clone(),
+                    RepoScopeSnapshot {
+                        symbols,
+                        chunks,
                         graph: self.state.graph.snapshot(),
                     },
                 );
+                let snapshot_ms = snapshot_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Swap in the persistent BM25 engine
                 if let Some(previous_active) = loaded_codebase
@@ -439,27 +480,46 @@ impl ContextroServer {
                     self.remember_repo_scope(previous_active, requested_path.clone());
                 }
 
+                let scope_start = Instant::now();
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(requested_path.clone());
                 self.state.query_cache.invalidate();
                 self.state.knowledge.set_active_scope(Some(&requested_path));
                 self.state.persist_repo_scope_state();
+                let scope_ms = scope_start.elapsed().as_secs_f64() * 1000.0;
+
+                let prewarm_start = Instant::now();
                 if prewarm_commit_search {
                     maybe_prewarm_commit_search_cache(&requested_path);
                 }
+                let prewarm_ms = prewarm_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Auto-populate knowledge base with project docs
+                let knowledge_start = Instant::now();
                 let kb_populated = auto_populate_knowledge(&requested_path, &self.state.knowledge);
+                let knowledge_ms = knowledge_start.elapsed().as_secs_f64() * 1000.0;
 
                 let mut resp = json!({
                     "status": "done",
+                    "index_mode": "fresh",
                     "total_files": result.total_files,
                     "total_symbols": result.total_symbols,
-                    "total_chunks": chunks.len(),
+                    "total_chunks": total_chunks,
                     "graph_nodes": self.state.graph.node_count(),
                     "graph_relationships": self.state.graph.relationship_count(),
                     "vector_chunks": self.state.vector_index.len(),
                     "time_seconds": (result.time_seconds * 100.0).round() / 100.0,
+                    "discover_ms": round_ms(result.discover_ms),
+                    "parse_ms": round_ms(result.parse_ms),
+                    "chunk_ms": round_ms(result.chunk_ms),
+                    "graph_ms": round_ms(graph_ms),
+                    "bm25_ms": round_ms(bm25_ms),
+                    "vector_ms": round_ms(vector_ms),
+                    "snapshot_ms": round_ms(snapshot_ms),
+                    "scope_ms": round_ms(scope_ms),
+                    "prewarm_ms": round_ms(prewarm_ms),
+                    "knowledge_ms": round_ms(knowledge_ms),
+                    "request_ms": round_ms(request_start.elapsed().as_secs_f64() * 1000.0),
                 });
                 if is_incremental {
                     resp["incremental"] = json!({
@@ -600,7 +660,7 @@ impl ContextroServer {
     fn repo_snapshot_matches_disk(path: &str) -> bool {
         let settings = get_settings().read().clone();
         let files = contextro_indexing::discover_files(std::path::Path::new(path), &settings);
-        let current_hashes = contextro_indexing::hash_files(&files);
+        let current_hashes = contextro_indexing::fingerprint_files(&files);
         let storage_dir = contextro_config::project_storage_dir(path);
         let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
         if stored_hashes.is_empty() {
@@ -612,7 +672,13 @@ impl ContextroServer {
         added.is_empty() && modified.is_empty() && deleted.is_empty()
     }
 
-    fn restore_repo_snapshot(&self, path: &str, snapshot: &RepoScopeSnapshot) -> Value {
+    fn restore_repo_snapshot(
+        &self,
+        path: &str,
+        snapshot: &RepoScopeSnapshot,
+    ) -> (Value, RestoreSnapshotMetrics) {
+        let restore_start = Instant::now();
+        let graph_start = Instant::now();
         self.state.graph.clear();
         if snapshot.graph.is_empty() {
             self.state.build_graph(&snapshot.symbols);
@@ -620,13 +686,17 @@ impl ContextroServer {
         } else {
             self.state.graph.restore_snapshot(&snapshot.graph);
         }
+        let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
 
+        let bm25_start = Instant::now();
         self.state.bm25.clear();
         self.state.bm25.index_chunks(&snapshot.chunks);
+        let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
         self.state
             .chunk_count
             .store(snapshot.chunks.len(), std::sync::atomic::Ordering::Relaxed);
 
+        let vector_start = Instant::now();
         self.state.vector_index.clear();
         for chunk in &snapshot.chunks {
             if chunk.vector.is_empty() {
@@ -649,14 +719,17 @@ impl ContextroServer {
                 },
             );
         }
+        let vector_ms = vector_start.elapsed().as_secs_f64() * 1000.0;
 
+        let scope_start = Instant::now();
         *self.state.indexed.write() = true;
         *self.state.codebase_path.write() = Some(path.to_string());
         self.state.query_cache.invalidate();
         self.state.knowledge.set_active_scope(Some(path));
         self.state.persist_repo_scope_state();
+        let scope_ms = scope_start.elapsed().as_secs_f64() * 1000.0;
 
-        json!({
+        let response = json!({
             "status": "done",
             "message": "Restored from cached repo snapshot.",
             "total_symbols": snapshot.symbols.len(),
@@ -665,12 +738,23 @@ impl ContextroServer {
             "graph_relationships": self.state.graph.relationship_count(),
             "vector_chunks": self.state.vector_index.len(),
             "restored_from_cache": true,
-        })
+        });
+
+        (
+            response,
+            RestoreSnapshotMetrics {
+                graph_ms,
+                bm25_ms,
+                vector_ms,
+                scope_ms,
+                total_ms: restore_start.elapsed().as_secs_f64() * 1000.0,
+            },
+        )
     }
 
     fn try_restore_cached_repo_scope(&self, path: &str) -> Option<Value> {
         let snapshot = self.load_valid_repo_snapshot(path)?;
-        Some(self.restore_repo_snapshot(path, &snapshot))
+        Some(self.restore_repo_snapshot(path, &snapshot).0)
     }
 
     fn load_valid_repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
@@ -687,6 +771,17 @@ impl ContextroServer {
             self.state.prune_repo_snapshot(path);
             return None;
         }
+        self.state
+            .remember_repo_snapshot(path.to_string(), snapshot.clone());
+        Some(snapshot)
+    }
+
+    fn load_repo_snapshot_if_hashes_match(&self, path: &str) -> Option<RepoScopeSnapshot> {
+        if let Some(snapshot) = self.state.repo_snapshot(path) {
+            return Some(snapshot);
+        }
+
+        let snapshot = self.state.load_persisted_repo_snapshot(path)?;
         self.state
             .remember_repo_snapshot(path.to_string(), snapshot.clone());
         Some(snapshot)
@@ -1318,13 +1413,6 @@ impl Default for ContextroServer {
 /// Scan `root` for project documentation files and add them to the knowledge store.
 /// Returns the number of documents indexed. Does nothing if the KB already has content.
 fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeStore) -> usize {
-    if knowledge
-        .show()
-        .into_iter()
-        .any(|summary| summary.chunks > 0)
-    {
-        return 0; // KB already has content; don't overwrite
-    }
     let candidates = [
         "README.md",
         "README.txt",
@@ -1335,6 +1423,9 @@ fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeSto
         "docs/index.md",
         "CONTRIBUTING.md",
     ];
+    if candidates.iter().any(|name| knowledge.contains(name)) {
+        return 0; // KB already has seeded docs for this scope; don't overwrite
+    }
     let mut count = 0;
     for name in &candidates {
         let p = std::path::Path::new(root).join(name);
@@ -2037,11 +2128,14 @@ mod tests {
         let restored =
             restored_server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
         assert_eq!(restored["status"], "done");
+        assert_eq!(restored["index_mode"], "restored");
         assert_eq!(restored["restored_from_cache"], true);
         assert_eq!(
             restored["message"],
             "Restored from persisted repo snapshot."
         );
+        assert!(restored["restore_ms"].as_f64().unwrap_or(0.0) >= 0.0);
+        assert!(restored["request_ms"].as_f64().unwrap_or(0.0) >= 0.0);
 
         let search = restored_server.handle_search(&json!({"query": "persisted_snapshot_symbol"}));
         let results = search["results"].as_array().expect("results array");
@@ -2073,7 +2167,10 @@ mod tests {
         let restored =
             restored_server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
         assert_eq!(restored["status"], "done");
+        assert_eq!(restored["index_mode"], "fresh");
         assert_ne!(restored.get("restored_from_cache"), Some(&json!(true)));
+        assert!(restored["graph_ms"].as_f64().unwrap_or(0.0) >= 0.0);
+        assert!(restored["request_ms"].as_f64().unwrap_or(0.0) >= 0.0);
 
         let fresh_search =
             restored_server.handle_search(&json!({"query": "fresh_snapshot_symbol"}));
@@ -2115,7 +2212,7 @@ mod tests {
         snapshot.graph = contextro_engines::graph::GraphSnapshot::default();
 
         server.clear_active_scope();
-        let restored = server.restore_repo_snapshot(&normalized_repo, &snapshot);
+        let restored = server.restore_repo_snapshot(&normalized_repo, &snapshot).0;
         assert_eq!(restored["status"], "done");
         assert_eq!(restored["restored_from_cache"], true);
 
@@ -2140,6 +2237,7 @@ mod tests {
         let result = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
 
         assert_eq!(result["status"], "done");
+        assert_eq!(result["index_mode"], "fresh");
         assert_eq!(result["total_chunks"], 1);
         assert_eq!(result["vector_chunks"], 0);
 

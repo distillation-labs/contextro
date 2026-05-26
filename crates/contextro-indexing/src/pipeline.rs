@@ -28,6 +28,12 @@ pub struct IndexResult {
     pub files_added: usize,
     pub files_modified: usize,
     pub files_deleted: usize,
+    #[serde(default)]
+    pub discover_ms: f64,
+    #[serde(default)]
+    pub parse_ms: f64,
+    #[serde(default)]
+    pub chunk_ms: f64,
 }
 
 /// Orchestrates the full indexing flow.
@@ -48,24 +54,36 @@ impl IndexingPipeline {
     pub fn index(
         &self,
         codebase_path: &Path,
-    ) -> Result<(IndexResult, Vec<Symbol>), ContextroError> {
+    ) -> Result<
+        (
+            IndexResult,
+            Vec<Symbol>,
+            Vec<contextro_core::models::CodeChunk>,
+        ),
+        ContextroError,
+    > {
         let start = Instant::now();
 
         // Step 1: Discover files
+        let discover_start = Instant::now();
         let files = discover_files(codebase_path, &self.settings);
+        let discover_ms = discover_start.elapsed().as_secs_f64() * 1000.0;
         info!("Discovered {} files in {:?}", files.len(), codebase_path);
 
         if files.is_empty() {
             return Ok((
                 IndexResult {
                     time_seconds: start.elapsed().as_secs_f64(),
+                    discover_ms,
                     ..Default::default()
                 },
+                vec![],
                 vec![],
             ));
         }
 
         // Step 2: Parse symbols in parallel
+        let parse_start = Instant::now();
         let results: Vec<_> = files
             .par_iter()
             .map(|path| {
@@ -73,6 +91,7 @@ impl IndexingPipeline {
                 self.parser.parse_file(&path_str)
             })
             .collect();
+        let parse_ms = parse_start.elapsed().as_secs_f64() * 1000.0;
 
         let mut all_symbols = Vec::new();
         let mut parse_errors = 0;
@@ -91,7 +110,9 @@ impl IndexingPipeline {
         }
 
         // Step 3: Create chunks
+        let chunk_start = Instant::now();
         let chunks = create_chunks(&all_symbols);
+        let chunk_ms = chunk_start.elapsed().as_secs_f64() * 1000.0;
 
         let elapsed = start.elapsed().as_secs_f64();
         info!(
@@ -108,10 +129,13 @@ impl IndexingPipeline {
             total_chunks: chunks.len(),
             parse_errors,
             time_seconds: elapsed,
+            discover_ms,
+            parse_ms,
+            chunk_ms,
             ..Default::default()
         };
 
-        Ok((result, all_symbols))
+        Ok((result, all_symbols, chunks))
     }
 }
 
@@ -133,12 +157,13 @@ mod tests {
 
         let settings = Settings::default();
         let pipeline = IndexingPipeline::new(settings);
-        let (result, symbols) = pipeline.index(&tmp).unwrap();
+        let (result, symbols, chunks) = pipeline.index(&tmp).unwrap();
 
         assert_eq!(result.total_files, 1);
         assert!(result.total_symbols >= 1);
         assert!(result.total_chunks >= 1);
         assert!(!symbols.is_empty());
+        assert!(!chunks.is_empty());
 
         fs::remove_dir_all(tmp).ok();
     }

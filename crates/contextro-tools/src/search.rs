@@ -21,6 +21,17 @@ pub fn handle_search(
     cache: &QueryCache,
     vector_index: &VectorIndex,
 ) -> Value {
+    handle_search_with_codebase(args, bm25, graph, cache, vector_index, None)
+}
+
+pub fn handle_search_with_codebase(
+    args: &Value,
+    bm25: &Bm25Engine,
+    graph: &CodeGraph,
+    cache: &QueryCache,
+    vector_index: &VectorIndex,
+    codebase: Option<&str>,
+) -> Value {
     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
     if query.is_empty() {
         return json!({"error": "Missing required parameter: query"});
@@ -36,6 +47,44 @@ pub fn handle_search(
         .get("language")
         .and_then(|v| v.as_str())
         .map(String::from);
+    let context_files: Vec<String> = match args.get("context_files") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        Some(Value::String(s)) => s
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => vec![],
+    };
+    let tool_cache_key = search_tool_cache_key(
+        query,
+        limit,
+        &mode,
+        language.as_deref(),
+        &context_files,
+        codebase,
+    );
+    if let Some(cached) = cache.get(&tool_cache_key) {
+        return cached;
+    }
+
+    if let Some(exact_symbol_response) = exact_symbol_search_response(
+        query,
+        limit,
+        &mode,
+        language.as_deref(),
+        graph,
+        codebase,
+    ) {
+        cache.put(&tool_cache_key, exact_symbol_response.clone());
+        return exact_symbol_response;
+    }
 
     let mut results = match mode.as_str() {
         "vector" => {
@@ -89,11 +138,6 @@ pub fn handle_search(
     };
 
     // #2: Import-aware search — boost results from files connected to context_files
-    let context_files: Vec<&str> = match args.get("context_files") {
-        Some(Value::Array(arr)) => arr.iter().filter_map(|v| v.as_str()).collect(),
-        Some(Value::String(s)) => s.split(',').map(|s| s.trim()).collect(),
-        _ => vec![],
-    };
     if !context_files.is_empty() {
         for r in &mut results {
             // Boost results whose filepath shares a directory with any context file
@@ -120,13 +164,115 @@ pub fn handle_search(
     results.truncate(limit);
 
     let confidence = confidence_label(query, &results);
+    let response = build_search_response(query, limit, total, confidence, &results, codebase);
+    cache.put(&tool_cache_key, response.clone());
+    response
+}
 
+fn exact_symbol_search_response(
+    query: &str,
+    limit: usize,
+    mode: &str,
+    language: Option<&str>,
+    graph: &CodeGraph,
+    codebase: Option<&str>,
+) -> Option<Value> {
+    if !matches!(mode, "hybrid" | "bm25") {
+        return None;
+    }
+    if !is_exact_symbol_lookup_query(query) {
+        return None;
+    }
+
+    let results = exact_symbol_graph_results(query, limit, language, graph);
+    if results.is_empty() {
+        return None;
+    }
+
+    let confidence = confidence_label(query, &results);
+    Some(build_search_response(
+        query,
+        limit,
+        results.len(),
+        confidence,
+        &results,
+        codebase,
+    ))
+}
+
+fn exact_symbol_graph_results(
+    query: &str,
+    limit: usize,
+    language: Option<&str>,
+    graph: &CodeGraph,
+) -> Vec<SearchResult> {
+    let mut results: Vec<SearchResult> = graph
+        .find_nodes_by_name(query, true)
+        .into_iter()
+        .map(|node| {
+            let (in_degree, out_degree) = graph.get_node_degree(&node.id);
+            let connectivity_bonus = ((in_degree + out_degree) as f64).min(8.0) * 0.01;
+            SearchResult {
+                id: node.id,
+                filepath: node.location.file_path,
+                symbol_name: node.name,
+                symbol_type: node.node_type.to_string(),
+                language: node.language,
+                line_start: node.location.start_line,
+                line_end: node.location.end_line,
+                score: (0.95 + connectivity_bonus).min(0.99),
+                code: String::new(),
+                signature: String::new(),
+                match_sources: vec!["graph".into(), "exact".into()],
+            }
+        })
+        .collect();
+    results = filter_results_by_language(results, language);
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(limit);
+    results
+}
+
+fn search_tool_cache_key(
+    query: &str,
+    limit: usize,
+    mode: &str,
+    language: Option<&str>,
+    context_files: &[String],
+    codebase: Option<&str>,
+) -> String {
+    let mut normalized_context_files = context_files.to_vec();
+    normalized_context_files.sort();
+    serde_json::json!({
+        "tool": "search",
+        "query": query,
+        "limit": limit,
+        "mode": mode,
+        "language": language.unwrap_or(""),
+        "context_files": normalized_context_files,
+        "codebase": codebase.unwrap_or(""),
+    })
+    .to_string()
+}
+
+fn build_search_response(
+    query: &str,
+    limit: usize,
+    total: usize,
+    confidence: &str,
+    results: &[SearchResult],
+    codebase: Option<&str>,
+) -> Value {
     let out: Vec<Value> = results
         .iter()
         .map(|r| {
             json!({
                 "name": r.symbol_name,
-                "file": r.filepath,
+                "file": strip_codebase_path(&r.filepath, codebase),
                 "line": r.line_start,
                 "type": r.symbol_type,
                 "score": (r.score * 10000.0).round() / 10000.0,
@@ -142,6 +288,13 @@ pub fn handle_search(
         "limit": limit,
         "truncated": total > limit,
     })
+}
+
+fn strip_codebase_path(path: &str, codebase: Option<&str>) -> String {
+    codebase
+        .and_then(|base| std::path::Path::new(path).strip_prefix(base).ok())
+        .map(|relative| relative.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string())
 }
 
 fn drop_low_confidence_noise(
@@ -829,6 +982,16 @@ fn is_symbol_lookup_query(query: &str) -> bool {
     !trimmed.is_empty() && trimmed.split_whitespace().count() == 1
 }
 
+fn is_exact_symbol_lookup_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    is_symbol_lookup_query(trimmed)
+        && trimmed.len() >= 3
+        && !trimmed.ends_with("()")
+        && !trimmed.contains('*')
+        && !trimmed.contains('?')
+        && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric())
+}
+
 fn query_explicitly_targets_tests(query: &str) -> bool {
     let lowered = query.to_ascii_lowercase();
     ["test", "tests", "pytest", "spec", "fixture"]
@@ -1206,7 +1369,9 @@ fn is_high_confidence_exact_symbol_hit(query: &str, result: &SearchResult) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use contextro_core::graph::{UniversalLocation, UniversalNode};
     use contextro_core::models::CodeChunk;
+    use contextro_core::NodeType;
     use contextro_engines::bm25::Bm25Engine;
     use contextro_engines::cache::QueryCache;
     use contextro_engines::graph::CodeGraph;
@@ -1261,6 +1426,24 @@ mod tests {
         let mut result = make_named_result(id, symbol_name, filepath, score, sources);
         result.language = language.into();
         result
+    }
+
+    fn make_graph_node(id: &str, name: &str, filepath: &str, language: &str) -> UniversalNode {
+        UniversalNode {
+            id: id.into(),
+            name: name.into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: filepath.into(),
+                start_line: 1,
+                end_line: 1,
+                start_column: 0,
+                end_column: 0,
+                language: language.into(),
+            },
+            language: language.into(),
+            ..Default::default()
+        }
     }
 
     fn make_chunk(id: &str, text: &str, name: &str, filepath: &str) -> CodeChunk {
@@ -1818,6 +2001,78 @@ mod tests {
     }
 
     #[test]
+    fn test_handle_search_returns_cached_tool_response() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+        let args = json!({
+            "query": "cached symbol",
+            "limit": 5,
+            "mode": "hybrid",
+            "context_files": ["src/main.rs", "src/lib.rs"],
+        });
+        let expected = json!({
+            "query": "cached symbol",
+            "confidence": "high",
+            "results": [{
+                "name": "CachedSymbol",
+                "file": "src/lib.rs",
+                "line": 1,
+                "type": "function",
+                "score": 1.0
+            }],
+            "total": 1,
+            "limit": 5,
+            "truncated": false
+        });
+
+        cache.put(
+            &search_tool_cache_key(
+                "cached symbol",
+                5,
+                "hybrid",
+                None,
+                &["src/lib.rs".into(), "src/main.rs".into()],
+                None,
+            ),
+            expected.clone(),
+        );
+
+        let result = handle_search(&args, &bm25, &graph, &cache, &vector);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_handle_search_with_codebase_returns_relative_file_paths() {
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[make_chunk(
+            "query-cache",
+            "cached search responses with ttl eviction",
+            "QueryCache",
+            "/repo/crates/contextro-engines/src/cache.rs",
+        )]);
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search_with_codebase(
+            &json!({"query": "QueryCache", "limit": 1, "mode": "bm25"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+            Some("/repo"),
+        );
+
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
+    }
+
+    #[test]
     fn test_handle_search_recovers_query_cache_from_explanatory_cache_runtime_pattern() {
         let bm25 = Bm25Engine::new_in_memory();
         bm25.index_chunks(&[
@@ -2031,6 +2286,64 @@ mod tests {
         );
         assert_eq!(result["limit"], 10);
         assert_eq!(result["truncated"], false);
+    }
+
+    #[test]
+    fn test_handle_search_exact_symbol_uses_graph_without_bm25_hits() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-node",
+            "QueryCache",
+            "crates/contextro-engines/src/cache.rs",
+            "rust",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "hybrid"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(result["results"][0]["name"], "QueryCache");
+        assert_eq!(result["results"][0]["file"], "crates/contextro-engines/src/cache.rs");
+        assert_eq!(result["confidence"], "high", "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_handle_search_exact_symbol_fast_path_respects_language_filter() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-rust",
+            "QueryCache",
+            "crates/contextro-engines/src/cache.rs",
+            "rust",
+        ));
+        graph.add_node(make_graph_node(
+            "query-cache-ts",
+            "QueryCache",
+            "packages/cache/query-cache.ts",
+            "typescript",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "bm25", "language": "typescript"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        let results = result["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 1, "unexpected result: {result}");
+        assert_eq!(results[0]["file"], "packages/cache/query-cache.ts");
     }
 
     #[test]

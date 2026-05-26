@@ -4,6 +4,19 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.19] - 2026-05-25
+
+### Fixed
+
+- **Exact-symbol `search()` is much faster and more precise on indexed repos** - exact identifier-style queries in `hybrid` and `bm25` modes now short-circuit through graph exact-name lookup, preserve language filtering, and keep the rich response payload instead of paying the broader ranking path when it is not needed.
+- **Incremental no-change checks and persisted-snapshot writes are cheaper on hot paths** - unchanged-repo detection now uses metadata fingerprints instead of full content hashes, persisted repo snapshots stream a leaner symbols-and-chunks payload to disk, and restore flows report honest timing breakdowns without rescanning the repo twice.
+- **Indexing diagnostics and release benchmarks now reflect real work instead of blended warm-cache behavior** - the indexing pipeline reports discover/parse/chunk timings, `index(path)` surfaces fresh/restore/skip modes plus graph/BM25/vector/snapshot/scope/docs/request timings, and `contextro-bench` measures true cold-index rebuilds while labeling first fresh runs versus restores.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are stronger now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
 ## [1.6.18] - 2026-05-22
 
 ### Fixed

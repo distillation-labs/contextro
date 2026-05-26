@@ -138,9 +138,9 @@ impl AppState {
         self.repo_snapshots.write().insert(path, snapshot);
     }
 
-    pub fn persist_repo_snapshot(&self, path: &str, snapshot: &RepoScopeSnapshot) {
-        self.remember_repo_snapshot(path.to_string(), snapshot.clone());
-        save_repo_snapshot(&repo_snapshot_path(path), snapshot);
+    pub fn persist_repo_snapshot(&self, path: &str, snapshot: RepoScopeSnapshot) {
+        save_repo_snapshot(&repo_snapshot_path(path), &snapshot);
+        self.remember_repo_snapshot(path.to_string(), snapshot);
     }
 
     pub fn repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
@@ -266,12 +266,24 @@ fn save_repo_scope_state(path: &Path, state: &PersistedRepoScopeState) {
 }
 
 fn save_repo_snapshot(path: &Path, snapshot: &RepoScopeSnapshot) {
+    #[derive(Serialize)]
+    struct PersistedRepoScopeSnapshot<'a> {
+        symbols: &'a [Symbol],
+        chunks: &'a [CodeChunk],
+    }
+
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     let tmp_path = path.with_extension("json.tmp");
-    if let Ok(bytes) = serde_json::to_vec(snapshot) {
-        if std::fs::write(&tmp_path, bytes).is_ok() {
+    if let Ok(file) = std::fs::File::create(&tmp_path) {
+        let mut writer = std::io::BufWriter::new(file);
+        let persisted = PersistedRepoScopeSnapshot {
+            symbols: &snapshot.symbols,
+            chunks: &snapshot.chunks,
+        };
+        use std::io::Write;
+        if serde_json::to_writer(&mut writer, &persisted).is_ok() && writer.flush().is_ok() {
             let _ = std::fs::rename(&tmp_path, path);
         }
     }
@@ -387,7 +399,7 @@ mod tests {
             graph: state.graph.snapshot(),
         };
 
-        state.persist_repo_snapshot(repo_path.to_string_lossy().as_ref(), &snapshot);
+        state.persist_repo_snapshot(repo_path.to_string_lossy().as_ref(), snapshot);
 
         let restored = state
             .load_persisted_repo_snapshot(repo_path.to_string_lossy().as_ref())
@@ -397,7 +409,7 @@ mod tests {
         assert_eq!(restored.symbols[0].name, "snapshot_symbol");
         assert_eq!(restored.chunks.len(), 1);
         assert_eq!(restored.chunks[0].vector, vec![0.1, 0.2, 0.3]);
-        assert!(!restored.graph.is_empty());
+        assert!(restored.graph.is_empty());
 
         let _ = fs::remove_dir_all(storage_dir);
         let _ = fs::remove_dir_all(contextro_config::project_storage_dir(

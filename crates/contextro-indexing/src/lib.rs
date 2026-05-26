@@ -7,5 +7,7 @@ pub mod pipeline;
 
 pub use chunker::create_chunks;
 pub use embedding::{embed, embed_batch};
-pub use file_scanner::{diff_file_states, discover_files, hash_files, load_hashes, save_hashes};
+pub use file_scanner::{
+    diff_file_states, discover_files, fingerprint_files, load_hashes, save_hashes,
+};
 pub use pipeline::{IndexResult, IndexingPipeline};

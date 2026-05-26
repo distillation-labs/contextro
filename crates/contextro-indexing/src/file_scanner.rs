@@ -83,17 +83,25 @@ pub fn discover_files(root: &Path, settings: &Settings) -> Vec<PathBuf> {
     files
 }
 
-/// Compute xxHash3 content hashes for files in parallel.
-pub fn hash_files(paths: &[PathBuf]) -> Vec<(PathBuf, String)> {
+/// Compute file-state fingerprints for files in parallel.
+///
+/// These fingerprints are used only for incremental change detection, so we
+/// prefer fast metadata-derived signatures over full content reads.
+pub fn fingerprint_files(paths: &[PathBuf]) -> Vec<(PathBuf, String)> {
     use rayon::prelude::*;
-    use xxhash_rust::xxh3::xxh3_64;
+    use std::time::UNIX_EPOCH;
 
     paths
         .par_iter()
         .filter_map(|path| {
-            let content = std::fs::read(path).ok()?;
-            let hash = xxh3_64(&content);
-            Some((path.clone(), format!("{:016x}", hash)))
+            let metadata = std::fs::metadata(path).ok()?;
+            let modified = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0);
+            Some((path.clone(), format!("{}:{modified}", metadata.len())))
         })
         .collect()
 }
