@@ -94,15 +94,13 @@ fn get_document_symbols(args: &Value, graph: Option<&CodeGraph>, codebase: Optio
 
     let parser = TreeSitterParser::new();
     match parser.parse_file(abs_path.to_string_lossy().as_ref()) {
-        Ok(parsed) => {
-            render_parsed_document_symbols(
-                &abs_path,
-                &parsed.symbols,
-                include_signature,
-                symbol_limit,
-                codebase,
-            )
-        }
+        Ok(parsed) => render_parsed_document_symbols(
+            &abs_path,
+            &parsed.symbols,
+            include_signature,
+            symbol_limit,
+            codebase,
+        ),
         Err(e) => json!({"error": format!("Parse failed: {}", e)}),
     }
 }
@@ -575,16 +573,15 @@ fn edit_plan(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
             codebase,
             "primary",
         );
-        add_edit_plan_neighbors(
-            &mut affected_symbols,
-            &mut seen_symbol_ids,
-            &mut target_files,
-            &mut risks,
-            graph,
-            &node,
-            &goal_term_set,
-            codebase,
-        );
+        {
+            let mut outputs = EditPlanOutputs {
+                affected_symbols: &mut affected_symbols,
+                seen_symbol_ids: &mut seen_symbol_ids,
+                target_files: &mut target_files,
+                risks: &mut risks,
+            };
+            add_edit_plan_neighbors(&mut outputs, graph, &node, &goal_term_set, codebase);
+        }
 
         let (callers, _) = graph.get_node_degree(&node.id);
         if callers > 5 {
@@ -851,7 +848,7 @@ fn search_codebase_map(args: &Value, graph: &CodeGraph, codebase: Option<&str>) 
             let mut neighbors: Vec<UniversalNode> = graph
                 .get_callers(&seed_id)
                 .into_iter()
-                .chain(graph.get_callees(&seed_id).into_iter())
+                .chain(graph.get_callees(&seed_id))
                 .filter(|node| seen_neighbors.insert(node.id.clone()))
                 .collect();
             neighbors.sort_by(|a, b| {
@@ -1798,20 +1795,16 @@ fn codebase_map_subsystem_role_bias(node: &UniversalNode, targets_product_surfac
         || symbol_name.contains("guard")
     {
         0.18
-    } else if symbol_name.starts_with("is_")
+    } else if (symbol_name.starts_with("is_")
         && (symbol_name.contains("query")
             || symbol_name.contains("lookup")
-            || symbol_name.contains("symbol"))
-    {
-        0.16
-    } else if symbol_name.contains("match")
-        && (symbol_name.contains("query")
-            || symbol_name.contains("symbol")
-            || symbol_name.contains("result"))
-    {
-        0.16
-    } else if symbol_name.ends_with("_limit")
-        && (symbol_name.contains("candidate") || symbol_name.contains("result"))
+            || symbol_name.contains("symbol")))
+        || (symbol_name.contains("match")
+            && (symbol_name.contains("query")
+                || symbol_name.contains("symbol")
+                || symbol_name.contains("result")))
+        || (symbol_name.ends_with("_limit")
+            && (symbol_name.contains("candidate") || symbol_name.contains("result")))
     {
         0.16
     } else {
@@ -2047,7 +2040,7 @@ fn build_dominant_file_subsystem_nodes(
         let neighbors: Vec<UniversalNode> = graph
             .get_callers(&node_id)
             .into_iter()
-            .chain(graph.get_callees(&node_id).into_iter())
+            .chain(graph.get_callees(&node_id))
             .filter(|neighbor| {
                 neighbor.location.file_path == dominant_file
                     && seen_neighbors.insert(neighbor.id.clone())
@@ -2896,7 +2889,7 @@ fn expand_edit_plan_bridge_symbols(
         let mut neighbor_candidates: Vec<UniversalNode> = graph
             .get_callers(&primary.id)
             .into_iter()
-            .chain(graph.get_callees(&primary.id).into_iter())
+            .chain(graph.get_callees(&primary.id))
             .filter(|node| local_seen.insert(node.id.clone()))
             .collect();
         neighbor_candidates.extend(
@@ -3243,11 +3236,15 @@ fn add_edit_plan_symbol(
     }));
 }
 
+struct EditPlanOutputs<'a> {
+    affected_symbols: &'a mut Vec<Value>,
+    seen_symbol_ids: &'a mut HashSet<String>,
+    target_files: &'a mut Vec<String>,
+    risks: &'a mut Vec<String>,
+}
+
 fn add_edit_plan_neighbors(
-    affected_symbols: &mut Vec<Value>,
-    seen_symbol_ids: &mut HashSet<String>,
-    target_files: &mut Vec<String>,
-    risks: &mut Vec<String>,
+    outputs: &mut EditPlanOutputs<'_>,
     graph: &CodeGraph,
     node: &UniversalNode,
     goal_terms: &HashSet<String>,
@@ -3261,7 +3258,7 @@ fn add_edit_plan_neighbors(
     let mut neighbor_candidates: Vec<UniversalNode> = graph
         .get_callers(&node.id)
         .into_iter()
-        .chain(graph.get_callees(&node.id).into_iter())
+        .chain(graph.get_callees(&node.id))
         .filter(|neighbor| seen_neighbors.insert(neighbor.id.clone()))
         .collect();
     neighbor_candidates.extend(graph.find_nodes_by_name("", false).into_iter().filter(
@@ -3358,12 +3355,12 @@ fn add_edit_plan_neighbors(
         .take(if high_degree_anchor { 2 } else { 3 })
     {
         let file = strip_base(&neighbor.location.file_path, codebase);
-        if !target_files.contains(&file) {
-            target_files.push(file.clone());
+        if !outputs.target_files.contains(&file) {
+            outputs.target_files.push(file.clone());
         }
         add_edit_plan_symbol(
-            affected_symbols,
-            seen_symbol_ids,
+            outputs.affected_symbols,
+            outputs.seen_symbol_ids,
             graph,
             &neighbor,
             codebase,
@@ -3372,7 +3369,7 @@ fn add_edit_plan_neighbors(
 
         let (callers, _) = graph.get_node_degree(&neighbor.id);
         if callers > 5 {
-            risks.push(format!(
+            outputs.risks.push(format!(
                 "{} has {} callers — high blast radius",
                 neighbor.name, callers
             ));
@@ -3735,7 +3732,10 @@ mod tests {
 
         assert_eq!(result["symbols"][0]["name"], json!("hello"));
         assert_eq!(result["symbols"][0]["file"], json!("module.py"));
-        assert!(result["symbols"][0].get("type").is_none(), "unexpected result: {result}");
+        assert!(
+            result["symbols"][0].get("type").is_none(),
+            "unexpected result: {result}"
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -5566,7 +5566,10 @@ mod tests {
         );
 
         assert_eq!(result["total"], 30);
-        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
+        assert!(
+            result.get("truncated").is_none(),
+            "unexpected result: {result}"
+        );
         assert_eq!(result["symbols"].as_array().unwrap().len(), 30);
 
         let _ = std::fs::remove_dir_all(dir);
