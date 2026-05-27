@@ -1,6 +1,7 @@
 //! Search tool implementation.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use crate::analysis::is_test_file;
 use contextro_core::models::SearchResult;
@@ -164,7 +165,15 @@ pub fn handle_search_with_codebase(
     results.truncate(limit);
 
     let confidence = confidence_label(query, &results);
-    let response = build_search_response(query, limit, total, confidence, &results, codebase);
+    let response_codebase = resolved_search_codebase(codebase, &results);
+    let response = build_search_response(
+        query,
+        limit,
+        total,
+        confidence,
+        &results,
+        response_codebase.as_deref(),
+    );
     cache.put(&tool_cache_key, response.clone());
     response
 }
@@ -190,14 +199,53 @@ fn exact_symbol_search_response(
     }
 
     let confidence = confidence_label(query, &results);
+    let response_codebase = resolved_search_codebase(codebase, &results);
     Some(build_search_response(
         query,
         limit,
         results.len(),
         confidence,
         &results,
-        codebase,
+        response_codebase.as_deref(),
     ))
+}
+
+fn resolved_search_codebase(codebase: Option<&str>, results: &[SearchResult]) -> Option<String> {
+    codebase
+        .map(str::to_string)
+        .or_else(|| infer_search_codebase(results))
+}
+
+fn infer_search_codebase(results: &[SearchResult]) -> Option<String> {
+    let mut inferred_root: Option<PathBuf> = None;
+
+    for result in results {
+        let root = infer_repo_root(&result.filepath)?;
+        match &inferred_root {
+            Some(existing) if existing != &root => return None,
+            Some(_) => {}
+            None => inferred_root = Some(root),
+        }
+    }
+
+    inferred_root.map(|root| root.to_string_lossy().to_string())
+}
+
+fn infer_repo_root(path: &str) -> Option<PathBuf> {
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return None;
+    }
+
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if dir.join(".git").exists() {
+            return Some(std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()));
+        }
+        current = dir.parent();
+    }
+
+    None
 }
 
 fn exact_symbol_graph_results(
@@ -236,7 +284,6 @@ fn exact_symbol_graph_results(
     results.truncate(limit);
     results
 }
-
 fn search_tool_cache_key(
     query: &str,
     limit: usize,
@@ -267,27 +314,34 @@ fn build_search_response(
     results: &[SearchResult],
     codebase: Option<&str>,
 ) -> Value {
+    let include_type = !is_exact_symbol_lookup_query(query) || results.len() > 1;
     let out: Vec<Value> = results
         .iter()
         .map(|r| {
-            json!({
+            let mut entry = json!({
                 "name": r.symbol_name,
                 "file": strip_codebase_path(&r.filepath, codebase),
                 "line": r.line_start,
-                "type": r.symbol_type,
                 "score": (r.score * 10000.0).round() / 10000.0,
-            })
+            });
+            if include_type {
+                entry["type"] = json!(r.symbol_type);
+            }
+            entry
         })
         .collect();
 
-    json!({
+    let mut response = json!({
         "query": query,
         "confidence": confidence,
         "results": out,
         "total": total,
         "limit": limit,
-        "truncated": total > limit,
-    })
+    });
+    if total > limit {
+        response["truncated"] = json!(true);
+    }
+    response
 }
 
 fn strip_codebase_path(path: &str, codebase: Option<&str>) -> String {

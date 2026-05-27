@@ -411,7 +411,20 @@ mod tests {
         assert_eq!(restored.chunks[0].vector, vec![0.1, 0.2, 0.3]);
         assert!(restored.graph.is_empty());
 
+        let restore_storage_dir = temp_path("snapshot-restore-storage-dir");
+        fs::create_dir_all(&restore_storage_dir).unwrap();
+        let mut restore_settings = Settings::default();
+        restore_settings.storage_dir = restore_storage_dir.to_string_lossy().to_string();
+        let server = crate::ContextroServer::with_settings(restore_settings);
+
+        let (response, _) =
+            server.restore_repo_snapshot(repo_path.to_string_lossy().as_ref(), &restored);
+        assert_eq!(response["status"], "done");
+        assert_eq!(server.state.graph.node_count(), 1);
+        assert!(!server.state.graph.snapshot().is_empty());
+
         let _ = fs::remove_dir_all(storage_dir);
+        let _ = fs::remove_dir_all(restore_storage_dir);
         let _ = fs::remove_dir_all(contextro_config::project_storage_dir(
             repo_path.to_string_lossy().as_ref(),
         ));

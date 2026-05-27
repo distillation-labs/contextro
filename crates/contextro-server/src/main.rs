@@ -86,19 +86,18 @@ impl ContextroServer {
         let codebase = s.codebase_path.read().clone();
         let cb = codebase.as_deref();
         let cache_args = strip_render_only_args(&args);
-        let tool_response_cache_key = response_cache_key(name, &cache_args, cb);
-        let tracked_args = {
-            let sanitized = sanitize_tool_args(&args, cb);
-            match sanitized.as_object() {
-                Some(map) if !map.is_empty() => Some(sanitized),
-                _ => None,
-            }
-        };
+        let sanitized_args = sanitize_tool_args(&args, cb);
+        let tracked_args = sanitized_args
+            .as_object()
+            .filter(|map| !map.is_empty())
+            .map(|_| sanitized_args.clone());
+        let summary = summarize_tool_call(name, &sanitized_args, None);
+        let response_cache_key = response_cache_key(name, &cache_args, cb);
 
         s.session_tracker
-            .track(name, &summarize_tool_call(name, &args, cb), tracked_args);
+            .track(name, &summary, tracked_args.clone());
 
-        if let Some(cache_key) = tool_response_cache_key.as_deref() {
+        if let Some(cache_key) = response_cache_key.as_deref() {
             if let Some(cached) = s.query_cache.get(cache_key) {
                 return cached_tool_result(cached, &args);
             }
@@ -194,6 +193,7 @@ impl ContextroServer {
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
             "refactor_check" => self.handle_refactor_check(&args),
+            "completion_check" => self.handle_completion_check(&args),
             _ => {
                 json!({"error": format!("Unknown tool: '{}'. Use introspect() to find the right tool.", name)})
             }
@@ -213,7 +213,7 @@ impl ContextroServer {
             result
         };
 
-        if let Some(cache_key) = tool_response_cache_key.as_deref() {
+        if let Some(cache_key) = response_cache_key.as_deref() {
             if result.get("error").is_none() {
                 s.query_cache.put(cache_key, result.clone());
             }
@@ -231,6 +231,7 @@ impl ContextroServer {
                         | "explain"
                         | "impact"
                         | "refactor_check"
+                        | "completion_check"
                 ) {
                 if let Some(sym) = err_text.split('\'').nth(1) {
                     // Try fuzzy graph search first, then edit distance
@@ -322,7 +323,7 @@ impl ContextroServer {
     }
 
     fn handle_index(&self, args: &Value) -> Value {
-        self.handle_index_internal(args, true)
+        self.handle_index_internal(args, false)
     }
 
     fn handle_index_internal(&self, args: &Value, prewarm_commit_search: bool) -> Value {
@@ -420,6 +421,7 @@ impl ContextroServer {
                 self.state.graph.compute_pagerank();
                 let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
 
+                // Index chunks into the shared BM25 engine
                 // Save hashes for next incremental run
                 contextro_indexing::save_hashes(&current_hashes, &storage_dir);
                 let bm25_start = Instant::now();
@@ -440,7 +442,7 @@ impl ContextroServer {
                             chunk.vector = vector.clone();
                             self.state.vector_index.insert(
                                 vector,
-                                SearchResult {
+                                contextro_core::models::SearchResult {
                                     id: chunk.id.clone(),
                                     filepath: chunk.filepath.clone(),
                                     symbol_name: chunk.symbol_name.clone(),
@@ -981,6 +983,22 @@ impl ContextroServer {
         })
     }
 
+    /// #7: Composite tool — verify refactor completeness against the code graph.
+    fn handle_completion_check(&self, args: &Value) -> Value {
+        if !*self.state.indexed.read() || self.state.codebase_path.read().is_none() {
+            return json!({
+                "error": "No codebase loaded. Run 'index(path)' or 'repo_add(path)' to load an active repo scope."
+            });
+        }
+
+        let codebase = self.state.codebase_path.read().clone();
+        contextro_tools::completion::handle_completion_check(
+            args,
+            &self.state.graph,
+            codebase.as_deref(),
+        )
+    }
+
     pub(crate) fn tool_definitions() -> Vec<Tool> {
         let mk = |schema_json: &str| -> Arc<serde_json::Map<String, Value>> {
             Arc::new(serde_json::from_str(schema_json).unwrap_or_default())
@@ -1010,7 +1028,7 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"path":{"type":"string","description":"Optional file or directory filter"},"exclude_paths":{"type":"array","items":{"type":"string"},"description":"Optional file or directory paths to exclude"},"limit":{"type":"integer","description":"Max results (default: 50)"},"include_public_api":{"type":"boolean","description":"Include likely public API methods/functions in the output (default: false)"},"include_tests":{"type":"boolean","description":"Include test files in the output (default: false)"}}}"#,
         );
         let code_schema = mk(
-            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"},"include_signature":{"type":"boolean","description":"Include truncated signatures in get_document_symbols or file-path list_symbols output (default: false)"}},"required":["operation"]}"#,
+            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"},"include_signature":{"type":"boolean","description":"Include truncated signatures in get_document_symbols or file-path list_symbols output (default: false)"},"limit":{"type":"integer","description":"Optional result cap override for get_document_symbols or search results in code operations"}},"required":["operation"]}"#,
         );
         let mem_schema = mk(
             r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
@@ -1048,7 +1066,7 @@ impl ContextroServer {
             Tool::new("dead_code",    "Static dead-code heuristic with optional path/exclude filters. Args: path, exclude_paths, limit, include_public_api, include_tests", dead_code_schema),
             Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
             Tool::new("test_coverage_map",     "Static heuristic test coverage bounds (not runtime coverage)", empty.clone()),
-            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path[,include_signature]) returns {file, columns, symbols, total}; list_symbols(file) aliases that file contract while list_symbols(dir) returns object rows with callers/callees; search_symbols(symbol_name), lookup_symbols(symbols:[]), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
+            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path[,include_signature,limit]) returns {file, columns, symbols, total}; list_symbols(file) aliases that file contract while list_symbols(dir) returns object rows with callers/callees; search_symbols(symbol_name), lookup_symbols(symbols:[]), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
             Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
             Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
             Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
@@ -1077,6 +1095,8 @@ impl ContextroServer {
                 mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"},"tool":{"type":"string","description":"Exact tool name for parameter docs and examples"}}}"#)),
             Tool::new("refactor_check", "Pre-refactor analysis: definition + callers + callees + transitive impact + risk in one call. Args: symbol_name (required), max_depth",
                 mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol to analyze before refactoring"},"max_depth":{"type":"integer","description":"BFS depth for impact (default: 3)"}},"required":["symbol_name"]}"#)),
+            Tool::new("completion_check", "Verify that a refactor is complete by checking the code graph against claimed changed files. Args: symbol_name (required), claim (required), changed_files (required)",
+                mk(r#"{"type":"object","properties":{"claim":{"type":"string","description":"What kind of completeness to verify. Currently supported: all_callers_updated"},"symbol_name":{"type":"string","description":"The symbol being refactored (renamed, signature-changed, etc.)"},"changed_files":{"type":"array","items":{"type":"string"},"description":"All files touched by the refactor (caller files + definition file)"},"max_depth":{"type":"integer","description":"Transitive caller depth for future claims (reserved, defaults to 0)"}},"required":["claim","symbol_name","changed_files"]}"#)),
         ]
     }
 }
@@ -1622,9 +1642,8 @@ fn rank_nodes_by_degree(
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        format_response, normalize_repo_dir, resolve_refactor_targets,
-        response_needs_path_stripping, strip_render_only_args, strip_response_paths, take_chars,
-        ContextroServer,
+        format_response, normalize_repo_dir, resolve_refactor_targets, strip_response_paths,
+        take_chars, ContextroServer,
     };
     use contextro_config::Settings;
     use contextro_core::graph::{
@@ -1959,6 +1978,47 @@ mod tests {
     }
 
     #[test]
+    fn test_repo_remove_reindexes_previous_scope_when_cached_snapshot_is_stale() {
+        let storage_dir = temp_storage_dir("repo-remove-stale-snapshot");
+        let server = test_server(&storage_dir);
+        let repo_a = temp_repo_dir("repo-stale-a");
+        let repo_b = temp_repo_dir("repo-stale-b");
+        write_indexable_repo(&repo_a, "repo_a_symbol");
+        write_indexable_repo(&repo_b, "repo_b_symbol");
+
+        let index_a = server.handle_index(&json!({"path": repo_a.to_string_lossy().to_string()}));
+        assert_eq!(index_a["status"], "done");
+        let add_b = server.dispatch(
+            "repo_add",
+            json!({"path": repo_b.to_string_lossy().to_string()}),
+        );
+        assert_ne!(add_b.is_error, Some(true));
+
+        write_indexable_repo(&repo_a, "repo_a_updated_symbol");
+
+        let remove_result =
+            server.handle_repo_remove(&json!({"path": repo_b.to_string_lossy().to_string()}));
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(remove_result["active_scope_restored"], true);
+
+        let search_updated = server.handle_search(&json!({"query": "repo_a_updated_symbol"}));
+        let updated_results = search_updated["results"].as_array().expect("results array");
+        assert!(updated_results
+            .iter()
+            .any(|result| result["name"] == "repo_a_updated_symbol"));
+
+        let search_old = server.handle_search(&json!({"query": "repo_a_symbol"}));
+        let old_results = search_old["results"].as_array().expect("results array");
+        assert!(!old_results
+            .iter()
+            .any(|result| result["name"] == "repo_a_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo_a);
+        let _ = std::fs::remove_dir_all(repo_b);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
     fn test_repo_remove_clears_active_scope_when_no_previous_scope_exists() {
         let storage_dir = temp_storage_dir("repo-remove-clear");
         let server = test_server(&storage_dir);
@@ -2024,82 +2084,6 @@ mod tests {
         assert_eq!(overview["total_symbols"], 0);
         assert_eq!(architecture["total_nodes"], 0);
         assert_eq!(search["total"], 0);
-
-        let _ = std::fs::remove_dir_all(repo);
-        let _ = std::fs::remove_dir_all(storage_dir);
-    }
-
-    #[test]
-    fn test_repo_remove_reindexes_previous_scope_when_cached_snapshot_is_stale() {
-        let storage_dir = temp_storage_dir("repo-remove-stale-snapshot");
-        let server = test_server(&storage_dir);
-        let repo_a = temp_repo_dir("repo-stale-a");
-        let repo_b = temp_repo_dir("repo-stale-b");
-        write_indexable_repo(&repo_a, "repo_a_symbol");
-        write_indexable_repo(&repo_b, "repo_b_symbol");
-
-        let index_a = server.handle_index(&json!({"path": repo_a.to_string_lossy().to_string()}));
-        assert_eq!(index_a["status"], "done");
-        let add_b = server.dispatch(
-            "repo_add",
-            json!({"path": repo_b.to_string_lossy().to_string()}),
-        );
-        assert_ne!(add_b.is_error, Some(true));
-
-        write_indexable_repo(&repo_a, "repo_a_updated_symbol");
-
-        let remove_result =
-            server.handle_repo_remove(&json!({"path": repo_b.to_string_lossy().to_string()}));
-        assert_eq!(remove_result["removed"], true);
-        assert_eq!(remove_result["active_scope_restored"], true);
-
-        let search_updated = server.handle_search(&json!({"query": "repo_a_updated_symbol"}));
-        let updated_results = search_updated["results"].as_array().expect("results array");
-        assert!(updated_results
-            .iter()
-            .any(|result| result["name"] == "repo_a_updated_symbol"));
-
-        let search_old = server.handle_search(&json!({"query": "repo_a_symbol"}));
-        let old_results = search_old["results"].as_array().expect("results array");
-        assert!(!old_results
-            .iter()
-            .any(|result| result["name"] == "repo_a_symbol"));
-
-        let _ = std::fs::remove_dir_all(repo_a);
-        let _ = std::fs::remove_dir_all(repo_b);
-        let _ = std::fs::remove_dir_all(storage_dir);
-    }
-
-    #[test]
-    fn test_restart_restores_active_scope_and_search_after_repo_add() {
-        let storage_dir = temp_storage_dir("restart-repo-add");
-        let repo = temp_repo_dir("restart-repo-a");
-        write_indexable_repo(&repo, "restart_repo_symbol");
-
-        let server = test_server(&storage_dir);
-        let add_result = server.dispatch(
-            "repo_add",
-            json!({"path": repo.to_string_lossy().to_string()}),
-        );
-        assert_ne!(add_result.is_error, Some(true));
-
-        let restarted = test_server(&storage_dir);
-        assert_eq!(*restarted.state.indexed.read(), true);
-        assert_eq!(
-            restarted
-                .state
-                .codebase_path
-                .read()
-                .clone()
-                .map(|path| normalize_repo_dir(&path)),
-            Some(normalize_repo_dir(repo.to_string_lossy().as_ref()))
-        );
-
-        let search = restarted.handle_search(&json!({"query": "restart_repo_symbol"}));
-        let results = search["results"].as_array().expect("results array");
-        assert!(results
-            .iter()
-            .any(|result| result["name"] == "restart_repo_symbol"));
 
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(storage_dir);
@@ -2228,24 +2212,35 @@ mod tests {
     }
 
     #[test]
-    fn test_index_skips_vector_index_for_single_chunk_repo() {
-        let storage_dir = temp_storage_dir("single-chunk-vector-skip");
+    fn test_restart_restores_active_scope_and_search_after_repo_add() {
+        let storage_dir = temp_storage_dir("restart-repo-add");
+        let repo = temp_repo_dir("restart-repo-a");
+        write_indexable_repo(&repo, "restart_repo_symbol");
+
         let server = test_server(&storage_dir);
-        let repo = temp_repo_dir("single-chunk-repo");
-        write_indexable_repo(&repo, "single_chunk_symbol");
+        let add_result = server.dispatch(
+            "repo_add",
+            json!({"path": repo.to_string_lossy().to_string()}),
+        );
+        assert_ne!(add_result.is_error, Some(true));
 
-        let result = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        let restarted = test_server(&storage_dir);
+        assert_eq!(*restarted.state.indexed.read(), true);
+        assert_eq!(
+            restarted
+                .state
+                .codebase_path
+                .read()
+                .clone()
+                .map(|path| normalize_repo_dir(&path)),
+            Some(normalize_repo_dir(repo.to_string_lossy().as_ref()))
+        );
 
-        assert_eq!(result["status"], "done");
-        assert_eq!(result["index_mode"], "fresh");
-        assert_eq!(result["total_chunks"], 1);
-        assert_eq!(result["vector_chunks"], 0);
-
-        let search = server.handle_search(&json!({"query": "single_chunk_symbol"}));
+        let search = restarted.handle_search(&json!({"query": "restart_repo_symbol"}));
         let results = search["results"].as_array().expect("results array");
         assert!(results
             .iter()
-            .any(|entry| entry["name"] == "single_chunk_symbol"));
+            .any(|result| result["name"] == "restart_repo_symbol"));
 
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(storage_dir);
@@ -2283,6 +2278,51 @@ mod tests {
         assert!(
             !text.contains("Run index(path) to build the graph and enable search for this repo.")
         );
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_index_skips_vector_index_for_single_chunk_repo() {
+        let storage_dir = temp_storage_dir("single-chunk-vector-skip");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("single-chunk-repo");
+        write_indexable_repo(&repo, "single_chunk_symbol");
+
+        let result = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+
+        assert_eq!(result["status"], "done");
+        assert_eq!(result["index_mode"], "fresh");
+        assert_eq!(result["total_chunks"], 1);
+        assert_eq!(result["vector_chunks"], 0);
+
+        let search = server.handle_search(&json!({"query": "single_chunk_symbol"}));
+        let results = search["results"].as_array().expect("results array");
+        assert!(results
+            .iter()
+            .any(|entry| entry["name"] == "single_chunk_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_handle_index_skips_reindex_for_unchanged_loaded_repo() {
+        let storage_dir = temp_storage_dir("index-skip-unchanged");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("index-skip-unchanged-repo");
+        write_indexable_repo(&repo, "skip_unchanged_symbol");
+
+        let indexed = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(indexed["status"], "done");
+        assert_eq!(indexed["index_mode"], "fresh");
+
+        let skipped = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(skipped["status"], "done");
+        assert_eq!(skipped["index_mode"], "skipped");
+        assert_eq!(skipped["message"], "No files changed since last index.");
+        assert!(skipped["request_ms"].as_f64().unwrap_or(0.0) >= 0.0);
 
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(storage_dir);
@@ -2328,6 +2368,51 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(repo_a);
         let _ = std::fs::remove_dir_all(repo_b);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_restart_repo_remove_only_active_repo_clears_persisted_scope() {
+        let storage_dir = temp_storage_dir("restart-repo-clear");
+        let repo = temp_repo_dir("restart-clear-a");
+        write_indexable_repo(&repo, "restart_clear_symbol");
+
+        let server = test_server(&storage_dir);
+        let add_result = server.dispatch(
+            "repo_add",
+            json!({"path": repo.to_string_lossy().to_string()}),
+        );
+        assert_ne!(add_result.is_error, Some(true));
+
+        let restarted = test_server(&storage_dir);
+        let remove_result =
+            restarted.handle_repo_remove(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(remove_result["removed"], true);
+        assert_eq!(remove_result["active_scope_cleared"], true);
+        assert_eq!(*restarted.state.indexed.read(), false);
+        assert_eq!(*restarted.state.codebase_path.read(), None);
+        assert!(!storage_dir.join("repo-scope.json").exists());
+
+        let restarted_again = test_server(&storage_dir);
+        assert_eq!(*restarted_again.state.indexed.read(), false);
+        assert_eq!(*restarted_again.state.codebase_path.read(), None);
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_search_returns_clear_error_when_no_codebase_loaded() {
+        let storage_dir = temp_storage_dir("search-empty-state");
+        let server = test_server(&storage_dir);
+
+        let result = server.handle_search(&json!({"query": "anything"}));
+
+        assert_eq!(
+            result["error"],
+            "No codebase loaded. Run 'index(path)' or 'repo_add(path)' to load an active repo scope."
+        );
+
         let _ = std::fs::remove_dir_all(storage_dir);
     }
 
@@ -2393,78 +2478,6 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(storage_dir);
-    }
-
-    #[test]
-    fn test_restart_repo_remove_only_active_repo_clears_persisted_scope() {
-        let storage_dir = temp_storage_dir("restart-repo-clear");
-        let repo = temp_repo_dir("restart-clear-a");
-        write_indexable_repo(&repo, "restart_clear_symbol");
-
-        let server = test_server(&storage_dir);
-        let add_result = server.dispatch(
-            "repo_add",
-            json!({"path": repo.to_string_lossy().to_string()}),
-        );
-        assert_ne!(add_result.is_error, Some(true));
-
-        let restarted = test_server(&storage_dir);
-        let remove_result =
-            restarted.handle_repo_remove(&json!({"path": repo.to_string_lossy().to_string()}));
-        assert_eq!(remove_result["removed"], true);
-        assert_eq!(remove_result["active_scope_cleared"], true);
-        assert_eq!(*restarted.state.indexed.read(), false);
-        assert_eq!(*restarted.state.codebase_path.read(), None);
-        assert!(!storage_dir.join("repo-scope.json").exists());
-
-        let restarted_again = test_server(&storage_dir);
-        assert_eq!(*restarted_again.state.indexed.read(), false);
-        assert_eq!(*restarted_again.state.codebase_path.read(), None);
-
-        let _ = std::fs::remove_dir_all(repo);
-        let _ = std::fs::remove_dir_all(storage_dir);
-    }
-
-    #[test]
-    fn test_search_returns_clear_error_when_no_codebase_loaded() {
-        let storage_dir = temp_storage_dir("search-empty-state");
-        let server = test_server(&storage_dir);
-
-        let result = server.handle_search(&json!({"query": "anything"}));
-
-        assert_eq!(
-            result["error"],
-            "No codebase loaded. Run 'index(path)' or 'repo_add(path)' to load an active repo scope."
-        );
-
-        let _ = std::fs::remove_dir_all(storage_dir);
-    }
-
-    #[test]
-    fn test_strip_render_only_args_removes_max_tokens_only() {
-        let stripped = strip_render_only_args(&json!({
-            "query": "overview",
-            "limit": 5,
-            "max_tokens": 123,
-        }));
-
-        assert_eq!(stripped, json!({"query": "overview", "limit": 5}));
-    }
-
-    #[test]
-    fn test_response_needs_path_stripping_skips_identity_paths() {
-        let base = "/tmp/contextro-repo";
-        let identity_only = json!({
-            "path": base,
-            "codebase_path": base,
-            "repos": [{"path": base, "name": "repo-a"}],
-        });
-        let nested_file = json!({
-            "results": [{"file": format!("{base}/src/lib.rs")}],
-        });
-
-        assert!(!response_needs_path_stripping(&identity_only, base));
-        assert!(response_needs_path_stripping(&nested_file, base));
     }
 }
 

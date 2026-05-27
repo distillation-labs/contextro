@@ -68,6 +68,7 @@ Index persists. Do not re-index before every call. A successful `index()` respon
 | Map a subsystem or architecture slice | `code(operation="search_codebase_map", query="...")` | Strong for architecture or subsystem mapping; prefer `find_symbol` + `focus`/`explain` for narrow questions |
 | Orient in a new codebase | `overview()` then `architecture()` | High-signal orientation path |
 | Check refactor impact | `impact(symbol_name="Symbol")` | Mandatory before rename/delete/signature changes |
+| Run one-shot pre-refactor analysis | `refactor_check(symbol_name="Symbol")` | Definition + callers + callees + impact + risk in one call |
 | Batch lookup several symbols | `code(operation="lookup_symbols", symbols="A,B,C")` | Avoid serial `find_symbol` calls |
 | List symbols in a file | `code(operation="get_document_symbols", file_path="...")` | Returns columnar `{ file, columns, symbols, total }`; use `include_signature=true` only when signatures matter |
 | List symbols in a directory | `code(operation="list_symbols", path="...")` | Directory mode returns object rows with `callers` and `callees` |
@@ -92,6 +93,7 @@ Key parameter names that differ from intuition:
 | `find_callees` | `symbol_name` | string (required) |
 | `explain` | `symbol_name` | string (required) |
 | `impact` | `symbol_name` | string (required); optional `max_depth` int |
+| `refactor_check` | `symbol_name` | string (required); optional `max_depth` int |
 | `retrieve` | `ref_id` | string (required, e.g. `"arc_abc123"`) |
 | `forget` | `memory_id` or `tags` or `memory_type` | at least one required |
 
@@ -112,14 +114,15 @@ Current search responses use full keys:
 ### Safe Refactor
 
 ```text
-1. impact(symbol_name="Symbol")
-2. explain(symbol_name="Symbol")
-3. find_callers(symbol_name="Symbol") if impact is broad
-4. Make the code change
-5. search(query="OldName", mode="bm25") to verify cleanup
+1. refactor_check(symbol_name="Symbol") for the one-shot pre-edit view
+2. impact(symbol_name="Symbol") when you need the explicit transitive blast radius
+3. explain(symbol_name="Symbol")
+4. find_callers(symbol_name="Symbol") if impact is broad
+5. Make the code change
+6. search(query="OldName", mode="bm25") to verify cleanup
 ```
 
-Never recommend rename, delete, or signature changes without `impact()` first.
+Never recommend rename, delete, or signature changes without `impact()` or `refactor_check()` first.
 
 ### New Codebase Orientation
 
