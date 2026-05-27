@@ -17,6 +17,8 @@ use contextro_config::get_settings;
 mod http;
 #[path = "state.rs"]
 mod state;
+#[path = "tool_registry.rs"]
+mod tool_registry;
 #[path = "update_check.rs"]
 mod update_check;
 use state::{AppState, RepoScopeSnapshot};
@@ -999,105 +1001,13 @@ impl ContextroServer {
         )
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn tool_definitions() -> Vec<Tool> {
-        let mk = |schema_json: &str| -> Arc<serde_json::Map<String, Value>> {
-            Arc::new(serde_json::from_str(schema_json).unwrap_or_default())
-        };
-        let empty = mk(r#"{"type":"object","properties":{}}"#);
+        tool_registry::all_tool_definitions()
+    }
 
-        // All schemas use current param names; backward-compat aliases are handled in dispatch.
-        let path_schema = mk(
-            r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file or directory path"}}}"#,
-        );
-        let required_path_schema = mk(
-            r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file or directory path"}},"required":["path"]}"#,
-        );
-        let name_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"exact":{"type":"boolean","description":"true=exact match, false=fuzzy (default: true)"}}}"#,
-        );
-        let sym_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"limit":{"type":"integer","description":"Maximum results to return (default: 50)"}}}"#,
-        );
-        let query_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string","description":"Natural language or keyword query"},"limit":{"type":"integer","description":"Max results (default: 10)"},"mode":{"type":"string","description":"bm25 | vector | hybrid (default: hybrid)"},"language":{"type":"string","description":"Filter by language: rust, python, typescript, …"},"context_files":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}],"description":"Optional file list to boost nearby matches"}},"required":["query"]}"#,
-        );
-        let impact_schema = mk(
-            r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbol":{"type":"string","description":"Legacy alias for symbol_name"},"max_depth":{"type":"integer","description":"BFS depth (default: 5; smaller values intentionally narrow the blast radius)"}}}"#,
-        );
-        let dead_code_schema = mk(
-            r#"{"type":"object","properties":{"path":{"type":"string","description":"Optional file or directory filter"},"exclude_paths":{"type":"array","items":{"type":"string"},"description":"Optional file or directory paths to exclude"},"limit":{"type":"integer","description":"Max results (default: 50)"},"include_public_api":{"type":"boolean","description":"Include likely public API methods/functions in the output (default: false)"},"include_tests":{"type":"boolean","description":"Include test files in the output (default: false)"}}}"#,
-        );
-        let code_schema = mk(
-            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"},"include_signature":{"type":"boolean","description":"Include truncated signatures in get_document_symbols or file-path list_symbols output (default: false)"},"limit":{"type":"integer","description":"Optional result cap override for get_document_symbols or search results in code operations"}},"required":["operation"]}"#,
-        );
-        let mem_schema = mk(
-            r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
-        );
-        let recall_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string","description":"What to search for in memories. Empty string lists recent memories."},"limit":{"type":"integer","description":"Max results (default: 5)"},"memory_type":{"type":"string","description":"Filter by type: note, decision, …"},"tags":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}],"description":"Filter by tag (string or array)"}}}"#,
-        );
-        let knowledge_schema = mk(
-            r#"{"type":"object","properties":{"command":{"type":"string","description":"add | search | show | list | remove | update | clear (omit to auto-detect from query)"},"name":{"type":"string","description":"Knowledge base name (add, remove, update)"},"query":{"type":"string","description":"Search query (search); also triggers search when command is omitted"},"value":{"type":"string","description":"Inline content or an existing file/directory path to index (add)"},"path":{"type":"string","description":"Existing file/directory path to re-index for update"},"limit":{"type":"integer","description":"Max results (search, default: 5)"}}}"#,
-        );
-        let ref_schema = mk(
-            r#"{"type":"object","properties":{"ref_id":{"type":"string","description":"Reference ID returned by compact"}},"required":["ref_id"]}"#,
-        );
-        let commit_schema = mk(
-            r#"{"type":"object","properties":{"query":{"type":"string","description":"Keywords or description to search commit messages"},"limit":{"type":"integer","description":"Max results"},"author":{"type":"string","description":"Filter by author name"}},"required":["query"]}"#,
-        );
-        let hist_schema = mk(
-            r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Number of commits to return (default: 20)"},"since":{"type":"string","description":"Only return commits on or after this timestamp/date (RFC3339 or YYYY-MM-DD)"},"author":{"type":"string","description":"Only return commits whose author matches this string"}}}"#,
-        );
-
-        vec![
-            Tool::new("status",  "Show indexing state, graph stats, memory count, uptime", empty.clone()),
-            Tool::new("health",  "Health check — returns healthy/unhealthy", empty.clone()),
-            Tool::new("index",   "Index a codebase: builds symbol graph, BM25 index, and vector index. Args: path (required)", required_path_schema.clone()),
-            Tool::new("search",  "Hybrid/vector/BM25 code search. Args: query (required), limit, mode (hybrid|vector|bm25), language, context_files", query_schema),
-            Tool::new("find_symbol",  "Find where a symbol is defined. Args: symbol_name (preferred), name/symbol aliases, exact", name_schema),
-            Tool::new("find_callers", "Who calls this function? Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
-            Tool::new("find_callees", "What does this function call? Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
-            Tool::new("explain",      "Natural-language symbol summary plus callers/callees/docstring. Args: symbol_name (preferred), name/symbol aliases", sym_schema.clone()),
-            Tool::new("impact",       "Transitive blast radius of changing a symbol. Args: symbol_name (preferred), name/symbol aliases, max_depth", impact_schema),
-            Tool::new("overview",     "Project overview: totals, languages, symbol types, top files/directories", empty.clone()),
-            Tool::new("architecture", "Architectural layers, entry points, hub symbols by connectivity. Args: limit", mk(r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum hub symbols to return (default: 10)"}}}"#)),
-            Tool::new("analyze",      "Code complexity and hotspots for a file or directory. Args: path, min_connections, top_n", mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file or directory path"},"min_connections":{"type":"integer","description":"Minimum connectivity threshold for hotspot reporting (default: 6)"},"top_n":{"type":"integer","description":"Maximum hotspot symbols to return (default: 10)"}}}"#)),
-            Tool::new("focus",        "Per-symbol callers/callees for a file or directory. Args: path", path_schema.clone()),
-            Tool::new("dead_code",    "Static dead-code heuristic with optional path/exclude filters. Args: path, exclude_paths, limit, include_public_api, include_tests", dead_code_schema),
-            Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
-            Tool::new("test_coverage_map",     "Static heuristic test coverage bounds (not runtime coverage)", empty.clone()),
-            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path[,include_signature,limit]) returns {file, columns, symbols, total}; list_symbols(file) aliases that file contract while list_symbols(dir) returns object rows with callers/callees; search_symbols(symbol_name), lookup_symbols(symbols:[]), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
-            Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
-            Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
-            Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
-            Tool::new("forget",   "Delete memories. Args: id | memory_id | tags | memory_type (at least one required)",
-                mk(r#"{"type":"object","properties":{"id":{"type":"string","description":"ID returned by remember()"},"memory_id":{"type":"string","description":"Legacy alias for the memory ID"},"tags":{"type":"string","description":"Delete all memories with this tag"},"memory_type":{"type":"string","description":"Delete all memories of this type"}}}"#)),
-            Tool::new("knowledge", "Index and search project docs/notes within the active indexed repo scope. Args: command (add|search|show|list|remove|update|clear), name, query, value, path", knowledge_schema),
-            Tool::new("compact",   "Archive session content and get a ref_id for later retrieval. Args: content (required)",
-                mk(r#"{"type":"object","properties":{"content":{"type":"string","description":"Session content to archive"},"metadata":{"type":"object","description":"Optional metadata stored with the archive entry"},"ttl":{"type":"string","description":"Requested visibility TTL: permanent | session | day | week | month"}},"required":["content"]}"#)),
-            Tool::new("session_snapshot", "Show recent tool calls with arguments — useful after compaction",
-                mk(r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum events to return (default: 20)"},"type":{"type":"string","description":"Optional event type filter such as search or index"}}}"#)),
-            Tool::new("restore",  "Project re-entry summary: graph size, path, recent session activity", empty.clone()),
-            Tool::new("retrieve", "Fetch previously archived content by ref_id. Args: ref_id (required)", ref_schema),
-            Tool::new("commit_search",  "Semantic search over git commit messages. Args: query (required), limit, author", commit_schema),
-            Tool::new("commit_history", "Recent git commits with author and timestamp. Args: limit", hist_schema),
-            Tool::new("repo_add",    "Register and auto-index an additional repository for multi-repo analysis; this becomes the active repo scope. Args: path", required_path_schema.clone()),
-            Tool::new("repo_remove", "Unregister a repository. Args: path or name", 
-                mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Registered repository path"},"name":{"type":"string","description":"Registered repository name"}}}"#)),
-            Tool::new("repo_status", "Show all registered repositories", empty.clone()),
-            Tool::new("audit",        "Code quality audit report with recommendations", empty.clone()),
-            Tool::new("docs_bundle",  "Generate Markdown docs bundle from the current indexed graph. Args: output_dir",
-                mk(r#"{"type":"object","properties":{"output_dir":{"type":"string","description":"Output directory for generated docs (default: .contextro-docs)"}}}"#)),
-            Tool::new("sidecar_export", "Export graph sidecar files alongside source. Args: path, output_dir",
-                mk(r#"{"type":"object","properties":{"path":{"type":"string","description":"Indexed source file or directory to export"},"output_dir":{"type":"string","description":"Directory to write .graph.* sidecar files (default: .contextro-sidecars)"}}}"#)),
-            Tool::new("skill_prompt", "Return the agent bootstrap block plus parameter conventions for use in system prompts", empty.clone()),
-            Tool::new("introspect",   "Find the right Contextro tool for a task. Args: query or tool",
-                mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"},"tool":{"type":"string","description":"Exact tool name for parameter docs and examples"}}}"#)),
-            Tool::new("refactor_check", "Pre-refactor analysis: definition + callers + callees + transitive impact + risk in one call. Args: symbol_name (required), max_depth",
-                mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol to analyze before refactoring"},"max_depth":{"type":"integer","description":"BFS depth for impact (default: 3)"}},"required":["symbol_name"]}"#)),
-            Tool::new("completion_check", "Verify that a refactor is complete by checking the code graph against claimed changed files. Args: symbol_name (required), claim (required), changed_files (required)",
-                mk(r#"{"type":"object","properties":{"claim":{"type":"string","description":"What kind of completeness to verify. Currently supported: all_callers_updated"},"symbol_name":{"type":"string","description":"The symbol being refactored (renamed, signature-changed, etc.)"},"changed_files":{"type":"array","items":{"type":"string"},"description":"All files touched by the refactor (caller files + definition file)"},"max_depth":{"type":"integer","description":"Transitive caller depth for future claims (reserved, defaults to 0)"}},"required":["claim","symbol_name","changed_files"]}"#)),
-        ]
+    pub(crate) fn listed_tool_definitions() -> Vec<Tool> {
+        tool_registry::configured_tool_definitions()
     }
 }
 
@@ -1537,63 +1447,8 @@ impl ServerHandler for ContextroServer {
         _request: PaginatedRequestParam,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        // #2: Sort alphabetically for prompt cache hits
-        // #10: Tool tiering via CTX_TOOL_TIER env var
-        let mut tools = Self::tool_definitions();
-        tools.sort_by(|a, b| a.name.cmp(&b.name));
-
-        let tier = std::env::var("CTX_TOOL_TIER").unwrap_or_else(|_| "full".to_string());
-        let core_tools: &[&str] = &[
-            "code",
-            "explain",
-            "find_callers",
-            "find_callees",
-            "find_symbol",
-            "health",
-            "impact",
-            "index",
-            "search",
-            "status",
-        ];
-        let standard_tools: &[&str] = &[
-            "analyze",
-            "architecture",
-            "code",
-            "commit_history",
-            "commit_search",
-            "dead_code",
-            "explain",
-            "find_callers",
-            "find_callees",
-            "find_symbol",
-            "focus",
-            "forget",
-            "health",
-            "impact",
-            "index",
-            "introspect",
-            "knowledge",
-            "overview",
-            "recall",
-            "remember",
-            "search",
-            "status",
-        ];
-
-        let filtered = match tier.as_str() {
-            "core" => tools
-                .into_iter()
-                .filter(|t| core_tools.contains(&t.name.as_ref()))
-                .collect(),
-            "standard" => tools
-                .into_iter()
-                .filter(|t| standard_tools.contains(&t.name.as_ref()))
-                .collect(),
-            _ => tools, // "full" — all tools
-        };
-
         std::future::ready(Ok(ListToolsResult {
-            tools: filtered,
+            tools: Self::listed_tool_definitions(),
             next_cursor: None,
         }))
     }
@@ -1865,9 +1720,10 @@ mod tests {
     }
 
     fn test_settings(storage_dir: &Path) -> Settings {
-        let mut settings = Settings::default();
-        settings.storage_dir = storage_dir.to_string_lossy().to_string();
-        settings
+        Settings {
+            storage_dir: storage_dir.to_string_lossy().to_string(),
+            ..Settings::default()
+        }
     }
 
     fn test_server(storage_dir: &Path) -> ContextroServer {
@@ -2042,7 +1898,7 @@ mod tests {
 
         assert_eq!(remove_result["removed"], true);
         assert_eq!(remove_result["active_scope_cleared"], true);
-        assert_eq!(*server.state.indexed.read(), false);
+        assert!(!(*server.state.indexed.read()));
         assert_eq!(*server.state.codebase_path.read(), None);
         assert_eq!(server.state.graph.node_count(), 0);
         assert_eq!(
@@ -2225,7 +2081,7 @@ mod tests {
         assert_ne!(add_result.is_error, Some(true));
 
         let restarted = test_server(&storage_dir);
-        assert_eq!(*restarted.state.indexed.read(), true);
+        assert!(*restarted.state.indexed.read());
         assert_eq!(
             restarted
                 .state
@@ -2389,12 +2245,12 @@ mod tests {
             restarted.handle_repo_remove(&json!({"path": repo.to_string_lossy().to_string()}));
         assert_eq!(remove_result["removed"], true);
         assert_eq!(remove_result["active_scope_cleared"], true);
-        assert_eq!(*restarted.state.indexed.read(), false);
+        assert!(!(*restarted.state.indexed.read()));
         assert_eq!(*restarted.state.codebase_path.read(), None);
         assert!(!storage_dir.join("repo-scope.json").exists());
 
         let restarted_again = test_server(&storage_dir);
-        assert_eq!(*restarted_again.state.indexed.read(), false);
+        assert!(!(*restarted_again.state.indexed.read()));
         assert_eq!(*restarted_again.state.codebase_path.read(), None);
 
         let _ = std::fs::remove_dir_all(repo);
