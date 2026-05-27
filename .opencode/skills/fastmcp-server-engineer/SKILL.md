@@ -31,6 +31,10 @@ output shape intentional.
 - Use typed Python signatures so FastMCP can build useful schemas.
 - Make annotations and metadata match the real behavior.
 - Reach for result objects only when you need explicit control.
+- Treat hand-written source-file size as a hard repository constraint: keep source files in the
+  **300-500 line** band, do not create files outside that band without explicit user approval, and
+  do not grow a source file past **500 lines**. If a touched source file is already over **500
+  lines**, you must split or refactor it in the same task instead of appending more code.
 
 ## Component Guidance
 
