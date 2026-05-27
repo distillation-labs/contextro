@@ -1,6 +1,7 @@
 //! Contextro MCP server binary — single compiled Rust binary.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Result;
 use contextro_core::models::SearchResult;
@@ -24,6 +25,23 @@ use state::{AppState, RepoScopeSnapshot};
 #[derive(Clone)]
 pub struct ContextroServer {
     state: Arc<AppState>,
+}
+
+#[derive(Debug, Default)]
+struct RestoreSnapshotMetrics {
+    graph_ms: f64,
+    bm25_ms: f64,
+    vector_ms: f64,
+    scope_ms: f64,
+    total_ms: f64,
+}
+
+fn round_ms(ms: f64) -> f64 {
+    (ms * 10.0).round() / 10.0
+}
+
+fn set_ms_field(response: &mut Value, key: &str, ms: f64) {
+    response[key] = json!(round_ms(ms));
 }
 
 impl ContextroServer {
@@ -175,6 +193,7 @@ impl ContextroServer {
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
             "refactor_check" => self.handle_refactor_check(&args),
+            "completion_check" => self.handle_completion_check(&args),
             _ => {
                 json!({"error": format!("Unknown tool: '{}'. Use introspect() to find the right tool.", name)})
             }
@@ -212,6 +231,7 @@ impl ContextroServer {
                         | "explain"
                         | "impact"
                         | "refactor_check"
+                        | "completion_check"
                 ) {
                 if let Some(sym) = err_text.split('\'').nth(1) {
                     // Try fuzzy graph search first, then edit distance
@@ -303,10 +323,11 @@ impl ContextroServer {
     }
 
     fn handle_index(&self, args: &Value) -> Value {
-        self.handle_index_internal(args, true)
+        self.handle_index_internal(args, false)
     }
 
     fn handle_index_internal(&self, args: &Value, prewarm_commit_search: bool) -> Value {
+        let request_start = Instant::now();
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         if path.is_empty() {
             return json!({"error": "Missing required parameter: path"});
@@ -325,7 +346,7 @@ impl ContextroServer {
 
         // #1: Incremental re-indexing — check if files changed since last index
         let files = contextro_indexing::discover_files(requested_path_ref, &settings);
-        let current_hashes = contextro_indexing::hash_files(&files);
+        let current_hashes = contextro_indexing::fingerprint_files(&files);
         let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
         let (added, modified, deleted) =
             contextro_indexing::diff_file_states(&current_hashes, &stored_hashes);
@@ -343,6 +364,7 @@ impl ContextroServer {
         ) {
             return json!({
                 "status": "done",
+                "index_mode": "skipped",
                 "message": "No files changed since last index.",
                 "total_files": files.len(),
                 "total_symbols": self.state.graph.node_count(),
@@ -351,11 +373,12 @@ impl ContextroServer {
                 "incremental": {"files_added": 0, "files_modified": 0, "files_deleted": 0, "files_unchanged": files.len()},
                 "graph_nodes": self.state.graph.node_count(),
                 "graph_relationships": self.state.graph.relationship_count(),
+                "request_ms": round_ms(request_start.elapsed().as_secs_f64() * 1000.0),
             });
         }
 
         if is_incremental && changed_count == 0 {
-            if let Some(snapshot) = self.load_valid_repo_snapshot(&requested_path) {
+            if let Some(snapshot) = self.load_repo_snapshot_if_hashes_match(&requested_path) {
                 if let Some(previous_active) = loaded_codebase
                     .as_deref()
                     .map(normalize_repo_dir)
@@ -364,10 +387,25 @@ impl ContextroServer {
                     self.remember_repo_scope(previous_active, requested_path.clone());
                 }
 
-                let mut resp = self.restore_repo_snapshot(&requested_path, &snapshot);
+                let (mut resp, restore_metrics) =
+                    self.restore_repo_snapshot(&requested_path, &snapshot);
                 resp["total_files"] = json!(files.len());
                 resp["message"] = json!("Restored from persisted repo snapshot.");
+                resp["index_mode"] = json!("restored");
+                let knowledge_start = Instant::now();
                 let kb_populated = auto_populate_knowledge(&requested_path, &self.state.knowledge);
+                let knowledge_ms = knowledge_start.elapsed().as_secs_f64() * 1000.0;
+                set_ms_field(&mut resp, "graph_ms", restore_metrics.graph_ms);
+                set_ms_field(&mut resp, "bm25_ms", restore_metrics.bm25_ms);
+                set_ms_field(&mut resp, "vector_ms", restore_metrics.vector_ms);
+                set_ms_field(&mut resp, "scope_ms", restore_metrics.scope_ms);
+                set_ms_field(&mut resp, "knowledge_ms", knowledge_ms);
+                set_ms_field(&mut resp, "restore_ms", restore_metrics.total_ms);
+                set_ms_field(
+                    &mut resp,
+                    "request_ms",
+                    request_start.elapsed().as_secs_f64() * 1000.0,
+                );
                 if kb_populated > 0 {
                     resp["knowledge_docs_indexed"] = serde_json::json!(kb_populated);
                 }
@@ -376,23 +414,26 @@ impl ContextroServer {
         }
 
         match pipeline.index(requested_path_ref) {
-            Ok((result, symbols)) => {
+            Ok((result, symbols, mut chunks)) => {
+                let graph_start = Instant::now();
                 self.state.graph.clear();
                 self.state.build_graph(&symbols);
                 self.state.graph.compute_pagerank();
+                let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Index chunks into the shared BM25 engine
-                let mut chunks = contextro_indexing::create_chunks(&symbols);
-
                 // Save hashes for next incremental run
                 contextro_indexing::save_hashes(&current_hashes, &storage_dir);
+                let bm25_start = Instant::now();
                 self.state.bm25.clear();
                 self.state.bm25.index_chunks(&chunks);
+                let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
                 self.state
                     .chunk_count
                     .store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
 
                 // Populate vector index
+                let vector_start = Instant::now();
                 self.state.vector_index.clear();
                 let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
                 if should_build_vector_index(texts.len()) {
@@ -418,15 +459,19 @@ impl ContextroServer {
                         }
                     }
                 }
+                let vector_ms = vector_start.elapsed().as_secs_f64() * 1000.0;
+                let total_chunks = chunks.len();
 
+                let snapshot_start = Instant::now();
                 self.state.persist_repo_snapshot(
                     &requested_path,
-                    &RepoScopeSnapshot {
-                        symbols: symbols.clone(),
-                        chunks: chunks.clone(),
+                    RepoScopeSnapshot {
+                        symbols,
+                        chunks,
                         graph: self.state.graph.snapshot(),
                     },
                 );
+                let snapshot_ms = snapshot_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Swap in the persistent BM25 engine
                 if let Some(previous_active) = loaded_codebase
@@ -437,27 +482,46 @@ impl ContextroServer {
                     self.remember_repo_scope(previous_active, requested_path.clone());
                 }
 
+                let scope_start = Instant::now();
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(requested_path.clone());
                 self.state.query_cache.invalidate();
                 self.state.knowledge.set_active_scope(Some(&requested_path));
                 self.state.persist_repo_scope_state();
+                let scope_ms = scope_start.elapsed().as_secs_f64() * 1000.0;
+
+                let prewarm_start = Instant::now();
                 if prewarm_commit_search {
                     maybe_prewarm_commit_search_cache(&requested_path);
                 }
+                let prewarm_ms = prewarm_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Auto-populate knowledge base with project docs
+                let knowledge_start = Instant::now();
                 let kb_populated = auto_populate_knowledge(&requested_path, &self.state.knowledge);
+                let knowledge_ms = knowledge_start.elapsed().as_secs_f64() * 1000.0;
 
                 let mut resp = json!({
                     "status": "done",
+                    "index_mode": "fresh",
                     "total_files": result.total_files,
                     "total_symbols": result.total_symbols,
-                    "total_chunks": chunks.len(),
+                    "total_chunks": total_chunks,
                     "graph_nodes": self.state.graph.node_count(),
                     "graph_relationships": self.state.graph.relationship_count(),
                     "vector_chunks": self.state.vector_index.len(),
                     "time_seconds": (result.time_seconds * 100.0).round() / 100.0,
+                    "discover_ms": round_ms(result.discover_ms),
+                    "parse_ms": round_ms(result.parse_ms),
+                    "chunk_ms": round_ms(result.chunk_ms),
+                    "graph_ms": round_ms(graph_ms),
+                    "bm25_ms": round_ms(bm25_ms),
+                    "vector_ms": round_ms(vector_ms),
+                    "snapshot_ms": round_ms(snapshot_ms),
+                    "scope_ms": round_ms(scope_ms),
+                    "prewarm_ms": round_ms(prewarm_ms),
+                    "knowledge_ms": round_ms(knowledge_ms),
+                    "request_ms": round_ms(request_start.elapsed().as_secs_f64() * 1000.0),
                 });
                 if is_incremental {
                     resp["incremental"] = json!({
@@ -598,7 +662,7 @@ impl ContextroServer {
     fn repo_snapshot_matches_disk(path: &str) -> bool {
         let settings = get_settings().read().clone();
         let files = contextro_indexing::discover_files(std::path::Path::new(path), &settings);
-        let current_hashes = contextro_indexing::hash_files(&files);
+        let current_hashes = contextro_indexing::fingerprint_files(&files);
         let storage_dir = contextro_config::project_storage_dir(path);
         let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
         if stored_hashes.is_empty() {
@@ -610,7 +674,13 @@ impl ContextroServer {
         added.is_empty() && modified.is_empty() && deleted.is_empty()
     }
 
-    fn restore_repo_snapshot(&self, path: &str, snapshot: &RepoScopeSnapshot) -> Value {
+    fn restore_repo_snapshot(
+        &self,
+        path: &str,
+        snapshot: &RepoScopeSnapshot,
+    ) -> (Value, RestoreSnapshotMetrics) {
+        let restore_start = Instant::now();
+        let graph_start = Instant::now();
         self.state.graph.clear();
         if snapshot.graph.is_empty() {
             self.state.build_graph(&snapshot.symbols);
@@ -618,13 +688,17 @@ impl ContextroServer {
         } else {
             self.state.graph.restore_snapshot(&snapshot.graph);
         }
+        let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
 
+        let bm25_start = Instant::now();
         self.state.bm25.clear();
         self.state.bm25.index_chunks(&snapshot.chunks);
+        let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
         self.state
             .chunk_count
             .store(snapshot.chunks.len(), std::sync::atomic::Ordering::Relaxed);
 
+        let vector_start = Instant::now();
         self.state.vector_index.clear();
         for chunk in &snapshot.chunks {
             if chunk.vector.is_empty() {
@@ -647,14 +721,17 @@ impl ContextroServer {
                 },
             );
         }
+        let vector_ms = vector_start.elapsed().as_secs_f64() * 1000.0;
 
+        let scope_start = Instant::now();
         *self.state.indexed.write() = true;
         *self.state.codebase_path.write() = Some(path.to_string());
         self.state.query_cache.invalidate();
         self.state.knowledge.set_active_scope(Some(path));
         self.state.persist_repo_scope_state();
+        let scope_ms = scope_start.elapsed().as_secs_f64() * 1000.0;
 
-        json!({
+        let response = json!({
             "status": "done",
             "message": "Restored from cached repo snapshot.",
             "total_symbols": snapshot.symbols.len(),
@@ -663,12 +740,23 @@ impl ContextroServer {
             "graph_relationships": self.state.graph.relationship_count(),
             "vector_chunks": self.state.vector_index.len(),
             "restored_from_cache": true,
-        })
+        });
+
+        (
+            response,
+            RestoreSnapshotMetrics {
+                graph_ms,
+                bm25_ms,
+                vector_ms,
+                scope_ms,
+                total_ms: restore_start.elapsed().as_secs_f64() * 1000.0,
+            },
+        )
     }
 
     fn try_restore_cached_repo_scope(&self, path: &str) -> Option<Value> {
         let snapshot = self.load_valid_repo_snapshot(path)?;
-        Some(self.restore_repo_snapshot(path, &snapshot))
+        Some(self.restore_repo_snapshot(path, &snapshot).0)
     }
 
     fn load_valid_repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
@@ -685,6 +773,17 @@ impl ContextroServer {
             self.state.prune_repo_snapshot(path);
             return None;
         }
+        self.state
+            .remember_repo_snapshot(path.to_string(), snapshot.clone());
+        Some(snapshot)
+    }
+
+    fn load_repo_snapshot_if_hashes_match(&self, path: &str) -> Option<RepoScopeSnapshot> {
+        if let Some(snapshot) = self.state.repo_snapshot(path) {
+            return Some(snapshot);
+        }
+
+        let snapshot = self.state.load_persisted_repo_snapshot(path)?;
         self.state
             .remember_repo_snapshot(path.to_string(), snapshot.clone());
         Some(snapshot)
@@ -884,6 +983,22 @@ impl ContextroServer {
         })
     }
 
+    /// #7: Composite tool — verify refactor completeness against the code graph.
+    fn handle_completion_check(&self, args: &Value) -> Value {
+        if !*self.state.indexed.read() || self.state.codebase_path.read().is_none() {
+            return json!({
+                "error": "No codebase loaded. Run 'index(path)' or 'repo_add(path)' to load an active repo scope."
+            });
+        }
+
+        let codebase = self.state.codebase_path.read().clone();
+        contextro_tools::completion::handle_completion_check(
+            args,
+            &self.state.graph,
+            codebase.as_deref(),
+        )
+    }
+
     pub(crate) fn tool_definitions() -> Vec<Tool> {
         let mk = |schema_json: &str| -> Arc<serde_json::Map<String, Value>> {
             Arc::new(serde_json::from_str(schema_json).unwrap_or_default())
@@ -913,7 +1028,7 @@ impl ContextroServer {
             r#"{"type":"object","properties":{"path":{"type":"string","description":"Optional file or directory filter"},"exclude_paths":{"type":"array","items":{"type":"string"},"description":"Optional file or directory paths to exclude"},"limit":{"type":"integer","description":"Max results (default: 50)"},"include_public_api":{"type":"boolean","description":"Include likely public API methods/functions in the output (default: false)"},"include_tests":{"type":"boolean","description":"Include test files in the output (default: false)"}}}"#,
         );
         let code_schema = mk(
-            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"},"include_signature":{"type":"boolean","description":"Include truncated signatures in get_document_symbols or file-path list_symbols output (default: false)"}},"required":["operation"]}"#,
+            r#"{"type":"object","properties":{"operation":{"type":"string","description":"get_document_symbols | search_symbols | lookup_symbols | list_symbols | pattern_search | pattern_rewrite | edit_plan | search_codebase_map"},"path":{"type":"string","description":"Preferred file or directory path parameter"},"file_path":{"type":"string","description":"Legacy alias for path"},"symbol_name":{"type":"string","description":"Preferred symbol name parameter"},"name":{"type":"string","description":"Legacy alias for symbol_name"},"symbols":{"type":"array","items":{"type":"string"},"description":"Array of symbol names (lookup_symbols); comma-string also accepted"},"pattern":{"type":"string","description":"Regex or ast-grep pattern (pattern_search, pattern_rewrite)"},"query":{"type":"string","description":"Operation-specific query or search alias"},"language":{"type":"string","description":"Language filter for pattern_search / pattern_rewrite"},"replacement":{"type":"string","description":"Replacement string (pattern_rewrite)"},"dry_run":{"type":"boolean","description":"Preview only, no writes (pattern_rewrite, default: true)"},"goal":{"type":"string","description":"Refactoring goal description (edit_plan)"},"include_source":{"type":"boolean","description":"Include source code in lookup_symbols (default: false)"},"include_signature":{"type":"boolean","description":"Include truncated signatures in get_document_symbols or file-path list_symbols output (default: false)"},"limit":{"type":"integer","description":"Optional result cap override for get_document_symbols or search results in code operations"}},"required":["operation"]}"#,
         );
         let mem_schema = mk(
             r#"{"type":"object","properties":{"content":{"type":"string","description":"Text to store"},"memory_type":{"type":"string","description":"note | decision | preference | conversation | status | doc"},"tags":{"type":"array","items":{"type":"string"},"description":"Tag list; comma-string also accepted"},"ttl":{"type":"string","description":"permanent | session | day | week | month"}},"required":["content"]}"#,
@@ -951,7 +1066,7 @@ impl ContextroServer {
             Tool::new("dead_code",    "Static dead-code heuristic with optional path/exclude filters. Args: path, exclude_paths, limit, include_public_api, include_tests", dead_code_schema),
             Tool::new("circular_dependencies", "Detect circular import cycles", empty.clone()),
             Tool::new("test_coverage_map",     "Static heuristic test coverage bounds (not runtime coverage)", empty.clone()),
-            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path[,include_signature]) returns {file, columns, symbols, total}; list_symbols(file) aliases that file contract while list_symbols(dir) returns object rows with callers/callees; search_symbols(symbol_name), lookup_symbols(symbols:[]), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
+            Tool::new("code", "AST operations. Args: operation (required) — get_document_symbols(path[,include_signature,limit]) returns {file, columns, symbols, total}; list_symbols(file) aliases that file contract while list_symbols(dir) returns object rows with callers/callees; search_symbols(symbol_name), lookup_symbols(symbols:[]), pattern_search(pattern,path), pattern_rewrite(pattern,replacement,dry_run), edit_plan(goal), search_codebase_map(query,path)", code_schema),
             Tool::new("remember", "Store a memory/note. Args: content (required), memory_type, tags, ttl", mem_schema),
             Tool::new("recall",   "Search memories by meaning. Args: query (required), limit, memory_type, tags", recall_schema),
             Tool::new("tags",     "List all unique tags used in stored memories", empty.clone()),
@@ -980,6 +1095,8 @@ impl ContextroServer {
                 mk(r#"{"type":"object","properties":{"query":{"type":"string","description":"Describe what you want to do"},"tool":{"type":"string","description":"Exact tool name for parameter docs and examples"}}}"#)),
             Tool::new("refactor_check", "Pre-refactor analysis: definition + callers + callees + transitive impact + risk in one call. Args: symbol_name (required), max_depth",
                 mk(r#"{"type":"object","properties":{"symbol_name":{"type":"string","description":"Symbol to analyze before refactoring"},"max_depth":{"type":"integer","description":"BFS depth for impact (default: 3)"}},"required":["symbol_name"]}"#)),
+            Tool::new("completion_check", "Verify that a refactor is complete by checking the code graph against claimed changed files. Args: symbol_name (required), claim (required), changed_files (required)",
+                mk(r#"{"type":"object","properties":{"claim":{"type":"string","description":"What kind of completeness to verify. Currently supported: all_callers_updated"},"symbol_name":{"type":"string","description":"The symbol being refactored (renamed, signature-changed, etc.)"},"changed_files":{"type":"array","items":{"type":"string"},"description":"All files touched by the refactor (caller files + definition file)"},"max_depth":{"type":"integer","description":"Transitive caller depth for future claims (reserved, defaults to 0)"}},"required":["claim","symbol_name","changed_files"]}"#)),
         ]
     }
 }
@@ -1316,13 +1433,6 @@ impl Default for ContextroServer {
 /// Scan `root` for project documentation files and add them to the knowledge store.
 /// Returns the number of documents indexed. Does nothing if the KB already has content.
 fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeStore) -> usize {
-    if knowledge
-        .show()
-        .into_iter()
-        .any(|summary| summary.chunks > 0)
-    {
-        return 0; // KB already has content; don't overwrite
-    }
     let candidates = [
         "README.md",
         "README.txt",
@@ -1333,6 +1443,9 @@ fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeSto
         "docs/index.md",
         "CONTRIBUTING.md",
     ];
+    if candidates.iter().any(|name| knowledge.contains(name)) {
+        return 0; // KB already has seeded docs for this scope; don't overwrite
+    }
     let mut count = 0;
     for name in &candidates {
         let p = std::path::Path::new(root).join(name);
@@ -1999,11 +2112,14 @@ mod tests {
         let restored =
             restored_server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
         assert_eq!(restored["status"], "done");
+        assert_eq!(restored["index_mode"], "restored");
         assert_eq!(restored["restored_from_cache"], true);
         assert_eq!(
             restored["message"],
             "Restored from persisted repo snapshot."
         );
+        assert!(restored["restore_ms"].as_f64().unwrap_or(0.0) >= 0.0);
+        assert!(restored["request_ms"].as_f64().unwrap_or(0.0) >= 0.0);
 
         let search = restored_server.handle_search(&json!({"query": "persisted_snapshot_symbol"}));
         let results = search["results"].as_array().expect("results array");
@@ -2035,7 +2151,10 @@ mod tests {
         let restored =
             restored_server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
         assert_eq!(restored["status"], "done");
+        assert_eq!(restored["index_mode"], "fresh");
         assert_ne!(restored.get("restored_from_cache"), Some(&json!(true)));
+        assert!(restored["graph_ms"].as_f64().unwrap_or(0.0) >= 0.0);
+        assert!(restored["request_ms"].as_f64().unwrap_or(0.0) >= 0.0);
 
         let fresh_search =
             restored_server.handle_search(&json!({"query": "fresh_snapshot_symbol"}));
@@ -2077,7 +2196,7 @@ mod tests {
         snapshot.graph = contextro_engines::graph::GraphSnapshot::default();
 
         server.clear_active_scope();
-        let restored = server.restore_repo_snapshot(&normalized_repo, &snapshot);
+        let restored = server.restore_repo_snapshot(&normalized_repo, &snapshot).0;
         assert_eq!(restored["status"], "done");
         assert_eq!(restored["restored_from_cache"], true);
 
@@ -2174,6 +2293,7 @@ mod tests {
         let result = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
 
         assert_eq!(result["status"], "done");
+        assert_eq!(result["index_mode"], "fresh");
         assert_eq!(result["total_chunks"], 1);
         assert_eq!(result["vector_chunks"], 0);
 
@@ -2182,6 +2302,27 @@ mod tests {
         assert!(results
             .iter()
             .any(|entry| entry["name"] == "single_chunk_symbol"));
+
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(storage_dir);
+    }
+
+    #[test]
+    fn test_handle_index_skips_reindex_for_unchanged_loaded_repo() {
+        let storage_dir = temp_storage_dir("index-skip-unchanged");
+        let server = test_server(&storage_dir);
+        let repo = temp_repo_dir("index-skip-unchanged-repo");
+        write_indexable_repo(&repo, "skip_unchanged_symbol");
+
+        let indexed = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(indexed["status"], "done");
+        assert_eq!(indexed["index_mode"], "fresh");
+
+        let skipped = server.handle_index(&json!({"path": repo.to_string_lossy().to_string()}));
+        assert_eq!(skipped["status"], "done");
+        assert_eq!(skipped["index_mode"], "skipped");
+        assert_eq!(skipped["message"], "No files changed since last index.");
+        assert!(skipped["request_ms"].as_f64().unwrap_or(0.0) >= 0.0);
 
         let _ = std::fs::remove_dir_all(repo);
         let _ = std::fs::remove_dir_all(storage_dir);
