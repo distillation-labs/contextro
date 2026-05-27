@@ -10,11 +10,7 @@ use contextro_core::UniversalNode;
 use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
-pub fn handle_completion_check(
-    args: &Value,
-    graph: &CodeGraph,
-    codebase: Option<&str>,
-) -> Value {
+pub fn handle_completion_check(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
     let name = args
         .get("symbol_name")
         .or_else(|| args.get("name"))
@@ -25,10 +21,7 @@ pub fn handle_completion_check(
         return json!({"error": "Missing required parameter: symbol_name"});
     }
 
-    let claim = args
-        .get("claim")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let claim = args.get("claim").and_then(|v| v.as_str()).unwrap_or("");
     if claim.is_empty() {
         return json!({"error": "Missing required parameter: claim"});
     }
@@ -46,10 +39,7 @@ pub fn handle_completion_check(
         return json!({"error": "Missing required parameter: changed_files"});
     }
 
-    let max_depth = args
-        .get("max_depth")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as usize;
+    let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
     match claim {
         "all_callers_updated" => {
@@ -165,10 +155,7 @@ fn check_all_callers_updated(
             "hint": "These changed files do not appear in the expected caller or definition files. Verify they are intentionally included.",
         });
     }
-    if matches.len() == 1
-        && changed_set.contains(&definition_file)
-        && !missing_callers.is_empty()
-    {
+    if matches.len() == 1 && changed_set.contains(&definition_file) && !missing_callers.is_empty() {
         response["hint"] = json!(
             "Some expected caller files are missing from the changed set. Re-check your diff to ensure all callers were updated."
         );
@@ -177,11 +164,7 @@ fn check_all_callers_updated(
     response
 }
 
-fn caller_files(
-    node: &UniversalNode,
-    graph: &CodeGraph,
-    codebase: Option<&str>,
-) -> Vec<String> {
+fn caller_files(node: &UniversalNode, graph: &CodeGraph, codebase: Option<&str>) -> Vec<String> {
     let mut files = BTreeSet::new();
     for caller in graph.get_callers(&node.id) {
         files.insert(relativize(&caller.location.file_path, codebase));
@@ -225,10 +208,7 @@ fn relativize(filepath: &str, codebase: Option<&str>) -> String {
     }
 }
 
-fn resolve_symbol_for_completion(
-    name: &str,
-    graph: &CodeGraph,
-) -> Vec<UniversalNode> {
+fn resolve_symbol_for_completion(name: &str, graph: &CodeGraph) -> Vec<UniversalNode> {
     let exact = graph.find_nodes_by_name(name, true);
     if !exact.is_empty() {
         let mut ranked = exact;
