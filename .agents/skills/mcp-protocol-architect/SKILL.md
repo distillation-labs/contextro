@@ -29,6 +29,11 @@ Model the user-facing workflow before writing code.
 - Tools are model-invoked actions with typed inputs.
 - Resources are passive context the application reads.
 - Prompts are reusable user-invoked interaction templates.
+- Treat hand-written source-file size as a hard repository constraint in any implementation plan:
+  keep source files in the **300-500 line** band, do not create files outside that band without
+  explicit user approval, and do not propose changes that would grow a source file past **500
+  lines**. If the implementation touches a **500+ line** source file, the plan must include
+  refactoring or splitting that file in the same task.
 
 ## Design Sequence
 
