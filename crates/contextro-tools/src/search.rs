@@ -1,6 +1,7 @@
 //! Search tool implementation.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use crate::analysis::is_test_file;
 use contextro_core::models::SearchResult;
@@ -72,6 +73,18 @@ pub fn handle_search_with_codebase(
     );
     if let Some(cached) = cache.get(&tool_cache_key) {
         return cached;
+    }
+
+    if let Some(exact_symbol_response) = exact_symbol_search_response(
+        query,
+        limit,
+        &mode,
+        language.as_deref(),
+        graph,
+        codebase,
+    ) {
+        cache.put(&tool_cache_key, exact_symbol_response.clone());
+        return exact_symbol_response;
     }
 
     let mut results = match mode.as_str() {
@@ -152,9 +165,124 @@ pub fn handle_search_with_codebase(
     results.truncate(limit);
 
     let confidence = confidence_label(query, &results);
-    let response = build_search_response(query, limit, total, confidence, &results, codebase);
+    let response_codebase = resolved_search_codebase(codebase, &results);
+    let response = build_search_response(
+        query,
+        limit,
+        total,
+        confidence,
+        &results,
+        response_codebase.as_deref(),
+    );
     cache.put(&tool_cache_key, response.clone());
     response
+}
+
+fn exact_symbol_search_response(
+    query: &str,
+    limit: usize,
+    mode: &str,
+    language: Option<&str>,
+    graph: &CodeGraph,
+    codebase: Option<&str>,
+) -> Option<Value> {
+    if !matches!(mode, "hybrid" | "bm25") {
+        return None;
+    }
+    if !is_exact_symbol_lookup_query(query) {
+        return None;
+    }
+
+    let results = exact_symbol_graph_results(query, limit, language, graph);
+    if results.is_empty() {
+        return None;
+    }
+
+    let confidence = confidence_label(query, &results);
+    let response_codebase = resolved_search_codebase(codebase, &results);
+    Some(build_search_response(
+        query,
+        limit,
+        results.len(),
+        confidence,
+        &results,
+        response_codebase.as_deref(),
+    ))
+}
+
+fn resolved_search_codebase(codebase: Option<&str>, results: &[SearchResult]) -> Option<String> {
+    codebase
+        .map(str::to_string)
+        .or_else(|| infer_search_codebase(results))
+}
+
+fn infer_search_codebase(results: &[SearchResult]) -> Option<String> {
+    let mut inferred_root: Option<PathBuf> = None;
+
+    for result in results {
+        let root = infer_repo_root(&result.filepath)?;
+        match &inferred_root {
+            Some(existing) if existing != &root => return None,
+            Some(_) => {}
+            None => inferred_root = Some(root),
+        }
+    }
+
+    inferred_root.map(|root| root.to_string_lossy().to_string())
+}
+
+fn infer_repo_root(path: &str) -> Option<PathBuf> {
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return None;
+    }
+
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if dir.join(".git").exists() {
+            return Some(std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf()));
+        }
+        current = dir.parent();
+    }
+
+    None
+}
+
+fn exact_symbol_graph_results(
+    query: &str,
+    limit: usize,
+    language: Option<&str>,
+    graph: &CodeGraph,
+) -> Vec<SearchResult> {
+    let mut results: Vec<SearchResult> = graph
+        .find_nodes_by_name(query, true)
+        .into_iter()
+        .map(|node| {
+            let (in_degree, out_degree) = graph.get_node_degree(&node.id);
+            let connectivity_bonus = ((in_degree + out_degree) as f64).min(8.0) * 0.01;
+            SearchResult {
+                id: node.id,
+                filepath: node.location.file_path,
+                symbol_name: node.name,
+                symbol_type: node.node_type.to_string(),
+                language: node.language,
+                line_start: node.location.start_line,
+                line_end: node.location.end_line,
+                score: (0.95 + connectivity_bonus).min(0.99),
+                code: String::new(),
+                signature: String::new(),
+                match_sources: vec!["graph".into(), "exact".into()],
+            }
+        })
+        .collect();
+    results = filter_results_by_language(results, language);
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(limit);
+    results
 }
 
 fn search_tool_cache_key(
@@ -187,34 +315,53 @@ fn build_search_response(
     results: &[SearchResult],
     codebase: Option<&str>,
 ) -> Value {
+    let include_type = !is_exact_symbol_lookup_query(query) || results.len() > 1;
     let out: Vec<Value> = results
         .iter()
         .map(|r| {
-            json!({
+            let mut entry = json!({
                 "name": r.symbol_name,
                 "file": strip_codebase_path(&r.filepath, codebase),
                 "line": r.line_start,
-                "type": r.symbol_type,
                 "score": (r.score * 10000.0).round() / 10000.0,
-            })
+            });
+            if include_type {
+                entry["type"] = json!(r.symbol_type);
+            }
+            entry
         })
         .collect();
 
-    json!({
+    let mut response = json!({
         "query": query,
         "confidence": confidence,
         "results": out,
         "total": total,
         "limit": limit,
-        "truncated": total > limit,
-    })
+    });
+    if total > limit {
+        response["truncated"] = json!(true);
+    }
+    response
 }
 
 fn strip_codebase_path(path: &str, codebase: Option<&str>) -> String {
-    codebase
-        .and_then(|base| std::path::Path::new(path).strip_prefix(base).ok())
-        .map(|relative| relative.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string())
+    if let Some(base) = codebase {
+        let file_path = Path::new(path);
+        if let Ok(relative) = file_path.strip_prefix(base) {
+            return relative.to_string_lossy().to_string();
+        }
+
+        let canonical_file = std::fs::canonicalize(file_path).ok();
+        let canonical_base = std::fs::canonicalize(base).ok();
+        if let (Some(canonical_file), Some(canonical_base)) = (canonical_file, canonical_base) {
+            if let Ok(relative) = canonical_file.strip_prefix(&canonical_base) {
+                return relative.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    path.to_string()
 }
 
 fn drop_low_confidence_noise(
@@ -902,6 +1049,16 @@ fn is_symbol_lookup_query(query: &str) -> bool {
     !trimmed.is_empty() && trimmed.split_whitespace().count() == 1
 }
 
+fn is_exact_symbol_lookup_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.is_empty()
+        && trimmed.split_whitespace().count() == 1
+        && trimmed.chars().any(|ch| ch.is_ascii_alphabetic())
+        && (trimmed.contains('_')
+            || trimmed.contains('.')
+            || trimmed.chars().any(|ch| ch.is_ascii_uppercase()))
+}
+
 fn query_explicitly_targets_tests(query: &str) -> bool {
     let lowered = query.to_ascii_lowercase();
     ["test", "tests", "pytest", "spec", "fixture"]
@@ -1279,6 +1436,8 @@ fn is_high_confidence_exact_symbol_hit(query: &str, result: &SearchResult) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use contextro_core::graph::{UniversalLocation, UniversalNode};
+    use contextro_core::NodeType;
     use contextro_core::models::CodeChunk;
     use contextro_engines::bm25::Bm25Engine;
     use contextro_engines::cache::QueryCache;
@@ -1350,6 +1509,24 @@ mod tests {
             parent: String::new(),
             docstring: String::new(),
             vector: vec![],
+        }
+    }
+
+    fn make_graph_node(id: &str, name: &str, filepath: &str, language: &str) -> UniversalNode {
+        UniversalNode {
+            id: id.into(),
+            name: name.into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: filepath.into(),
+                start_line: 1,
+                end_line: 10,
+                start_column: 0,
+                end_column: 0,
+                language: language.into(),
+            },
+            language: language.into(),
+            ..Default::default()
         }
     }
 
@@ -1909,12 +2086,10 @@ mod tests {
                 "name": "CachedSymbol",
                 "file": "src/lib.rs",
                 "line": 1,
-                "type": "function",
                 "score": 1.0
             }],
             "total": 1,
-            "limit": 5,
-            "truncated": false
+            "limit": 5
         });
 
         cache.put(
@@ -1960,6 +2135,44 @@ mod tests {
             result["results"][0]["file"],
             "crates/contextro-engines/src/cache.rs"
         );
+        assert!(result["results"][0].get("type").is_none(), "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_handle_search_infers_repo_root_for_absolute_bm25_paths() {
+        let repo = std::env::temp_dir().join("contextro-search-infer-bm25");
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+
+        let cache_file = repo.join("crates/contextro-engines/src/cache.rs");
+        std::fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
+        std::fs::write(&cache_file, "pub struct QueryCache;\n").unwrap();
+
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[make_chunk(
+            "query-cache",
+            "cached search responses with ttl eviction",
+            "QueryCache",
+            &cache_file.to_string_lossy(),
+        )]);
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 1, "mode": "bm25"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
+
+        let _ = std::fs::remove_dir_all(repo);
     }
 
     #[test]
@@ -2175,7 +2388,105 @@ mod tests {
             "unexpected result: {result}"
         );
         assert_eq!(result["limit"], 10);
-        assert_eq!(result["truncated"], false);
+        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_handle_search_exact_symbol_uses_graph_without_bm25_hits() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-node",
+            "QueryCache",
+            "crates/contextro-engines/src/cache.rs",
+            "rust",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "hybrid"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(result["results"][0]["name"], "QueryCache");
+        assert_eq!(result["results"][0]["file"], "crates/contextro-engines/src/cache.rs");
+        assert!(result["results"][0].get("type").is_none(), "unexpected result: {result}"
+        );
+        assert_eq!(result["confidence"], "high", "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_handle_search_infers_repo_root_for_absolute_graph_paths() {
+        let repo = std::env::temp_dir().join("contextro-search-infer-graph");
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+
+        let cache_file = repo.join("crates/contextro-engines/src/cache.rs");
+        std::fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
+        std::fs::write(&cache_file, "pub struct QueryCache;\n").unwrap();
+
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-node",
+            "QueryCache",
+            &cache_file.to_string_lossy(),
+            "rust",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "hybrid"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(result["results"][0]["name"], "QueryCache");
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
+
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn test_handle_search_exact_symbol_fast_path_respects_language_filter() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-rust",
+            "QueryCache",
+            "crates/contextro-engines/src/cache.rs",
+            "rust",
+        ));
+        graph.add_node(make_graph_node(
+            "query-cache-ts",
+            "QueryCache",
+            "packages/cache/query-cache.ts",
+            "typescript",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "bm25", "language": "typescript"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        let results = result["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 1, "unexpected result: {result}");
+        assert_eq!(results[0]["file"], "packages/cache/query-cache.ts");
     }
 
     #[test]
@@ -2219,7 +2530,7 @@ mod tests {
             "unexpected result: {result}"
         );
         assert_eq!(result["limit"], 10);
-        assert_eq!(result["truncated"], false);
+        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
     }
 
     #[test]
