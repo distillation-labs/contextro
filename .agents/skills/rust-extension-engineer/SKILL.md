@@ -32,6 +32,10 @@ Rust code generally, and especially when Rust sits behind a Python or FFI interf
 - Keep the Python-Rust boundary narrow, typed, and stable.
 - Preserve parity with a Python fallback when one exists.
 - Treat build, wheel, and portability friction as real costs.
+- Treat hand-written source-file size as a hard repository constraint: keep source files in the
+  **300-500 line** band, do not create files outside that band without explicit user approval, and
+  do not grow a source file past **500 lines**. If a touched source file is already over **500
+  lines**, you must split or refactor it in the same task before adding more code.
 
 ## Rule Categories by Priority
 
