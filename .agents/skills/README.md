@@ -50,6 +50,21 @@ for platform in .claude/skills .github/skills .opencode/skills .kiro/skills; do
 done
 ```
 
+## Shared coding-agent repository rule
+
+The coding-oriented skills in this tree must enforce the same source-file policy:
+
+- Keep hand-written source files in the **300-500 line** band.
+- Do **not** create a new source file outside that band without explicit user approval.
+- Do **not** grow an existing source file past **500 lines**.
+- If any touched or worked-on hand-written source file is already over **500 lines**, agents must
+  refactor or split it as part of the same task.
+- Do **not** append more code to a **500+ line** source file without reducing it in the same
+  change.
+- Prefer extracting cohesive modules, helpers, or types over leaving a large file in place or
+  scattering many tiny files.
+- This rule applies to hand-written source files, not generated, vendor, or third-party code.
+
 ## Skills
 
 | Skill | Purpose |
