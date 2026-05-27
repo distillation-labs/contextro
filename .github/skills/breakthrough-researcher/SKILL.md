@@ -34,6 +34,11 @@ experiments are most likely to produce a real breakthrough.
 - Prefer negative evidence over hype.
 - End with falsifiable experiments, not generic advice.
 - Keep the research output actionable for the next implementation step.
+- Treat hand-written source-file size as a hard repository constraint: keep source files in the
+  **300-500 line** band, do not create files outside that band without explicit user approval, and
+  do not recommend changes that would grow a source file past **500 lines**. If a proposed change
+  touches a **500+ line** source file, the recommendation must include refactoring or splitting it
+  in the same task.
 
 ## Use This Skill To Produce
 
