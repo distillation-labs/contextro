@@ -38,6 +38,10 @@ the previous public version and no high-risk workflow regresses.
   summary, lost persisted state, or behavior that gets worse than the previous
   public version.
 - Treat benchmark wins as meaningless if developer workflows regress.
+- Treat touched hand-written source files outside the **300-500 line** band as a
+  structural regression. Any change that touches a **500+ line** source file must
+  refactor or split that file in the same task. Do **not** wave through any
+  change that grows a source file past **500 lines** without explicit user approval.
 
 ## Use It For
 
