@@ -812,7 +812,7 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
                             &module_doc,
                         ),
                         parent: current_impl.clone(),
-                        code_snippet: snippet_from(content.as_bytes(), i, end_line),
+                        code_snippet: snippet_from_lines(&lines, i, end_line),
                         imports: vec![],
                         calls,
                     });
@@ -852,7 +852,7 @@ fn parse_rust_heuristic(content: &str, filepath: &str) -> Vec<Symbol> {
                             &module_doc,
                         ),
                         parent: None,
-                        code_snippet: snippet_from(content.as_bytes(), i, end_line),
+                        code_snippet: snippet_from_lines(&lines, i, end_line),
                         imports: vec![],
                         calls: vec![],
                     });
@@ -1088,6 +1088,13 @@ fn line_at(source: &[u8], row: usize) -> String {
 fn snippet_from(source: &[u8], start_row: usize, end_row: usize) -> String {
     let s = std::str::from_utf8(source).unwrap_or("");
     let lines: Vec<&str> = s.lines().collect();
+    snippet_from_lines(&lines, start_row, end_row)
+}
+
+fn snippet_from_lines(lines: &[&str], start_row: usize, end_row: usize) -> String {
+    if start_row >= lines.len() {
+        return String::new();
+    }
     let end = (end_row + 1).min(lines.len()).min(start_row + 50);
     lines[start_row..end].join("\n")
 }
