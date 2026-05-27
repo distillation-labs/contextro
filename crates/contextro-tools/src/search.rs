@@ -75,14 +75,9 @@ pub fn handle_search_with_codebase(
         return cached;
     }
 
-    if let Some(exact_symbol_response) = exact_symbol_search_response(
-        query,
-        limit,
-        &mode,
-        language.as_deref(),
-        graph,
-        codebase,
-    ) {
+    if let Some(exact_symbol_response) =
+        exact_symbol_search_response(query, limit, &mode, language.as_deref(), graph, codebase)
+    {
         cache.put(&tool_cache_key, exact_symbol_response.clone());
         return exact_symbol_response;
     }
@@ -1437,8 +1432,8 @@ fn is_high_confidence_exact_symbol_hit(query: &str, result: &SearchResult) -> bo
 mod tests {
     use super::*;
     use contextro_core::graph::{UniversalLocation, UniversalNode};
-    use contextro_core::NodeType;
     use contextro_core::models::CodeChunk;
+    use contextro_core::NodeType;
     use contextro_engines::bm25::Bm25Engine;
     use contextro_engines::cache::QueryCache;
     use contextro_engines::graph::CodeGraph;
@@ -2135,7 +2130,10 @@ mod tests {
             result["results"][0]["file"],
             "crates/contextro-engines/src/cache.rs"
         );
-        assert!(result["results"][0].get("type").is_none(), "unexpected result: {result}");
+        assert!(
+            result["results"][0].get("type").is_none(),
+            "unexpected result: {result}"
+        );
     }
 
     #[test]
@@ -2388,7 +2386,10 @@ mod tests {
             "unexpected result: {result}"
         );
         assert_eq!(result["limit"], 10);
-        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
+        assert!(
+            result.get("truncated").is_none(),
+            "unexpected result: {result}"
+        );
     }
 
     #[test]
@@ -2413,8 +2414,13 @@ mod tests {
         );
 
         assert_eq!(result["results"][0]["name"], "QueryCache");
-        assert_eq!(result["results"][0]["file"], "crates/contextro-engines/src/cache.rs");
-        assert!(result["results"][0].get("type").is_none(), "unexpected result: {result}"
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
+        assert!(
+            result["results"][0].get("type").is_none(),
+            "unexpected result: {result}"
         );
         assert_eq!(result["confidence"], "high", "unexpected result: {result}");
     }
@@ -2530,7 +2536,10 @@ mod tests {
             "unexpected result: {result}"
         );
         assert_eq!(result["limit"], 10);
-        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
+        assert!(
+            result.get("truncated").is_none(),
+            "unexpected result: {result}"
+        );
     }
 
     #[test]
@@ -2787,7 +2796,7 @@ mod tests {
         assert!(reranked
             .iter()
             .take(2)
-            .all(|result| is_probable_engine_internal_search_result(result)));
+            .all(is_probable_engine_internal_search_result));
     }
 
     #[test]
