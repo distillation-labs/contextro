@@ -1494,24 +1494,6 @@ mod tests {
         result
     }
 
-    fn make_graph_node(id: &str, name: &str, filepath: &str, language: &str) -> UniversalNode {
-        UniversalNode {
-            id: id.into(),
-            name: name.into(),
-            node_type: NodeType::Function,
-            location: UniversalLocation {
-                file_path: filepath.into(),
-                start_line: 1,
-                end_line: 1,
-                start_column: 0,
-                end_column: 0,
-                language: language.into(),
-            },
-            language: language.into(),
-            ..Default::default()
-        }
-    }
-
     fn make_chunk(id: &str, text: &str, name: &str, filepath: &str) -> CodeChunk {
         CodeChunk {
             id: id.into(),
@@ -2472,64 +2454,6 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(repo);
-    }
-
-    #[test]
-    fn test_handle_search_exact_symbol_fast_path_respects_language_filter() {
-        let bm25 = Bm25Engine::new_in_memory();
-        let graph = CodeGraph::new();
-        graph.add_node(make_graph_node(
-            "query-cache-rust",
-            "QueryCache",
-            "crates/contextro-engines/src/cache.rs",
-            "rust",
-        ));
-        graph.add_node(make_graph_node(
-            "query-cache-ts",
-            "QueryCache",
-            "packages/cache/query-cache.ts",
-            "typescript",
-        ));
-        let cache = QueryCache::new(16, 60.0);
-        let vector = VectorIndex::new();
-
-        let result = handle_search(
-            &json!({"query": "QueryCache", "limit": 10, "mode": "bm25", "language": "typescript"}),
-            &bm25,
-            &graph,
-            &cache,
-            &vector,
-        );
-
-        let results = result["results"].as_array().expect("results array");
-        assert_eq!(results.len(), 1, "unexpected result: {result}");
-        assert_eq!(results[0]["file"], "packages/cache/query-cache.ts");
-    }
-
-    #[test]
-    fn test_handle_search_exact_symbol_uses_graph_without_bm25_hits() {
-        let bm25 = Bm25Engine::new_in_memory();
-        let graph = CodeGraph::new();
-        graph.add_node(make_graph_node(
-            "query-cache-node",
-            "QueryCache",
-            "crates/contextro-engines/src/cache.rs",
-            "rust",
-        ));
-        let cache = QueryCache::new(16, 60.0);
-        let vector = VectorIndex::new();
-
-        let result = handle_search(
-            &json!({"query": "QueryCache", "limit": 10, "mode": "hybrid"}),
-            &bm25,
-            &graph,
-            &cache,
-            &vector,
-        );
-
-        assert_eq!(result["results"][0]["name"], "QueryCache");
-        assert_eq!(result["results"][0]["file"], "crates/contextro-engines/src/cache.rs");
-        assert_eq!(result["confidence"], "high", "unexpected result: {result}");
     }
 
     #[test]

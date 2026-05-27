@@ -4,6 +4,17 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.20] - 2026-05-27
+
+### Added
+
+- **`completion_check` gives agents a direct "did I finish this refactor?" tool** - the new public tool verifies `all_callers_updated` claims against the indexed caller graph and the claimed `changed_files`, returning missing callers, definition context, ambiguity hints, and confidence instead of forcing agents to hand-audit rename or signature updates.
+
+### Fixed
+
+- **Compact exact-hit responses now stay aligned with the retained 200-task study win** - `get_document_symbols` keeps the low-token default at the study floor with explicit `limit` overrides, while unique exact matches in `lookup_symbols` and exact-symbol `search()` omit redundant `type` noise and `search()` only emits `truncated` when results were actually cut.
+- **Release diagnostics and validation now exercise the shipped runtime surface more directly** - `contextro-bench` covers `completion_check`, the modularized `contextro-study` entrypoints are what the RC reruns validate, and the release branch keeps the current fingerprint/snapshot-aware index and restore reporting that the benchmark guardrails depend on.
+
 ## [1.6.19] - 2026-05-25
 
 ### Fixed
