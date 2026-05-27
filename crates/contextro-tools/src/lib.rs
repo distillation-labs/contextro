@@ -1,8 +1,9 @@
-//! All 35 MCP tool implementations for Contextro.
+//! All MCP tool implementations for Contextro.
 
 pub mod analysis;
 pub mod artifacts;
 pub mod code;
+pub mod completion;
 pub mod git_tools;
 pub mod graph_tools;
 pub mod memory;
