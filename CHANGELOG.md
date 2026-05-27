@@ -4,6 +4,56 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.21] - 2026-05-27
+
+### Fixed
+
+- **Cold-index rebuilds are materially faster on Rust-heavy repos without changing tool behavior** - Rust heuristic snippet extraction now reuses the already-split line buffer instead of rebuilding snippets per symbol, and automatic knowledge seeding batches its store write into one update. On this repo, the retained cold-index median improved from `36.9ms` to `27.4ms` while search latency and throughput stayed within the existing release guardrails.
+- **The shipped codebase and coding-agent bundles now enforce the hard 500-line source-file ceiling consistently** - the large server, search, memory, code, parsing, artifact, analysis, and git modules were split into focused files, and the mirrored skill bundles now explicitly require refactoring any touched hand-written source file that would otherwise remain over `500` lines.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are stronger now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
+## [1.6.20] - 2026-05-27
+
+### Added
+
+- **`completion_check` gives agents a direct "did I finish this refactor?" tool** - the new public tool verifies `all_callers_updated` claims against the indexed caller graph and the claimed `changed_files`, returning missing callers, definition context, ambiguity hints, and confidence instead of forcing agents to hand-audit rename or signature updates.
+
+### Fixed
+
+- **Compact exact-hit responses now stay aligned with the retained 200-task study win** - `get_document_symbols` keeps the low-token default at the study floor with explicit `limit` overrides, while unique exact matches in `lookup_symbols` and exact-symbol `search()` omit redundant `type` noise and `search()` only emits `truncated` when results were actually cut.
+- **Release diagnostics and validation now exercise the shipped runtime surface more directly** - `contextro-bench` covers `completion_check`, the modularized `contextro-study` entrypoints are what the RC reruns validate, and the release branch keeps the current fingerprint/snapshot-aware index and restore reporting that the benchmark guardrails depend on.
+
+## [1.6.19] - 2026-05-25
+
+### Fixed
+
+- **Exact-symbol `search()` is much faster and more precise on indexed repos** - exact identifier-style queries in `hybrid` and `bm25` modes now short-circuit through graph exact-name lookup, preserve language filtering, and keep the rich response payload instead of paying the broader ranking path when it is not needed.
+- **Incremental no-change checks and persisted-snapshot writes are cheaper on hot paths** - unchanged-repo detection now uses metadata fingerprints instead of full content hashes, persisted repo snapshots stream a leaner symbols-and-chunks payload to disk, and restore flows report honest timing breakdowns without rescanning the repo twice.
+- **Indexing diagnostics and release benchmarks now reflect real work instead of blended warm-cache behavior** - the indexing pipeline reports discover/parse/chunk timings, `index(path)` surfaces fresh/restore/skip modes plus graph/BM25/vector/snapshot/scope/docs/request timings, and `contextro-bench` measures true cold-index rebuilds while labeling first fresh runs versus restores.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are stronger now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
+## [1.6.18] - 2026-05-22
+
+### Fixed
+
+- **Unchanged repo scopes now restore from persisted snapshots instead of paying a full re-index on restart or active-scope fallback** - `index(path)` persists symbols, chunks, vectors, and graph state for unchanged repos, validates the snapshot against on-disk hashes before reuse, and falls back to a rebuild when the cached snapshot is stale.
+- **Pure graph-analysis tools now reuse deterministic responses across render-only budget changes** - `overview`, `architecture`, `analyze`, `focus`, `dead_code`, `circular_dependencies`, `test_coverage_map`, and `audit` now share cached results when only `max_tokens` changes, while reindex still invalidates the cache before fresh analysis.
+- **`commit_search` stays warm after direct indexing without slowing repo-mutation or restart flows** - direct `index(path)` now asynchronously prewarms the commit-search record cache, while `repo_add` and persisted-scope restore skip that prewarm so repo switching stays fast.
+- **Session and state persistence now write much less overhead on hot paths** - session events append line-delimited JSON with periodic compaction and legacy-array compatibility, while repo registry, repo scope, archive, and knowledge-store persistence all use compact JSON writes.
+
+### Known Limitations
+
+- **`search_codebase_map` is still best for subsystem mapping, not exact symbol lookup** - narrow explanatory queries are stronger now, but exact symbol or file-level questions still work best through `find_symbol()` plus `focus()` or `explain()`.
+- **`commit_search` still depends on commit message quality** - semantic matching now works well for descriptive subjects, but terse messages like `Update foo.rs` remain lower-signal than meaningful commit summaries.
+
 ## [1.6.17] - 2026-05-18
 
 ### Fixed
