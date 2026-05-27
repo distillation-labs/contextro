@@ -15,12 +15,11 @@ pub(super) fn build_index(codebase: &str) -> Result<IndexedRepo> {
     let pipeline = IndexingPipeline::new(settings);
 
     let index_start = Instant::now();
-    let (result, symbols) = pipeline
+    let (result, symbols, chunks) = pipeline
         .index(root)
         .with_context(|| format!("failed to index {codebase}"))?;
     let index_elapsed = index_start.elapsed().as_secs_f64();
 
-    let chunks = create_chunks(&symbols);
     let bm25 = Bm25Engine::new_in_memory();
     let bm25_start = Instant::now();
     bm25.index_chunks(&chunks);

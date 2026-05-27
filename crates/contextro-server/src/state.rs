@@ -417,8 +417,7 @@ mod tests {
         restore_settings.storage_dir = restore_storage_dir.to_string_lossy().to_string();
         let server = crate::ContextroServer::with_settings(restore_settings);
 
-        let (response, _) =
-            server.restore_repo_snapshot(repo_path.to_string_lossy().as_ref(), &restored);
+        let (response, _) = server.restore_repo_snapshot(repo_path.to_string_lossy().as_ref(), &restored);
         assert_eq!(response["status"], "done");
         assert_eq!(server.state.graph.node_count(), 1);
         assert!(!server.state.graph.snapshot().is_empty());

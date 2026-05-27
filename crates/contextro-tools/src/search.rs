@@ -345,10 +345,22 @@ fn build_search_response(
 }
 
 fn strip_codebase_path(path: &str, codebase: Option<&str>) -> String {
-    codebase
-        .and_then(|base| std::path::Path::new(path).strip_prefix(base).ok())
-        .map(|relative| relative.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string())
+    if let Some(base) = codebase {
+        let file_path = Path::new(path);
+        if let Ok(relative) = file_path.strip_prefix(base) {
+            return relative.to_string_lossy().to_string();
+        }
+
+        let canonical_file = std::fs::canonicalize(file_path).ok();
+        let canonical_base = std::fs::canonicalize(base).ok();
+        if let (Some(canonical_file), Some(canonical_base)) = (canonical_file, canonical_base) {
+            if let Ok(relative) = canonical_file.strip_prefix(&canonical_base) {
+                return relative.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    path.to_string()
 }
 
 fn drop_low_confidence_noise(
@@ -1038,12 +1050,12 @@ fn is_symbol_lookup_query(query: &str) -> bool {
 
 fn is_exact_symbol_lookup_query(query: &str) -> bool {
     let trimmed = query.trim();
-    is_symbol_lookup_query(trimmed)
-        && trimmed.len() >= 3
-        && !trimmed.ends_with("()")
-        && !trimmed.contains('*')
-        && !trimmed.contains('?')
-        && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric())
+    !trimmed.is_empty()
+        && trimmed.split_whitespace().count() == 1
+        && trimmed.chars().any(|ch| ch.is_ascii_alphabetic())
+        && (trimmed.contains('_')
+            || trimmed.contains('.')
+            || trimmed.chars().any(|ch| ch.is_ascii_uppercase()))
 }
 
 fn query_explicitly_targets_tests(query: &str) -> bool {
@@ -1424,8 +1436,8 @@ fn is_high_confidence_exact_symbol_hit(query: &str, result: &SearchResult) -> bo
 mod tests {
     use super::*;
     use contextro_core::graph::{UniversalLocation, UniversalNode};
-    use contextro_core::models::CodeChunk;
     use contextro_core::NodeType;
+    use contextro_core::models::CodeChunk;
     use contextro_engines::bm25::Bm25Engine;
     use contextro_engines::cache::QueryCache;
     use contextro_engines::graph::CodeGraph;
@@ -1514,6 +1526,24 @@ mod tests {
             parent: String::new(),
             docstring: String::new(),
             vector: vec![],
+        }
+    }
+
+    fn make_graph_node(id: &str, name: &str, filepath: &str, language: &str) -> UniversalNode {
+        UniversalNode {
+            id: id.into(),
+            name: name.into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: filepath.into(),
+                start_line: 1,
+                end_line: 10,
+                start_column: 0,
+                end_column: 0,
+                language: language.into(),
+            },
+            language: language.into(),
+            ..Default::default()
         }
     }
 
@@ -2073,12 +2103,10 @@ mod tests {
                 "name": "CachedSymbol",
                 "file": "src/lib.rs",
                 "line": 1,
-                "type": "function",
                 "score": 1.0
             }],
             "total": 1,
-            "limit": 5,
-            "truncated": false
+            "limit": 5
         });
 
         cache.put(
@@ -2124,6 +2152,44 @@ mod tests {
             result["results"][0]["file"],
             "crates/contextro-engines/src/cache.rs"
         );
+        assert!(result["results"][0].get("type").is_none(), "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_handle_search_infers_repo_root_for_absolute_bm25_paths() {
+        let repo = std::env::temp_dir().join("contextro-search-infer-bm25");
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+
+        let cache_file = repo.join("crates/contextro-engines/src/cache.rs");
+        std::fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
+        std::fs::write(&cache_file, "pub struct QueryCache;\n").unwrap();
+
+        let bm25 = Bm25Engine::new_in_memory();
+        bm25.index_chunks(&[make_chunk(
+            "query-cache",
+            "cached search responses with ttl eviction",
+            "QueryCache",
+            &cache_file.to_string_lossy(),
+        )]);
+        let graph = CodeGraph::new();
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 1, "mode": "bm25"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
+
+        let _ = std::fs::remove_dir_all(repo);
     }
 
     #[test]
@@ -2339,7 +2405,105 @@ mod tests {
             "unexpected result: {result}"
         );
         assert_eq!(result["limit"], 10);
-        assert_eq!(result["truncated"], false);
+        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_handle_search_exact_symbol_uses_graph_without_bm25_hits() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-node",
+            "QueryCache",
+            "crates/contextro-engines/src/cache.rs",
+            "rust",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "hybrid"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(result["results"][0]["name"], "QueryCache");
+        assert_eq!(result["results"][0]["file"], "crates/contextro-engines/src/cache.rs");
+        assert!(result["results"][0].get("type").is_none(), "unexpected result: {result}"
+        );
+        assert_eq!(result["confidence"], "high", "unexpected result: {result}");
+    }
+
+    #[test]
+    fn test_handle_search_infers_repo_root_for_absolute_graph_paths() {
+        let repo = std::env::temp_dir().join("contextro-search-infer-graph");
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+
+        let cache_file = repo.join("crates/contextro-engines/src/cache.rs");
+        std::fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
+        std::fs::write(&cache_file, "pub struct QueryCache;\n").unwrap();
+
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-node",
+            "QueryCache",
+            &cache_file.to_string_lossy(),
+            "rust",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "hybrid"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        assert_eq!(result["results"][0]["name"], "QueryCache");
+        assert_eq!(
+            result["results"][0]["file"],
+            "crates/contextro-engines/src/cache.rs"
+        );
+
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn test_handle_search_exact_symbol_fast_path_respects_language_filter() {
+        let bm25 = Bm25Engine::new_in_memory();
+        let graph = CodeGraph::new();
+        graph.add_node(make_graph_node(
+            "query-cache-rust",
+            "QueryCache",
+            "crates/contextro-engines/src/cache.rs",
+            "rust",
+        ));
+        graph.add_node(make_graph_node(
+            "query-cache-ts",
+            "QueryCache",
+            "packages/cache/query-cache.ts",
+            "typescript",
+        ));
+        let cache = QueryCache::new(16, 60.0);
+        let vector = VectorIndex::new();
+
+        let result = handle_search(
+            &json!({"query": "QueryCache", "limit": 10, "mode": "bm25", "language": "typescript"}),
+            &bm25,
+            &graph,
+            &cache,
+            &vector,
+        );
+
+        let results = result["results"].as_array().expect("results array");
+        assert_eq!(results.len(), 1, "unexpected result: {result}");
+        assert_eq!(results[0]["file"], "packages/cache/query-cache.ts");
     }
 
     #[test]
@@ -2441,7 +2605,7 @@ mod tests {
             "unexpected result: {result}"
         );
         assert_eq!(result["limit"], 10);
-        assert_eq!(result["truncated"], false);
+        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
     }
 
     #[test]

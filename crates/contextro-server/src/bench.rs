@@ -115,6 +115,7 @@ fn main() {
     let mut tool_benchmarks = Vec::with_capacity(tool_cases.len() + 4);
 
     let index_benchmark = bench_cold_index_tool(&codebase);
+    let cold_index_ms = index_benchmark.avg_ms;
     print_tool_benchmark(&index_benchmark);
     tool_benchmarks.push(index_benchmark);
 
@@ -196,11 +197,6 @@ fn main() {
     println!("║  Metric          │ Target    │ Actual    │ Status           ║");
     println!("╟──────────────────┼───────────┼───────────┼──────────────────╢");
     let first_index_ms = idx_time.as_secs_f64() * 1000.0;
-    let cold_index_ms = tool_benchmarks
-        .iter()
-        .find(|benchmark| benchmark.tool_name == "index")
-        .map(|benchmark| benchmark.avg_ms)
-        .unwrap_or(first_index_ms);
     let idx_status = if cold_index_ms <= 40.0 {
         "✓ PASS"
     } else {
@@ -577,6 +573,20 @@ fn build_tool_cases(
             notes: "pre-refactor analysis",
             allow_error: false,
         },
+        ToolCase {
+            display_name: "completion_chk",
+            tool_name: "completion_check",
+            args: json!({
+                "claim": "all_callers_updated",
+                "symbol_name": fixture.symbol_exact,
+                "changed_files": [
+                    fixture.code_file_rel,
+                    format!("{}/nonexistent.rs", fixture.code_dir_rel),
+                ],
+            }),
+            notes: "refactor completeness",
+            allow_error: false,
+        },
     ]
 }
 
@@ -712,7 +722,7 @@ fn mixed_workload_ops_per_sec(server: &ContextroServer, tool_cases: &[ToolCase])
         .filter(|case| {
             matches!(
                 case.tool_name,
-                "search" | "find_symbol" | "code" | "overview" | "status" | "session_snapshot"
+                "search" | "find_symbol" | "code" | "overview" | "status" | "session_snapshot" | "completion_check"
             )
         })
         .collect();

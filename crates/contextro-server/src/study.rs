@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tiktoken_rs::{cl100k_base, CoreBPE};
 
 use contextro_config::Settings;

@@ -99,13 +99,15 @@ Key parameter names that differ from intuition:
 
 ## Response Format
 
-Current search responses use full keys:
+Current responses still use long-form keys, but some exact-hit payloads are intentionally compacted:
 
-- Top-level search response includes `query`, `confidence`, `results`, `total`, and usually `limit` plus `truncated`.
-- Each search result uses `name`, `file`, `line`, `type`, and `score`.
-- Symbol lookup responses use `{ symbols: [...], total: N }`.
+- Search responses include `query`, `confidence`, `results`, `total`, and `limit`; `truncated` appears only when `total > limit`.
+- Search results always use `name`, `file`, `line`, and `score`; `type` is omitted for unique exact-symbol hits and kept for broader or ambiguous matches.
+- Search can emit repo-relative `file` paths even without explicit `codebase` when it can infer a single repo root from the results.
+- Symbol lookup responses use `{ symbols: [...], total: N }`; `lookup_symbols` omits `type` for unique exact matches but keeps it for ambiguous matches and `include_source=true`.
 - `get_document_symbols(path)` and `list_symbols(path=<file>)` return `{ file, columns, symbols, total }` where each row in `symbols` is positional against `columns`.
 - File-symbol `columns` always start with `name`, `type`, `line`; `end_line` appears only when needed and `signature` appears only when `include_signature=true`.
+- `get_document_symbols(path)` defaults to a compact `3`-row payload when `include_signature=false`; pass `limit` to override.
 - `list_symbols(path=<dir>)` is a different contract: `{ path, symbols: [{ name, type, file, line, callers, callees }], total }`.
 - `retrieve(ref_id="...")` returns `{ ref_id, content }`.
 
@@ -190,18 +192,24 @@ Current study-backed evidence to cite safely:
 
 | Study | Contextro success | Baseline success | Contextro tokens | Baseline tokens | Reduction | Tool calls/task | Files read |
 |---|---|---|---|---|---|---|---|
-| Contextro repo, 100 tasks | 100% | 99% | 10,207 | 106,805 | 90.4% | 1.0 | 0 |
-| Contextro repo, 200 tasks | 100% | 99% | 23,447 | 222,646 | 89.5% | 1.0 | 0 |
+| Contextro repo, 200 tasks, retained exp12 | 100% | 97.5% | 11,073 | 227,072 | 95.1% | 1.0 | 0 |
 | Production TypeScript monorepo, 1,000 tasks | 100% | 99.5% | 93,819 | 941,748 | 90.0% | 1.0 | 0 |
 
-Useful category notes from the 200-task Contextro repo study:
+Useful category notes from the retained 200-task Contextro repo study:
 
-- `batch_lookup`: 94.4% token reduction
-- `document_symbols`: 83.1% token reduction
-- `exact_search`: 87.2% token reduction
+- `batch_lookup`: 94.9% token reduction vs `stronger_local`
+- `document_symbols`: 96.3% token reduction vs `stronger_local`
+- `exact_search`: 93.9% token reduction vs `stronger_local`
 - `symbol_discovery`: 94.9% token reduction
 
-Use these study numbers instead of older per-tool token estimates or compact-key claims.
+Guardrails for future runs:
+
+- Keep `contextro-study` at `100%` success on this repo.
+- Treat `11,073` total Contextro tokens as the retained repo baseline.
+- Do not lower default `get_document_symbols` below `3`; the study tasks depend on `3` symbols.
+- Do not take meaningful `contextro-bench` regressions for marginal token wins.
+
+Use these study numbers instead of older `100`-task figures, per-tool token estimates, or compact-key claims.
 
 ## References
 

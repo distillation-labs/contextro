@@ -4,40 +4,32 @@ Current evidence in this bundle is limited to studies and repo files present in 
 
 ## Validated Studies
 
-### Contextro repo study, 100 tasks
+### Contextro repo study, 200 tasks, retained exp12 state
 
-Measured on this repository.
-
-| Metric | Contextro | stronger_local | Delta |
-|---|---|---|---|
-| Success rate | 100% | 99% | +1 point |
-| Total tokens | 10,207 | 106,805 | 90.4% reduction |
-| Tool calls per task | 1.0 | 2.97 | lower |
-| Files read | 0 | 177 | eliminated |
-
-Source: current validated `contextro-study` figures for this working tree.
-
-### Contextro repo study, 200 tasks
-
-Measured on this repository.
+Measured on this repository with the deterministic `contextro-study` harness.
 
 | Metric | Contextro | stronger_local | Delta |
 |---|---|---|---|
-| Success rate | 100% | 99% | +1 point |
-| Total tokens | 23,447 | 222,646 | 89.5% reduction |
-| Tool calls per task | 1.0 | 2.89 | lower |
-| Files read | 0 | 335 | eliminated |
+| Success rate | 100% | 97.5% | +2.5 points |
+| Total tokens | 11,073 | 227,072 | 95.1% reduction |
+| Mean tokens per task | 55.37 | 1,135.36 | lower |
+| Tool calls per task | 1.0 | 2.96 | lower |
+| Files read | 0 | 352 | eliminated |
 
-Source: current validated `contextro-study` figures for this working tree.
+Source: current validated `contextro-study` figures for this working tree, retained `exp12` state.
 
-Useful category notes from the 200-task study:
+### Retained breakthrough vs pre-optimization Contextro baseline
 
-| Category | Token reduction |
-|---|---|
-| `batch_lookup` | 94.4% |
-| `document_symbols` | 83.1% |
-| `exact_search` | 87.2% |
-| `symbol_discovery` | 94.9% |
+These deltas are the benchmark guardrails for this repo.
+
+| Metric | Baseline Contextro | Retained Contextro | Delta |
+|---|---|---|---|
+| Success rate | 100% | 100% | preserved |
+| Total tokens | 20,851 | 11,073 | 46.9% reduction |
+| `document_symbols` tokens | 10,805 | 2,664 | 75.3% reduction |
+| `exact_search` tokens | 4,230 | 3,074 | 27.3% reduction |
+| `batch_lookup` tokens | 3,568 | 3,087 | 13.5% reduction |
+| `symbol_discovery` tokens | 2,248 | 2,248 | unchanged |
 
 ### Published repo-root README study, production TypeScript monorepo, 1,000 tasks
 
@@ -53,53 +45,88 @@ This is the published study already cited in the repo root README.
 
 Source: `/Users/japneetkalkat/contextro/README.md`
 
+## Guardrails For Future Runs
+
+- Keep the `200`-task `contextro-study` success rate at `100%` on this repo when shipping compact-response changes.
+- Treat `11,073` total Contextro tokens as the current retained baseline on this repo.
+- Do not lower the default `get_document_symbols` cap below `3`; the current study tasks expect `3` symbols.
+- Retained `contextro-bench` sanity rerun on this repo: `index avg 39.10ms`, `search avg 0.12ms`. Do not accept meaningful bench regressions for marginal token wins.
+
 ## Current Runtime Contracts
 
 ### Search
 
-`search()` returns full-key responses:
+`search()` still uses long-form keys, but exact single-symbol hits are compacted:
 
 ```json
 {
-  "query": "authentication middleware",
+  "query": "QueryCache",
   "confidence": "high",
   "results": [
     {
-      "name": "AuthMiddleware",
-      "file": "src/auth.rs",
-      "line": 42,
-      "type": "struct",
-      "score": 0.9123
+      "name": "QueryCache",
+      "file": "crates/contextro-engines/src/cache.rs",
+      "line": 1,
+      "score": 0.99
     }
   ],
   "total": 1,
-  "limit": 10,
-  "truncated": false
+  "limit": 10
 }
 ```
 
 Notes:
 - `confidence` is present in current responses.
-- Search results use `name`, `file`, `line`, `type`, `score`, not compact keys.
+- Search results always use `name`, `file`, `line`, and `score`.
+- `type` is omitted for unique exact-symbol hits and kept for broader or ambiguous results.
+- `file` is repo-relative when Contextro can infer a single repo root from the result set, even without an explicit `codebase`.
+- `truncated` is omitted unless `total > limit`.
 - Response truncation and budgeting are handled by the server wrapper's `max_tokens`, not `context_budget`.
+
+### Document symbols
+
+`code(operation="get_document_symbols")` keeps the columnar contract but defaults to a compact payload:
+
+```json
+{
+  "file": "src/main.py",
+  "columns": ["name", "type", "line"],
+  "symbols": [
+    ["fn_0", "function", 1],
+    ["fn_1", "function", 4],
+    ["fn_2", "function", 7]
+  ],
+  "total": 30,
+  "truncated": true
+}
+```
+
+Notes:
+- When `include_signature=false`, the default response is capped at `3` rows.
+- Pass `limit` to override the compact default.
+- `include_signature=true` keeps the columnar contract and bypasses the default `3`-row cap.
 
 ### Symbol lookup
 
-`find_symbol()` and `code(operation="lookup_symbols")` use wrapper objects such as:
+`code(operation="lookup_symbols")` uses wrapper objects such as:
 
 ```json
 {
   "symbols": [
     {
-      "name": "AuthMiddleware",
-      "type": "struct",
-      "file": "src/auth.rs",
-      "line": 42
+      "name": "hello",
+      "file": "module.py",
+      "line": 1
     }
   ],
   "total": 1
 }
 ```
+
+Notes:
+- `lookup_symbols` omits `type` for unique exact matches.
+- `lookup_symbols` keeps `type` for ambiguous matches and when `include_source=true`.
+- `find_symbol()` still uses the broader symbol record contract and keeps `type`.
 
 ### Archive retrieval
 
@@ -114,5 +141,5 @@ Notes:
 
 ## Guidance For Claims
 
-Use the study tables above for external-facing benchmark claims in this skill bundle.
-Do not cite older compact-key token tables, MRR claims, or sandbox-response behavior unless a current repo source is added that supports them.
+Use the retained `200`-task repo study and the published `1,000`-task README study for external-facing benchmark claims in this skill bundle.
+Do not cite older `100`-task repo numbers, compact-key token tables, MRR claims, or sandbox-response behavior unless a current repo source is added that supports them.

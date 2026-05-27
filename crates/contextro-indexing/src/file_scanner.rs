@@ -101,7 +101,10 @@ pub fn fingerprint_files(paths: &[PathBuf]) -> Vec<(PathBuf, String)> {
                 .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
                 .map(|duration| duration.as_nanos())
                 .unwrap_or(0);
-            Some((path.clone(), format!("{}:{modified}", metadata.len())))
+            Some((
+                path.clone(),
+                format!("{}:{modified}", metadata.len()),
+            ))
         })
         .collect()
 }

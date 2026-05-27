@@ -11,6 +11,8 @@ use contextro_engines::graph::CodeGraph;
 use contextro_parsing::TreeSitterParser;
 use serde_json::{json, Value};
 
+const DEFAULT_DOCUMENT_SYMBOL_LIMIT: usize = 3;
+
 fn truncate_chars(text: &str, max_chars: usize) -> String {
     let mut chars = text.chars();
     let truncated: String = chars.by_ref().take(max_chars).collect();
@@ -65,6 +67,7 @@ fn get_document_symbols(args: &Value, graph: Option<&CodeGraph>, codebase: Optio
         .get("include_signature")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let symbol_limit = document_symbol_limit(args, include_signature);
     let abs_path = match resolve_existing_path(file_path, codebase) {
         Ok(path) => path,
         Err(error) => return error,
@@ -78,7 +81,12 @@ fn get_document_symbols(args: &Value, graph: Option<&CodeGraph>, codebase: Optio
             for candidate in graph_document_path_candidates(&abs_path, file_path, codebase) {
                 let indexed = graph.get_nodes_by_file(&candidate);
                 if !indexed.is_empty() {
-                    return render_indexed_document_symbols(&abs_path, &indexed, codebase);
+                    return render_indexed_document_symbols(
+                        &abs_path,
+                        &indexed,
+                        symbol_limit,
+                        codebase,
+                    );
                 }
             }
         }
@@ -87,18 +95,37 @@ fn get_document_symbols(args: &Value, graph: Option<&CodeGraph>, codebase: Optio
     let parser = TreeSitterParser::new();
     match parser.parse_file(abs_path.to_string_lossy().as_ref()) {
         Ok(parsed) => {
-            render_parsed_document_symbols(&abs_path, &parsed.symbols, include_signature, codebase)
+            render_parsed_document_symbols(
+                &abs_path,
+                &parsed.symbols,
+                include_signature,
+                symbol_limit,
+                codebase,
+            )
         }
         Err(e) => json!({"error": format!("Parse failed: {}", e)}),
     }
+}
+
+fn document_symbol_limit(args: &Value, include_signature: bool) -> Option<usize> {
+    if let Some(limit) = args.get("limit").and_then(|value| value.as_u64()) {
+        return (limit > 0).then_some(limit as usize);
+    }
+
+    (!include_signature).then_some(DEFAULT_DOCUMENT_SYMBOL_LIMIT)
 }
 
 fn render_parsed_document_symbols(
     abs_path: &Path,
     symbols: &[contextro_core::models::Symbol],
     include_signature: bool,
+    symbol_limit: Option<usize>,
     codebase: Option<&str>,
 ) -> Value {
+    let total_symbols = symbols.len();
+    let truncated = symbol_limit
+        .map(|limit| total_symbols > limit)
+        .unwrap_or(false);
     let mut columns = vec![json!("name"), json!("type"), json!("line")];
     let has_multiline = symbols
         .iter()
@@ -110,7 +137,7 @@ fn render_parsed_document_symbols(
         columns.push(json!("signature"));
     }
 
-    let symbols: Vec<Value> = symbols
+    let mut rows: Vec<Value> = symbols
         .iter()
         .map(|s| {
             let mut row = vec![
@@ -138,17 +165,26 @@ fn render_parsed_document_symbols(
         })
         .collect();
 
-    json!({
+    if let Some(limit) = symbol_limit {
+        rows.truncate(limit);
+    }
+
+    let mut response = json!({
         "file": strip_base(&abs_path.to_string_lossy(), codebase),
         "columns": columns,
-        "symbols": symbols,
-        "total": symbols.len()
-    })
+        "symbols": rows,
+        "total": total_symbols
+    });
+    if truncated {
+        response["truncated"] = json!(true);
+    }
+    response
 }
 
 fn render_indexed_document_symbols(
     abs_path: &Path,
     indexed: &[UniversalNode],
+    symbol_limit: Option<usize>,
     codebase: Option<&str>,
 ) -> Value {
     let mut sorted = indexed.to_vec();
@@ -160,6 +196,10 @@ fn render_indexed_document_symbols(
             .then_with(|| a.name.cmp(&b.name))
     });
 
+    let total_symbols = sorted.len();
+    let truncated = symbol_limit
+        .map(|limit| total_symbols > limit)
+        .unwrap_or(false);
     let has_multiline = sorted
         .iter()
         .any(|symbol| symbol.location.end_line > symbol.location.start_line + 1);
@@ -168,7 +208,7 @@ fn render_indexed_document_symbols(
         columns.push(json!("end_line"));
     }
 
-    let symbols: Vec<Value> = sorted
+    let mut rows: Vec<Value> = sorted
         .iter()
         .map(|symbol| {
             let mut row = vec![
@@ -187,12 +227,20 @@ fn render_indexed_document_symbols(
         })
         .collect();
 
-    json!({
+    if let Some(limit) = symbol_limit {
+        rows.truncate(limit);
+    }
+
+    let mut response = json!({
         "file": strip_base(&abs_path.to_string_lossy(), codebase),
         "columns": columns,
-        "symbols": symbols,
-        "total": symbols.len()
-    })
+        "symbols": rows,
+        "total": total_symbols
+    });
+    if truncated {
+        response["truncated"] = json!(true);
+    }
+    response
 }
 
 fn document_symbol_type(node: &UniversalNode) -> &'static str {
@@ -290,14 +338,17 @@ fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Va
 
     for name in &names {
         let matches = graph.find_nodes_by_name(name.as_str(), true);
+        let include_type = include_source || matches.len() > 1;
         for node in matches.iter().take(3) {
             let fp = strip_base(&node.location.file_path, codebase);
             let mut entry = json!({
                 "name": node.name,
-                "type": node.node_type.to_string(),
                 "file": fp,
                 "line": node.location.start_line,
             });
+            if include_type {
+                entry["type"] = json!(node.node_type.to_string());
+            }
             if include_source {
                 // Read source lines from file
                 if let Ok(content) = std::fs::read_to_string(&node.location.file_path) {
@@ -3654,6 +3705,123 @@ mod tests {
     }
 
     #[test]
+    fn test_lookup_symbols_omits_type_for_unique_exact_match() {
+        let dir = temp_dir("lookup-symbols-omit-type");
+        let file = dir.join("module.py");
+        std::fs::write(&file, "def hello(name):\n    return name\n").unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "hello".into(),
+            name: "hello".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 1,
+                end_line: 2,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let result = lookup_symbols(
+            &json!({"symbols":["hello"]}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["symbols"][0]["name"], json!("hello"));
+        assert_eq!(result["symbols"][0]["file"], json!("module.py"));
+        assert!(result["symbols"][0].get("type").is_none(), "unexpected result: {result}");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_lookup_symbols_keeps_type_for_ambiguous_matches() {
+        let dir = temp_dir("lookup-symbols-keep-type-ambiguous");
+        let file_a = dir.join("a.py");
+        let file_b = dir.join("b.py");
+        std::fs::write(&file_a, "def hello(name):\n    return name\n").unwrap();
+        std::fs::write(&file_b, "class hello:\n    pass\n").unwrap();
+
+        let graph = CodeGraph::new();
+        for (id, node_type, file) in [
+            ("hello-fn", NodeType::Function, &file_a),
+            ("hello-class", NodeType::Class, &file_b),
+        ] {
+            graph.add_node(UniversalNode {
+                id: id.into(),
+                name: "hello".into(),
+                node_type,
+                location: UniversalLocation {
+                    file_path: file.to_string_lossy().to_string(),
+                    start_line: 1,
+                    end_line: 2,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "python".into(),
+                },
+                language: "python".into(),
+                ..Default::default()
+            });
+        }
+
+        let result = lookup_symbols(
+            &json!({"symbols":["hello"]}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        let symbols = result["symbols"].as_array().unwrap();
+        assert_eq!(symbols.len(), 2, "unexpected result: {result}");
+        assert!(symbols.iter().all(|entry| entry.get("type").is_some()));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_lookup_symbols_keeps_type_when_including_source() {
+        let dir = temp_dir("lookup-symbols-keep-type-source");
+        let file = dir.join("module.py");
+        std::fs::write(&file, "def hello(name):\n    return name\n").unwrap();
+
+        let graph = CodeGraph::new();
+        graph.add_node(UniversalNode {
+            id: "hello".into(),
+            name: "hello".into(),
+            node_type: NodeType::Function,
+            location: UniversalLocation {
+                file_path: file.to_string_lossy().to_string(),
+                start_line: 1,
+                end_line: 2,
+                start_column: 0,
+                end_column: 0,
+                language: "python".into(),
+            },
+            language: "python".into(),
+            ..Default::default()
+        });
+
+        let result = lookup_symbols(
+            &json!({"symbols":["hello"],"include_source":true}),
+            &graph,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["symbols"][0]["type"], json!("function"));
+        assert!(result["symbols"][0]["source"]
+            .as_str()
+            .unwrap_or("")
+            .contains("def hello(name):"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn test_search_symbols_missing_input_mentions_query_alias() {
         let graph = CodeGraph::new();
         let result = search_symbols(&json!({}), &graph, None);
@@ -5358,6 +5526,53 @@ mod tests {
     }
 
     #[test]
+    fn test_get_document_symbols_truncates_large_default_payloads() {
+        let dir = temp_dir("document-symbols-truncated-default");
+        let file = dir.join("main.py");
+        let mut content = String::new();
+        for idx in 0..30 {
+            content.push_str(&format!("def fn_{idx}():\n    return {idx}\n\n"));
+        }
+        std::fs::write(&file, content).unwrap();
+
+        let result = get_document_symbols(
+            &json!({"path": file.to_string_lossy().to_string()}),
+            None,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 30);
+        assert_eq!(result["truncated"], true);
+        assert_eq!(result["symbols"].as_array().unwrap().len(), 3);
+        assert_eq!(result["symbols"][0], json!(["fn_0", "function", 1]));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_get_document_symbols_limit_override_returns_full_payload() {
+        let dir = temp_dir("document-symbols-limit-override");
+        let file = dir.join("main.py");
+        let mut content = String::new();
+        for idx in 0..30 {
+            content.push_str(&format!("def fn_{idx}():\n    return {idx}\n\n"));
+        }
+        std::fs::write(&file, content).unwrap();
+
+        let result = get_document_symbols(
+            &json!({"path": file.to_string_lossy().to_string(), "limit": 30}),
+            None,
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 30);
+        assert!(result.get("truncated").is_none(), "unexpected result: {result}");
+        assert_eq!(result["symbols"].as_array().unwrap().len(), 30);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn test_get_document_symbols_uses_indexed_graph_for_file_queries() {
         let dir = temp_dir("indexed-document-symbols");
         let nested = dir.join("src");
@@ -5430,6 +5645,52 @@ mod tests {
         assert_eq!(result["symbols"][0], json!(["Hello", "class", 1, 3]));
         assert_eq!(result["symbols"][1], json!(["first", "method", 2, null]));
         assert_eq!(result["symbols"][2], json!(["second", "function", 5, null]));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_get_document_symbols_truncates_large_indexed_graph_payloads() {
+        let dir = temp_dir("indexed-document-symbols-truncated");
+        let nested = dir.join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+        let file = nested.join("main.py");
+        let mut content = String::new();
+        for idx in 0..30 {
+            content.push_str(&format!("def fn_{idx}():\n    return {idx}\n\n"));
+        }
+        std::fs::write(&file, content).unwrap();
+        let canonical_file = std::fs::canonicalize(&file).unwrap();
+
+        let graph = CodeGraph::new();
+        for idx in 0..30u32 {
+            graph.add_node(UniversalNode {
+                id: format!("node-{idx}"),
+                name: format!("fn_{idx}"),
+                node_type: NodeType::Function,
+                location: UniversalLocation {
+                    file_path: canonical_file.to_string_lossy().to_string(),
+                    start_line: idx + 1,
+                    end_line: idx + 1,
+                    start_column: 0,
+                    end_column: 0,
+                    language: "python".into(),
+                },
+                language: "python".into(),
+                ..Default::default()
+            });
+        }
+
+        let result = get_document_symbols(
+            &json!({"path":"src/main.py"}),
+            Some(&graph),
+            Some(dir.to_string_lossy().as_ref()),
+        );
+
+        assert_eq!(result["total"], 30);
+        assert_eq!(result["truncated"], true);
+        assert_eq!(result["symbols"].as_array().unwrap().len(), 3);
+        assert_eq!(result["symbols"][0], json!(["fn_0", "function", 1]));
 
         let _ = std::fs::remove_dir_all(dir);
     }
