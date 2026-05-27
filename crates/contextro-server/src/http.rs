@@ -55,9 +55,12 @@ async fn mcp_handler(
             })
         }
         "tools/list" => {
-            let tools: Vec<Value> = ContextroServer::tool_definitions().iter().map(|t| {
-                json!({"name": t.name, "description": t.description, "inputSchema": t.schema_as_json_value()})
-            }).collect();
+            let tools: Vec<Value> = ContextroServer::listed_tool_definitions()
+                .iter()
+                .map(|t| {
+                    json!({"name": t.name, "description": t.description, "inputSchema": t.schema_as_json_value()})
+                })
+                .collect();
             json!({"tools": tools})
         }
         "tools/call" => {
