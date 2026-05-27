@@ -1,4 +1,4 @@
-//! Artifact tools: audit, docs_bundle, sidecar_export, skill_prompt, introspect.
+//! Artifact tools: audit, docs_bundle, sidecar_export, skill_prompt, introspect, status, health, refactor_check, completion_check.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -147,8 +147,9 @@ const TOOL_DOCS: &[ToolDoc] = &[
             "goal: refactoring objective for edit_plan",
             "include_source: include source bodies for lookup_symbols",
             "include_signature: include truncated signatures in get_document_symbols or file-path list_symbols output",
+            "limit: optional override when you want more than the compact default from get_document_symbols",
         ],
-        example: r#"code({"operation":"get_document_symbols","path":"crates/contextro-tools/src/search.rs"}) // returns {file, columns, symbols, total}"#,
+        example: r#"code({"operation":"get_document_symbols","path":"crates/contextro-tools/src/search.rs","limit":40}) // returns {file, columns, symbols, total}"#,
     },
     ToolDoc {
         name: "remember",
@@ -339,6 +340,17 @@ const TOOL_DOCS: &[ToolDoc] = &[
             "max_depth: impact traversal depth, default 3",
         ],
         example: r#"refactor_check({"symbol_name":"BrowserSession","max_depth":3})"#,
+    },
+    ToolDoc {
+        name: "completion_check",
+        description: "Verify that a refactor is complete by checking the code graph against claimed changed files.",
+        parameters: &[
+            "claim (required): type of completeness check — all_callers_updated",
+            "symbol_name (required): the symbol being refactored",
+            "changed_files (required): list of files touched by the refactor",
+            "max_depth: reserved for future transitive claims, defaults to 0",
+        ],
+        example: r#"completion_check({"claim":"all_callers_updated","symbol_name":"BrowserSession","changed_files":["src/session.rs","src/main.rs"]})"#,
     },
 ];
 
