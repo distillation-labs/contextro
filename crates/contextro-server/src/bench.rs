@@ -722,7 +722,13 @@ fn mixed_workload_ops_per_sec(server: &ContextroServer, tool_cases: &[ToolCase])
         .filter(|case| {
             matches!(
                 case.tool_name,
-                "search" | "find_symbol" | "code" | "overview" | "status" | "session_snapshot" | "completion_check"
+                "search"
+                    | "find_symbol"
+                    | "code"
+                    | "overview"
+                    | "status"
+                    | "session_snapshot"
+                    | "completion_check"
             )
         })
         .collect();
@@ -836,8 +842,10 @@ fn path_to_string(path: &Path) -> String {
 fn new_bench_server(storage_dir: &Path) -> ContextroServer {
     std::fs::create_dir_all(storage_dir).expect("create bench storage dir");
 
-    let mut settings = contextro_config::Settings::default();
-    settings.storage_dir = storage_dir.to_string_lossy().to_string();
+    let settings = contextro_config::Settings {
+        storage_dir: storage_dir.to_string_lossy().to_string(),
+        ..contextro_config::Settings::default()
+    };
     ContextroServer::with_settings(settings)
 }
 
