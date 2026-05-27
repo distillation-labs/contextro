@@ -54,6 +54,38 @@ fn main() {
         "║  Time: {:>8.2}ms                                            ║",
         idx_time.as_secs_f64() * 1000.0
     );
+    println!(
+        "║  Mode: {:<52}║",
+        index_result["index_mode"]
+            .as_str()
+            .unwrap_or("unknown")
+            .chars()
+            .take(52)
+            .collect::<String>()
+    );
+    println!(
+        "║  Phases: discover {:>5.1}ms  parse {:>5.1}ms  chunk {:>5.1}ms      ║",
+        index_result["discover_ms"].as_f64().unwrap_or(0.0),
+        index_result["parse_ms"].as_f64().unwrap_or(0.0),
+        index_result["chunk_ms"].as_f64().unwrap_or(0.0)
+    );
+    println!(
+        "║  Build: graph {:>5.1}ms  bm25 {:>5.1}ms  vector {:>5.1}ms        ║",
+        index_result["graph_ms"].as_f64().unwrap_or(0.0),
+        index_result["bm25_ms"].as_f64().unwrap_or(0.0),
+        index_result["vector_ms"].as_f64().unwrap_or(0.0)
+    );
+    println!(
+        "║  Final: scope {:>5.1}ms  docs {:>5.1}ms  total {:>5.1}ms         ║",
+        index_result["scope_ms"].as_f64().unwrap_or(0.0),
+        index_result["knowledge_ms"].as_f64().unwrap_or(0.0),
+        index_result["request_ms"].as_f64().unwrap_or(0.0)
+    );
+    println!(
+        "║  Persist: snap {:>5.1}ms  prewarm {:>5.1}ms                     ║",
+        index_result["snapshot_ms"].as_f64().unwrap_or(0.0),
+        index_result["prewarm_ms"].as_f64().unwrap_or(0.0)
+    );
     let total_symbols = index_result["total_symbols"].as_f64().unwrap_or(0.0);
     let symbols_per_sec = if idx_time.is_zero() {
         0.0
@@ -83,6 +115,7 @@ fn main() {
     let mut tool_benchmarks = Vec::with_capacity(tool_cases.len() + 4);
 
     let index_benchmark = bench_cold_index_tool(&codebase);
+    let cold_index_ms = index_benchmark.avg_ms;
     print_tool_benchmark(&index_benchmark);
     tool_benchmarks.push(index_benchmark);
 
@@ -163,15 +196,29 @@ fn main() {
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║  Metric          │ Target    │ Actual    │ Status           ║");
     println!("╟──────────────────┼───────────┼───────────┼──────────────────╢");
-    let idx_ms = idx_time.as_secs_f64() * 1000.0;
-    let idx_status = if idx_ms <= 40.0 {
+    let first_index_ms = idx_time.as_secs_f64() * 1000.0;
+    let idx_status = if cold_index_ms <= 40.0 {
         "✓ PASS"
     } else {
         "✗ NEEDS WORK"
     };
     println!(
-        "║  Index time      │ ≤40.0ms   │ {:>6.1}ms  │ {:16}║",
-        idx_ms, idx_status
+        "║  Cold index avg  │ ≤40.0ms   │ {:>6.1}ms  │ {:16}║",
+        cold_index_ms, idx_status
+    );
+    let first_index_label = match index_result["index_mode"].as_str().unwrap_or("unknown") {
+        "fresh" => "First fresh run",
+        "restored" => "First restore",
+        _ => "First index run",
+    };
+    let first_index_status = if first_index_ms <= 40.0 {
+        "✓ PASS"
+    } else {
+        "✗ WARMUP COST"
+    };
+    println!(
+        "║  {:16} │ info      │ {:>6.1}ms  │ {:16}║",
+        first_index_label, first_index_ms, first_index_status
     );
     let search_status = if search_avg <= 137.0 {
         "✓ PASS"
@@ -526,6 +573,20 @@ fn build_tool_cases(
             notes: "pre-refactor analysis",
             allow_error: false,
         },
+        ToolCase {
+            display_name: "completion_chk",
+            tool_name: "completion_check",
+            args: json!({
+                "claim": "all_callers_updated",
+                "symbol_name": fixture.symbol_exact,
+                "changed_files": [
+                    fixture.code_file_rel,
+                    format!("{}/nonexistent.rs", fixture.code_dir_rel),
+                ],
+            }),
+            notes: "refactor completeness",
+            allow_error: false,
+        },
     ]
 }
 
@@ -564,11 +625,30 @@ fn bench_cold_index_tool(codebase: &str) -> ToolBenchmark {
     let mut times = Vec::with_capacity(INDEX_ITERATIONS);
     for _ in 0..INDEX_ITERATIONS {
         let storage_dir = temp_storage_dir("bench-index");
+        let project_storage_dir = contextro_config::project_storage_dir(codebase);
+        let snapshot_path = project_storage_dir.join("repo-snapshot.json");
+        let hashes_path = project_storage_dir.join("file_hashes.json");
+        let saved_snapshot = std::fs::read(&snapshot_path).ok();
+        let saved_hashes = std::fs::read(&hashes_path).ok();
+        let _ = std::fs::remove_file(project_storage_dir.join("repo-snapshot.json"));
+        let _ = std::fs::remove_file(project_storage_dir.join("file_hashes.json"));
         let server = new_bench_server(&storage_dir);
         let start = Instant::now();
         let result = parse_tool_json(server.dispatch("index", json!({"path": codebase})));
         let elapsed = start.elapsed();
         ensure_success("index", &result);
+        if let Some(bytes) = saved_snapshot {
+            let _ = std::fs::create_dir_all(&project_storage_dir);
+            let _ = std::fs::write(&snapshot_path, bytes);
+        } else {
+            let _ = std::fs::remove_file(&snapshot_path);
+        }
+        if let Some(bytes) = saved_hashes {
+            let _ = std::fs::create_dir_all(&project_storage_dir);
+            let _ = std::fs::write(&hashes_path, bytes);
+        } else {
+            let _ = std::fs::remove_file(&hashes_path);
+        }
         times.push(elapsed);
         let _ = std::fs::remove_dir_all(storage_dir);
     }
@@ -642,7 +722,7 @@ fn mixed_workload_ops_per_sec(server: &ContextroServer, tool_cases: &[ToolCase])
         .filter(|case| {
             matches!(
                 case.tool_name,
-                "search" | "find_symbol" | "code" | "overview" | "status" | "session_snapshot"
+                "search" | "find_symbol" | "code" | "overview" | "status" | "session_snapshot" | "completion_check"
             )
         })
         .collect();
