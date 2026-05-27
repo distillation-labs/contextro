@@ -54,8 +54,14 @@ impl IndexingPipeline {
     pub fn index(
         &self,
         codebase_path: &Path,
-    ) -> Result<(IndexResult, Vec<Symbol>, Vec<contextro_core::models::CodeChunk>), ContextroError>
-    {
+    ) -> Result<
+        (
+            IndexResult,
+            Vec<Symbol>,
+            Vec<contextro_core::models::CodeChunk>,
+        ),
+        ContextroError,
+    > {
         let start = Instant::now();
 
         // Step 1: Discover files
