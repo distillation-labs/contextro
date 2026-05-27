@@ -94,7 +94,7 @@ fn create_chunk_text(symbol: &Symbol) -> String {
         parts.push(truncate_chars(&symbol.code_snippet, snippet_budget));
     }
 
-    truncate_chars(&parts.join("\n").trim().to_string(), max_chars)
+    truncate_chars(parts.join("\n").trim(), max_chars)
 }
 
 fn semantic_aliases(symbol: &Symbol) -> Vec<String> {
