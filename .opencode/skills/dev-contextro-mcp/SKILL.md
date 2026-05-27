@@ -55,6 +55,21 @@ Pure Rust binary. No Python. No interpreter.
 
 Index persists. Do not re-index before every call. A successful `index()` response is a sufficient readiness signal.
 
+## Repository File Size Rule
+
+- Treat hand-written source-file size as a hard repository constraint when planning refactors or
+  edits.
+- Keep every source file in the **300-500 line** band.
+- Do **not** create a new source file outside that band without explicit user approval.
+- Do **not** grow an existing source file past **500 lines**.
+- If any touched or worked-on hand-written source file is already over **500 lines**, you must
+  plan and execute the extraction or split in the same task.
+- Do **not** append more code to a **500+ line** source file without reducing it in the same
+  change.
+- Prefer extracting cohesive modules, helpers, or types over leaving a large file in place or
+  scattering many tiny files.
+- This rule applies to hand-written source files, not generated, vendor, or third-party code.
+
 ## Routing
 
 | Task | Use | Notes |
