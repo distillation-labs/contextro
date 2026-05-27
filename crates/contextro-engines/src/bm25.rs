@@ -129,7 +129,7 @@ impl Bm25Engine {
         let searcher = self.reader.searcher();
         let mut metadata: HashMap<String, SearchResult> = HashMap::new();
         let mut scores: HashMap<String, f64> = HashMap::new();
-        let requested_limit = limit.max(1).min(50);
+        let requested_limit = limit.clamp(1, 50);
         let query_limit = limit.saturating_mul(2).clamp(requested_limit, 50);
 
         let primary_results = self.run_query(&searcher, trimmed, query_limit);
@@ -400,7 +400,7 @@ fn build_supplemental_query_variants(query_terms: &[String]) -> Vec<QueryVariant
             });
         }
 
-        if let Some(stemmed) = stem_bm25_token(&token) {
+        if let Some(stemmed) = stem_bm25_token(token) {
             if seen.insert(stemmed.clone()) {
                 variants.push(QueryVariant {
                     text: stemmed,
@@ -420,9 +420,7 @@ fn stem_bm25_token(token: &str) -> Option<String> {
         restore_stemmed_root(&token[..token.len() - 2])
     } else if token.ends_with("ers") && token.len() > 5 {
         token[..token.len() - 3].to_string()
-    } else if token.ends_with("er") && token.len() > 4 {
-        token[..token.len() - 2].to_string()
-    } else if token.ends_with("es") && token.len() > 4 {
+    } else if (token.ends_with("er") || token.ends_with("es")) && token.len() > 4 {
         token[..token.len() - 2].to_string()
     } else if token.ends_with('s') && token.len() > 4 {
         token[..token.len() - 1].to_string()
