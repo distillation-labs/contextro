@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tiktoken_rs::{cl100k_base, CoreBPE};
 
 use contextro_config::Settings;
@@ -19,7 +19,7 @@ use contextro_core::NodeType;
 use contextro_engines::bm25::Bm25Engine;
 use contextro_engines::cache::QueryCache;
 use contextro_engines::graph::CodeGraph;
-use contextro_indexing::{create_chunks, IndexingPipeline};
+use contextro_indexing::IndexingPipeline;
 
 #[path = "study/cli.rs"]
 mod cli;
