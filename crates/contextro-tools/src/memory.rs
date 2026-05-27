@@ -233,31 +233,39 @@ impl KnowledgeStore {
 
     /// Index content under `name`. Returns the number of chunks stored.
     pub fn add(&self, name: &str, content: &str, source_path: Option<&Path>) -> usize {
-        if content.trim().is_empty() {
+        let Some(document) = build_knowledge_document(name, content, source_path) else {
             return 0;
-        }
-        let lines: Vec<&str> = content.lines().collect();
-        let chunks: Vec<KnowledgeChunk> = if lines.is_empty() {
-            vec![]
-        } else {
-            lines
-                .chunks(20)
-                .map(|chunk_lines| KnowledgeChunk {
-                    content: chunk_lines.join("\n"),
-                })
-                .collect()
         };
-        let count = chunks.len();
+        let count = document.chunks.len();
         let mut state = self.state.write();
         let docs = active_docs_mut(&mut state);
-        docs.insert(
-            name.to_string(),
-            KnowledgeDocument {
-                chunks,
-                metadata_text: knowledge_metadata_text(name, source_path),
-                source_path: source_path.map(|path| path.to_string_lossy().to_string()),
-            },
-        );
+        docs.insert(name.to_string(), document);
+        self.save_locked(&state);
+        count
+    }
+
+    /// Index multiple documents under the active scope with a single state write.
+    pub fn add_documents<I>(&self, docs: I) -> usize
+    where
+        I: IntoIterator<Item = (String, String, Option<PathBuf>)>,
+    {
+        let prepared: Vec<(String, KnowledgeDocument)> = docs
+            .into_iter()
+            .filter_map(|(name, content, source_path)| {
+                let document = build_knowledge_document(&name, &content, source_path.as_deref())?;
+                Some((name, document))
+            })
+            .collect();
+        if prepared.is_empty() {
+            return 0;
+        }
+
+        let count = prepared.len();
+        let mut state = self.state.write();
+        let active_docs = active_docs_mut(&mut state);
+        for (name, document) in prepared {
+            active_docs.insert(name, document);
+        }
         self.save_locked(&state);
         count
     }
@@ -410,6 +418,31 @@ impl Default for KnowledgeStore {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn build_knowledge_document(
+    name: &str,
+    content: &str,
+    source_path: Option<&Path>,
+) -> Option<KnowledgeDocument> {
+    if content.trim().is_empty() {
+        return None;
+    }
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return None;
+    }
+
+    Some(KnowledgeDocument {
+        chunks: lines
+            .chunks(20)
+            .map(|chunk_lines| KnowledgeChunk {
+                content: chunk_lines.join("\n"),
+            })
+            .collect(),
+        metadata_text: knowledge_metadata_text(name, source_path),
+        source_path: source_path.map(|path| path.to_string_lossy().to_string()),
+    })
 }
 
 fn default_knowledge_scope() -> String {
@@ -1001,6 +1034,32 @@ mod tests {
         assert_eq!(search_result["results"][0]["source"], "nested-docs");
 
         let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_file(store_path);
+    }
+
+    #[test]
+    fn test_knowledge_add_documents_batches_multiple_sources() {
+        let store_path = temp_file("batch");
+        let knowledge = KnowledgeStore::with_path(&store_path);
+
+        let count = knowledge.add_documents([
+            (
+                "README.md".to_string(),
+                "alpha unique_batch_alpha".to_string(),
+                Some(PathBuf::from("README.md")),
+            ),
+            (
+                "AGENTS.md".to_string(),
+                "beta unique_batch_beta".to_string(),
+                Some(PathBuf::from("AGENTS.md")),
+            ),
+        ]);
+
+        assert_eq!(count, 2);
+        let results = knowledge.search("unique_batch_beta", 5);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "AGENTS.md");
+
         let _ = std::fs::remove_file(store_path);
     }
 
