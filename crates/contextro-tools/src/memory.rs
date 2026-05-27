@@ -462,13 +462,9 @@ fn normalize_loaded_knowledge_state(
         state.active_scope = default_knowledge_scope();
     }
 
-    if !state.scopes.contains_key(&state.active_scope)
-        && is_global_knowledge_scope(&state.active_scope)
-    {
-        if let Some(scope) = sole_repo_knowledge_scope(&state.scopes) {
-            state.active_scope = scope;
-        }
-    } else if active_scope_missing_or_blank && is_global_knowledge_scope(&state.active_scope) {
+    let should_promote_repo_scope = is_global_knowledge_scope(&state.active_scope)
+        && (!state.scopes.contains_key(&state.active_scope) || active_scope_missing_or_blank);
+    if should_promote_repo_scope {
         if let Some(scope) = sole_repo_knowledge_scope(&state.scopes) {
             state.active_scope = scope;
         }
