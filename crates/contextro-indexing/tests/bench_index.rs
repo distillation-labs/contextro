@@ -3,15 +3,13 @@ use std::time::Instant;
 
 #[test]
 fn bench_index_contextro_source() {
-    let src_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let target_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .parent()
-        .unwrap()
-        .join("src");
+        .to_path_buf();
 
-    if !src_path.exists() {
-        eprintln!("Skipping: {:?} does not exist", src_path);
+    if !target_path.exists() {
+        eprintln!("Skipping: {:?} does not exist", target_path);
         return;
     }
 
@@ -19,15 +17,18 @@ fn bench_index_contextro_source() {
     let pipeline = contextro_indexing::IndexingPipeline::new(settings);
 
     let start = Instant::now();
-    let (result, _symbols) = pipeline.index(&src_path).unwrap();
+    let (result, _symbols, _chunks) = pipeline.index(&target_path).unwrap();
     let elapsed = start.elapsed();
 
     println!("\n=== Rust Indexing Benchmark ===");
-    println!("Path: {:?}", src_path);
+    println!("Path: {:?}", target_path);
     println!("Files: {}", result.total_files);
     println!("Symbols: {}", result.total_symbols);
     println!("Chunks: {}", result.total_chunks);
     println!("Time: {:.3}s", elapsed.as_secs_f64());
+    println!("Discover: {:.2}ms", result.discover_ms);
+    println!("Parse: {:.2}ms", result.parse_ms);
+    println!("Chunk: {:.2}ms", result.chunk_ms);
     println!(
         "Files/sec: {:.0}",
         result.total_files as f64 / elapsed.as_secs_f64()
