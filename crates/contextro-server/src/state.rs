@@ -308,8 +308,10 @@ mod tests {
         let storage_path = temp_path("storage-file");
         fs::write(&storage_path, "not a directory").unwrap();
 
-        let mut settings = Settings::default();
-        settings.storage_dir = storage_path.to_string_lossy().to_string();
+        let settings = Settings {
+            storage_dir: storage_path.to_string_lossy().to_string(),
+            ..Settings::default()
+        };
 
         let error = AppState::from_settings(settings)
             .err()
@@ -335,8 +337,10 @@ mod tests {
         )
         .unwrap();
 
-        let mut settings = Settings::default();
-        settings.storage_dir = storage_dir.to_string_lossy().to_string();
+        let settings = Settings {
+            storage_dir: storage_dir.to_string_lossy().to_string(),
+            ..Settings::default()
+        };
         let state = AppState::from_settings(settings).expect("state should load");
 
         assert_eq!(*state.codebase_path.read(), Some("/tmp/repo-b".into()));
@@ -359,8 +363,10 @@ mod tests {
         let storage_dir = temp_path("snapshot-storage-dir");
         fs::create_dir_all(&storage_dir).unwrap();
 
-        let mut settings = Settings::default();
-        settings.storage_dir = storage_dir.to_string_lossy().to_string();
+        let settings = Settings {
+            storage_dir: storage_dir.to_string_lossy().to_string(),
+            ..Settings::default()
+        };
         let state = AppState::from_settings(settings).expect("state should load");
         let repo_path = temp_path("snapshot-repo");
         let symbols = vec![Symbol {
@@ -413,11 +419,14 @@ mod tests {
 
         let restore_storage_dir = temp_path("snapshot-restore-storage-dir");
         fs::create_dir_all(&restore_storage_dir).unwrap();
-        let mut restore_settings = Settings::default();
-        restore_settings.storage_dir = restore_storage_dir.to_string_lossy().to_string();
+        let restore_settings = Settings {
+            storage_dir: restore_storage_dir.to_string_lossy().to_string(),
+            ..Settings::default()
+        };
         let server = crate::ContextroServer::with_settings(restore_settings);
 
-        let (response, _) = server.restore_repo_snapshot(repo_path.to_string_lossy().as_ref(), &restored);
+        let (response, _) =
+            server.restore_repo_snapshot(repo_path.to_string_lossy().as_ref(), &restored);
         assert_eq!(response["status"], "done");
         assert_eq!(server.state.graph.node_count(), 1);
         assert!(!server.state.graph.snapshot().is_empty());
