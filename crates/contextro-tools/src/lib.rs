@@ -9,6 +9,7 @@ pub mod graph_tools;
 pub mod memory;
 pub mod search;
 pub mod session;
+pub mod tool_manifest;
 
 // Re-export key types for server use
 pub use git_tools::RepoRegistry;
