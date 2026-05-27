@@ -1356,19 +1356,15 @@ fn auto_populate_knowledge(root: &str, knowledge: &contextro_tools::KnowledgeSto
     if candidates.iter().any(|name| knowledge.contains(name)) {
         return 0; // KB already has seeded docs for this scope; don't overwrite
     }
-    let mut count = 0;
-    for name in &candidates {
-        let p = std::path::Path::new(root).join(name);
-        if let Ok(content) = std::fs::read_to_string(&p) {
-            if !content.trim().is_empty() {
-                let chunks = knowledge.add(name, &content, Some(&p));
-                if chunks > 0 {
-                    count += 1;
-                }
-            }
-        }
-    }
-    count
+    let docs = candidates
+        .iter()
+        .filter_map(|name| {
+            let path = std::path::Path::new(root).join(name);
+            let content = std::fs::read_to_string(&path).ok()?;
+            Some((name.to_string(), content, Some(path)))
+        })
+        .collect::<Vec<_>>();
+    knowledge.add_documents(docs)
 }
 
 fn should_build_vector_index(chunk_count: usize) -> bool {
