@@ -24,14 +24,24 @@ license: Proprietary
 Maintain the documentation surface that users, release managers, and future agents
 rely on.
 
+## Agentyc Documentation Structure
+
+The primary doc surface follows CLAUDE.md guidelines:
+
+- **README.md**: Primary public surface. Contains comparison table (vs browser-use, Playwright MCP), tool inventory, and benchmark table.
+- **`docs/` directory**: Overview, Features, and API Reference. Can defer detail to README.
+- **CLAUDE.md & AGENTS.md**: Repository-specific guidance for coding agents. Keep these aligned to the public modules listed in CLAUDE.md.
+
+When adding a new MCP tool, update all three: README tool tables, `docs/features.md`, and `docs/api.md`.
+When release-gate thresholds change: update README benchmarks table.
+
 ## Core Rules
 
 - Keep docs true to the codebase as it exists now.
+- Do not publish unsupported benchmark or performance claims.
+- Avoid version-specific marketing language unless backed by current package metadata.
+- If there is a mismatch between code and docs, call it out explicitly rather than papering over it.
 - Prefer small, targeted updates over broad rewrites.
-- Make release notes factual, concise, and scoped to shipped changes.
-- Remove stale claims, paths, and examples when code or layout changes.
-- Keep README, changelog, publication artifacts, and release notes in sync.
-- Document what changed, why it matters, and where the authoritative source lives.
 
 ## Use It For
 
@@ -70,6 +80,29 @@ rely on.
 | Sync docs after code change | README + changelog | Keep scope narrow and consistent |
 | Remove outdated doc sections | docs | Prefer deletion over contradictory duplication |
 
+## Examples
+
+Example 1: New tool shipped
+User says: "Update the docs for this new MCP tool."
+Actions:
+- confirm the shipped behavior from code and tests
+- update README and dependent docs together
+- keep claims bounded to what actually shipped
+Result: the public docs match the repo state
+
+Example 2: Path drift cleanup
+User says: "Fix the broken docs links after this refactor."
+Actions:
+- find stale paths and commands
+- update all dependent references in one pass
+Result: no dead links or contradictory instructions remain
+
+## Troubleshooting
+
+- If docs disagree with code, prefer the code and make the mismatch explicit.
+- If a claim cannot be verified from the repo, remove or soften it.
+- If a change touches multiple docs, update them in one pass to avoid temporary drift.
+
 ## Output Rules
 
 - Favor concrete file-level edits over abstract recommendations.
@@ -89,3 +122,4 @@ rely on.
 
 - `references/docs-maintenance-patterns.md`
 - `references/eval-rubric.md`
+- `evals/cases.yaml`
