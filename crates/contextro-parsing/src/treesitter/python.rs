@@ -14,14 +14,16 @@ pub(super) fn parse_python(content: &str, filepath: &str) -> Vec<Symbol> {
         None => return parse_heuristic(content, filepath, "python"),
     };
     let source = content.as_bytes();
+    let lines: Vec<&str> = content.lines().collect();
     let mut symbols = Vec::new();
-    extract_py_symbols(tree.root_node(), source, filepath, None, &mut symbols);
+    extract_py_symbols(tree.root_node(), source, &lines, filepath, None, &mut symbols);
     symbols
 }
 
 pub(super) fn extract_py_symbols(
     node: tree_sitter::Node,
     source: &[u8],
+    lines: &[&str],
     filepath: &str,
     parent: Option<&str>,
     symbols: &mut Vec<Symbol>,
@@ -55,11 +57,11 @@ pub(super) fn extract_py_symbols(
                     line_start: start,
                     line_end: end,
                     language: "python".to_string(),
-                    signature: line_at(source, child.start_position().row),
+                    signature: line_from_lines(lines, child.start_position().row),
                     docstring: doc,
                     parent: parent.map(String::from),
-                    code_snippet: snippet_from(
-                        source,
+                    code_snippet: snippet_from_lines(
+                        lines,
                         child.start_position().row,
                         child.end_position().row,
                     ),
@@ -87,11 +89,11 @@ pub(super) fn extract_py_symbols(
                     line_start: start,
                     line_end: end,
                     language: "python".to_string(),
-                    signature: line_at(source, child.start_position().row),
+                    signature: line_from_lines(lines, child.start_position().row),
                     docstring: doc,
                     parent: parent.map(String::from),
-                    code_snippet: snippet_from(
-                        source,
+                    code_snippet: snippet_from_lines(
+                        lines,
                         child.start_position().row,
                         child.end_position().row,
                     ),
@@ -99,11 +101,11 @@ pub(super) fn extract_py_symbols(
                     calls: vec![],
                 });
                 if let Some(body) = child.child_by_field_name("body") {
-                    extract_py_symbols(body, source, filepath, Some(&name), symbols);
+                    extract_py_symbols(body, source, lines, filepath, Some(&name), symbols);
                 }
             }
             "decorated_definition" => {
-                extract_py_symbols(child, source, filepath, parent, symbols);
+                extract_py_symbols(child, source, lines, filepath, parent, symbols);
             }
             _ => {}
         }
@@ -153,7 +155,7 @@ pub(super) fn py_calls_walk(node: tree_sitter::Node, source: &[u8], calls: &mut 
         }
     }
     let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
+    for child in node.named_children(&mut cursor) {
         py_calls_walk(child, source, calls);
     }
 }
