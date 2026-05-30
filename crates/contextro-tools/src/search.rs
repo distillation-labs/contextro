@@ -36,7 +36,8 @@ use ranking::result_query_overlap;
 use response::search_tool_cache_key;
 use response::{build_search_response, exact_symbol_graph_results, resolved_search_codebase};
 use symbol_queries::{
-    apply_symbol_query_guard, drop_low_confidence_noise, is_exact_symbol_lookup_query,
+    apply_symbol_query_guard, drop_low_confidence_noise, is_bm25_identifier_exact_match_query,
+    is_exact_symbol_lookup_query,
 };
 
 /// Execute the search tool.
@@ -191,6 +192,7 @@ pub fn handle_search_with_codebase(
         confidence,
         &results,
         response_codebase.as_deref(),
+        false,
     );
     cache.put(&tool_cache_key, response.clone());
     response
@@ -207,12 +209,18 @@ fn exact_symbol_search_response(
     if !matches!(mode, "hybrid" | "bm25") {
         return None;
     }
-    if !is_exact_symbol_lookup_query(query) {
+    let exact_symbol_like = is_exact_symbol_lookup_query(query);
+    let unique_bm25_identifier_match =
+        mode == "bm25" && !exact_symbol_like && is_bm25_identifier_exact_match_query(query);
+    if !exact_symbol_like && !unique_bm25_identifier_match {
         return None;
     }
 
     let results = exact_symbol_graph_results(query, limit, language, graph);
     if results.is_empty() {
+        return None;
+    }
+    if unique_bm25_identifier_match && results.len() != 1 {
         return None;
     }
 
@@ -225,6 +233,7 @@ fn exact_symbol_search_response(
         confidence,
         &results,
         response_codebase.as_deref(),
+        results.len() == 1,
     ))
 }
 
