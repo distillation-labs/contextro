@@ -4,6 +4,14 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.22] - 2026-05-29
+
+### Fixed
+
+- **The distributed `dev-contextro-mcp` bundle now teaches the full 38-tool public surface with real routing guidance** - the canonical skill, packaged skill, and plugin/copilot/opencode copies now spell out when to use each tool family, how to distinguish nearby tools such as `health` vs `status` and `retrieve` vs `restore` vs `recall`, and when to reach for `completion_check`, repo lifecycle tools, export helpers, `introspect`, and `skill_prompt`.
+- **The shipped skill benchmark and eval references now reflect the retained current state instead of older interim numbers** - the bundle now cites the retained `6,244`-token `200`-task Contextro repo study, expands the eval rubric to the current public tool families, and adds release-facing eval cases for refactor completion, repo cleanup, recovery, docs/sidecars, and tool self-documentation.
+- **Public docs now match the current runtime surface** - the root README, npm README, and package docs now include `completion_check`, the real `38`-tool count, current example calls, and the canonical `.agents/skills` authoring flow for the distributed skill bundle.
+
 ## [1.6.21] - 2026-05-27
 
 ### Fixed
