@@ -65,7 +65,7 @@ The `npx` form always runs the latest version with zero setup — useful for sha
 
 ```
 1. Tell your agent: "Index this project at /path/to/your/project"
-2. Wait a few seconds (your agent will poll status automatically)
+2. Wait for indexing to finish (some clients poll status automatically)
 3. Ask anything about your code
 ```
 
@@ -86,37 +86,38 @@ search("TokenBudget", mode="bm25")
 ### Find any symbol
 
 ```
-find_symbol("IndexingPipeline")
-find_symbol("auth", exact=False)
+find_symbol(symbol_name="IndexingPipeline")
+find_symbol(symbol_name="auth", exact=false)
 ```
 
 ### Trace the call graph
 
 ```
-find_callers("authenticate")
-find_callees("authenticate")
+find_callers(symbol_name="authenticate")
+find_callees(symbol_name="authenticate")
 ```
 
 ### Understand a symbol fully
 
 ```
-explain("ReciprocalRankFusion")
+explain(symbol_name="ReciprocalRankFusion")
 ```
 
-### Check what breaks before you refactor
+### Check what breaks and verify the refactor
 
 ```
-impact("TokenBudget")
-impact("BaseEmbeddingService", max_depth=5)
+refactor_check(symbol_name="BaseEmbeddingService")
+impact(symbol_name="TokenBudget", max_depth=5)
+completion_check(claim="all_callers_updated", symbol_name="BaseEmbeddingService", changed_files=["src/embeddings.rs", "src/search.rs"])
 ```
 
 ### AST-based code operations
 
 ```
-code(operation="get_document_symbols", file_path="src/server.rs")
+code(operation="get_document_symbols", path="src/server.rs")
 code(operation="search_symbols", symbol_name="auth")
 code(operation="pattern_search", pattern="fn $F($$$) -> Result", language="rust")
-code(operation="pattern_rewrite", pattern="console.log($MSG)", replacement="logger.info($MSG)", dry_run=True)
+code(operation="pattern_rewrite", pattern="console.log($MSG)", replacement="logger.info($MSG)", dry_run=true)
 ```
 
 `get_document_symbols` returns a compact columnar payload: `{ file, columns, symbols, total }`.
@@ -155,18 +156,20 @@ focus(path="src/auth.rs")
 
 ---
 
-## All 37 Tools
+## All 38 Tools
 
 | Tool | What it does |
 |---|---|
 | `index` | Index a codebase |
 | `search` | Semantic + keyword + graph hybrid search |
-| `code` | AST operations: symbol search, pattern search/rewrite, edit plan |
+| `code` | AST operations: symbol inventories/search, pattern search/rewrite, edit plan, codebase map |
 | `find_symbol` | Find a symbol's definition |
 | `find_callers` | Who calls this function? |
 | `find_callees` | What does this function call? |
 | `explain` | Full symbol explanation |
 | `impact` | What breaks if I change this? |
+| `refactor_check` | Pre-refactor analysis |
+| `completion_check` | Verify that a rename/signature change really updated all callers |
 | `analyze` | Code smells, complexity |
 | `overview` | Project structure |
 | `architecture` | Hub symbols, layers |
@@ -177,25 +180,24 @@ focus(path="src/auth.rs")
 | `audit` | Packaged audit report |
 | `commit_search` | Semantic git history search |
 | `commit_history` | Browse recent commits |
-| `repo_add` | Register another repo |
+| `repo_add` | Register another repo for later indexing/search |
 | `repo_remove` | Unregister a repo |
-| `repo_status` | View all repos |
+| `repo_status` | View registered repos |
 | `remember` | Store a note/decision |
 | `recall` | Search memories |
 | `forget` | Delete memories |
 | `tags` | List all memory tags |
 | `knowledge` | Index and search docs |
 | `compact` | Archive session content |
-| `session_snapshot` | Context recovery |
+| `session_snapshot` | Recent session context |
 | `restore` | Project re-entry summary |
 | `docs_bundle` | Generate documentation from the current index |
 | `sidecar_export` | Generate .graph.* sidecars |
 | `skill_prompt` | Agent bootstrap block |
 | `introspect` | Look up Contextro docs |
 | `retrieve` | Fetch archived session content |
-| `status` | Server status |
+| `status` | Server status + active repo |
 | `health` | Readiness check |
-| `refactor_check` | Pre-refactor analysis |
 
 ---
 
