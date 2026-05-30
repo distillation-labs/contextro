@@ -297,6 +297,7 @@ fn test_list_symbols_uses_columnar_file_contract() {
     let result = handle_code(
         &json!({"operation":"list_symbols","path": file.to_string_lossy().to_string()}),
         &CodeGraph::new(),
+        None,
         Some(dir.to_string_lossy().as_ref()),
     );
 
@@ -332,6 +333,7 @@ fn test_list_symbols_directory_contract_remains_object_based() {
     let result = handle_code(
         &json!({"operation":"list_symbols","path": dir.to_string_lossy().to_string()}),
         &graph,
+        None,
         Some(dir.to_string_lossy().as_ref()),
     );
 
@@ -343,6 +345,50 @@ fn test_list_symbols_directory_contract_remains_object_based() {
     assert_eq!(result["symbols"][0]["file"], json!("module.py"));
     assert!(result["symbols"][0].get("callers").is_some());
     assert!(result["symbols"][0].get("callees").is_some());
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn test_handle_code_caches_relative_document_symbols() {
+    let dir = temp_dir("cached-relative-document-symbols");
+    let file = dir.join("notes.txt");
+    std::fs::write(&file, "hello\n").unwrap();
+
+    let graph = CodeGraph::new();
+    graph.add_node(UniversalNode {
+        id: "hello".into(),
+        name: "hello".into(),
+        node_type: NodeType::Function,
+        location: UniversalLocation {
+            file_path: "notes.txt".into(),
+            start_line: 1,
+            end_line: 1,
+            start_column: 0,
+            end_column: 0,
+            language: "text".into(),
+        },
+        language: "text".into(),
+        ..Default::default()
+    });
+
+    let cache = contextro_engines::cache::QueryCache::new(8, 60.0);
+    let args = json!({"operation":"get_document_symbols","path":"notes.txt"});
+    let first = handle_code(
+        &args,
+        &graph,
+        Some(&cache),
+        Some(dir.to_string_lossy().as_ref()),
+    );
+    assert_eq!(cache.size(), 1);
+
+    let second = handle_code(
+        &args,
+        &CodeGraph::new(),
+        Some(&cache),
+        Some(dir.to_string_lossy().as_ref()),
+    );
+    assert_eq!(second, first);
 
     let _ = std::fs::remove_dir_all(dir);
 }
