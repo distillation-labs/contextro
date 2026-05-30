@@ -110,6 +110,16 @@ pub(super) fn is_exact_symbol_lookup_query(query: &str) -> bool {
             || trimmed.chars().any(|ch| ch.is_ascii_uppercase()))
 }
 
+pub(super) fn is_bm25_identifier_exact_match_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    !trimmed.is_empty()
+        && trimmed.split_whitespace().count() == 1
+        && trimmed.chars().any(|ch| ch.is_ascii_alphabetic())
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':'))
+}
+
 pub(super) fn query_explicitly_targets_tests(query: &str) -> bool {
     let lowered = query.to_ascii_lowercase();
     ["test", "tests", "pytest", "spec", "fixture"]
