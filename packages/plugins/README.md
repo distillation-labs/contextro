@@ -55,7 +55,7 @@ npx @contextro/skills install --platform kiro
 | Component | Purpose |
 |---|---|
 | `.mcp.json` | Wires up the `contextro` binary as an MCP server |
-| `skills/dev-contextro-mcp/` | Teaches the agent how to use all 35 Contextro tools |
+| `skills/dev-contextro-mcp/` | Teaches the agent how to use all 38 public Contextro tools, with routing examples and eval-backed guidance |
 | `hooks/hooks.json` | SessionStart check that warns if binary is missing |
 | `commands/setup.md` | (Codex only) `/contextro:setup` command |
 
