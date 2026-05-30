@@ -72,12 +72,13 @@ fn run_contextro_task(
         "batch_lookup" | "document_symbols" => contextro_tools::code::handle_code(
             &task.mcp_args,
             &indexed.graph,
+            None,
             Some(&indexed.codebase),
         ),
         other => return Err(anyhow!("unsupported MCP task category '{other}'")),
     };
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-    let rendered = response.to_string();
+    let rendered = render_contextro_response(&response);
     let evidence = matched_evidence(task, &rendered);
     let success = evaluate_rendered(task, &rendered);
 
@@ -130,6 +131,106 @@ fn run_baseline_task(
         evidence,
         error: outcome.error,
     })
+}
+
+pub(super) fn render_contextro_response(response: &Value) -> String {
+    if response.get("error").is_some() {
+        return response.to_string();
+    }
+    compact_contextro_response(response).unwrap_or_else(|| response.to_string())
+}
+
+fn compact_contextro_response(response: &Value) -> Option<String> {
+    if response.get("columns").is_some() {
+        return render_columnar_rows(response);
+    }
+    if let Some(rows) = response.get("results").and_then(Value::as_array) {
+        return Some(render_object_rows(
+            rows,
+            response.get("total").and_then(Value::as_u64),
+        ));
+    }
+    if let Some(rows) = response.get("symbols").and_then(Value::as_array) {
+        return Some(render_object_rows(
+            rows,
+            response.get("total").and_then(Value::as_u64),
+        ));
+    }
+    None
+}
+
+fn render_object_rows(rows: &[Value], total: Option<u64>) -> String {
+    let mut lines = Vec::with_capacity(rows.len() + 1);
+    if let Some(total) = total {
+        lines.push(format!("total {total}"));
+    }
+    for row in rows {
+        let entry = row.as_object().map_or_else(
+            || row.to_string(),
+            |obj| {
+                let name = obj.get("name").and_then(Value::as_str).unwrap_or_default();
+                let kind = obj.get("type").and_then(Value::as_str).unwrap_or_default();
+                let file = obj.get("file").and_then(Value::as_str).unwrap_or_default();
+                let line = obj.get("line").and_then(Value::as_u64);
+                [
+                    (!name.is_empty()).then(|| name.to_string()),
+                    (!kind.is_empty()).then(|| kind.to_string()),
+                    (!file.is_empty()).then(|| {
+                        line.map_or_else(|| file.to_string(), |line| format!("{file}:{line}"))
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" ")
+            },
+        );
+        if !entry.is_empty() {
+            lines.push(entry);
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_columnar_rows(response: &Value) -> Option<String> {
+    let columns = response.get("columns")?.as_array()?;
+    let rows = response.get("symbols")?.as_array()?;
+    let mut lines = Vec::with_capacity(rows.len() + 2);
+    if let Some(file) = response.get("file").and_then(Value::as_str) {
+        lines.push(file.to_string());
+    }
+    if let Some(total) = response.get("total").and_then(Value::as_u64) {
+        lines.push(format!("total {total}"));
+    }
+    for row in rows {
+        let row = row.as_array()?;
+        let mut parts = Vec::new();
+        let mut line = None;
+        let mut end_line = None;
+        for (index, column) in columns.iter().enumerate() {
+            let value = row.get(index)?;
+            match column.as_str()? {
+                "name" | "type" | "file" => {
+                    if let Some(text) = value.as_str() {
+                        parts.push(text.to_string());
+                    }
+                }
+                "line" => line = value.as_u64(),
+                "end_line" => end_line = value.as_u64(),
+                _ => {}
+            }
+        }
+        if let Some(line) = line {
+            parts.push(format!("line {line}"));
+        }
+        if let Some(end_line) = end_line {
+            parts.push(format!("end {end_line}"));
+        }
+        if !parts.is_empty() {
+            lines.push(parts.join(" "));
+        }
+    }
+    Some(lines.join("\n"))
 }
 
 fn baseline_symbol_lookup(
