@@ -236,6 +236,7 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn test_symbol(name: &str, filepath: &str, line_start: usize) -> Symbol {
         Symbol {
@@ -293,6 +294,34 @@ mod tests {
         assert_eq!(
             candidates[0].expected_symbols,
             vec!["alpha_task", "beta_task", "gamma_task"]
+        );
+    }
+
+    #[test]
+    fn contextro_renderer_compacts_object_rows() {
+        let rendered = runner::render_contextro_response(&json!({
+            "total": 1,
+            "results": [{"name": "archive", "file": "crates/contextro-memory/src/archive.rs", "line": 12, "score": 0.98}]
+        }));
+
+        assert_eq!(
+            rendered,
+            "total 1\narchive crates/contextro-memory/src/archive.rs:12"
+        );
+    }
+
+    #[test]
+    fn contextro_renderer_compacts_columnar_rows() {
+        let rendered = runner::render_contextro_response(&json!({
+            "file": "crates/contextro-server/src/study.rs",
+            "columns": ["name", "type", "line"],
+            "symbols": [["run_tasks", "function", 28], ["build_config", "function", 40]],
+            "total": 2
+        }));
+
+        assert_eq!(
+            rendered,
+            "crates/contextro-server/src/study.rs\ntotal 2\nrun_tasks function line 28\nbuild_config function line 40"
         );
     }
 }
