@@ -303,12 +303,8 @@ fn test_lookup_symbols_omits_type_for_unique_exact_match() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(result["symbols"][0]["name"], json!("hello"));
-    assert_eq!(result["symbols"][0]["file"], json!("module.py"));
-    assert!(
-        result["symbols"][0].get("type").is_none(),
-        "unexpected result: {result}"
-    );
+    assert_eq!(result["columns"], json!(["name", "file", "line"]));
+    assert_eq!(result["symbols"][0], json!(["hello", "module.py", 1]));
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -349,6 +345,10 @@ fn test_lookup_symbols_keeps_type_for_ambiguous_matches() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
+    assert!(
+        result.get("columns").is_none(),
+        "unexpected result: {result}"
+    );
     let symbols = result["symbols"].as_array().unwrap();
     assert_eq!(symbols.len(), 2, "unexpected result: {result}");
     assert!(symbols.iter().all(|entry| entry.get("type").is_some()));
@@ -385,6 +385,10 @@ fn test_lookup_symbols_keeps_type_when_including_source() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
+    assert!(
+        result.get("columns").is_none(),
+        "unexpected result: {result}"
+    );
     assert_eq!(result["symbols"][0]["type"], json!("function"));
     assert!(result["symbols"][0]["source"]
         .as_str()
