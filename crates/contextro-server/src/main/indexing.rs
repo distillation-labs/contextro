@@ -1,5 +1,9 @@
 use super::*;
 
+use std::sync::Arc;
+
+use contextro_engines::bm25::Bm25Engine;
+
 use super::support::{
     auto_populate_knowledge, maybe_prewarm_commit_search_cache, normalize_repo_dir,
     should_build_vector_index,
@@ -39,9 +43,10 @@ impl ContextroServer {
         }
 
         let codebase = self.state.codebase_path.read().clone();
+        let bm25 = self.state.active_bm25();
         contextro_tools::search::handle_search_with_codebase(
             args,
-            &self.state.bm25,
+            &bm25,
             &self.state.graph,
             &self.state.query_cache,
             &self.state.vector_index,
@@ -152,8 +157,11 @@ impl ContextroServer {
                 // Save hashes for next incremental run
                 contextro_indexing::save_hashes(&current_hashes, &storage_dir);
                 let bm25_start = Instant::now();
-                self.state.bm25.clear();
-                self.state.bm25.index_chunks(&chunks);
+                let next_bm25 = Arc::new(Bm25Engine::new_in_memory());
+                next_bm25.index_chunks(&chunks);
+                self.state.replace_active_bm25(next_bm25.clone());
+                self.state
+                    .remember_repo_bm25(requested_path.clone(), next_bm25);
                 let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
                 self.state
                     .chunk_count
