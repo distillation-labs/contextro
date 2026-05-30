@@ -295,3 +295,36 @@ fn test_handle_search_keeps_rich_payload_for_non_exact_single_term_queries() {
         "unexpected result: {result}"
     );
 }
+
+#[test]
+fn test_handle_search_uses_graph_fast_path_for_lowercase_bm25_exact_match() {
+    let bm25 = Bm25Engine::new_in_memory();
+    let graph = CodeGraph::new();
+    graph.add_node(make_graph_node(
+        "archive-node",
+        "archive",
+        "crates/contextro-memory/src/archive.rs",
+        "rust",
+    ));
+    let cache = QueryCache::new(16, 60.0);
+    let vector = VectorIndex::new();
+
+    let result = handle_search(
+        &json!({"query": "archive", "limit": 10, "mode": "bm25"}),
+        &bm25,
+        &graph,
+        &cache,
+        &vector,
+    );
+
+    assert_eq!(result["results"][0]["name"], "archive");
+    assert_eq!(
+        result["results"][0]["file"],
+        "crates/contextro-memory/src/archive.rs"
+    );
+    assert!(
+        result["results"][0].get("type").is_none(),
+        "unexpected result: {result}"
+    );
+    assert_eq!(result["confidence"], "high", "unexpected result: {result}");
+}
