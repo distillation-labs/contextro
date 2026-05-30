@@ -30,7 +30,7 @@ use contextro_tools::RepoRegistry;
 pub struct AppState {
     pub started_at: Instant,
     pub graph: Arc<CodeGraph>,
-    pub bm25: Arc<Bm25Engine>,
+    pub bm25: RwLock<Arc<Bm25Engine>>,
     pub vector_index: Arc<VectorIndex>,
     pub query_cache: Arc<QueryCache>,
     #[allow(dead_code)]
@@ -41,6 +41,7 @@ pub struct AppState {
     pub knowledge: Arc<KnowledgeStore>,
     pub repo_registry: Arc<RepoRegistry>,
     pub repo_snapshots: RwLock<HashMap<String, RepoScopeSnapshot>>,
+    pub repo_bm25: RwLock<HashMap<String, Arc<Bm25Engine>>>,
     pub repo_scope_history: RwLock<Vec<String>>,
     pub indexed: RwLock<bool>,
     pub codebase_path: RwLock<Option<String>>,
@@ -81,7 +82,7 @@ impl AppState {
         Ok(Self {
             started_at: Instant::now(),
             graph: Arc::new(CodeGraph::new()),
-            bm25: Arc::new(Bm25Engine::new_in_memory()),
+            bm25: RwLock::new(Arc::new(Bm25Engine::new_in_memory())),
             vector_index: Arc::new(VectorIndex::new()),
             query_cache: Arc::new(QueryCache::new(
                 settings.search_cache_max_size,
@@ -108,6 +109,7 @@ impl AppState {
                 storage_dir.join("repo-registry.json"),
             )),
             repo_snapshots: RwLock::new(HashMap::new()),
+            repo_bm25: RwLock::new(HashMap::new()),
             repo_scope_history: RwLock::new(
                 persisted_repo_scope
                     .history
@@ -138,6 +140,22 @@ impl AppState {
         self.repo_snapshots.write().insert(path, snapshot);
     }
 
+    pub fn active_bm25(&self) -> Arc<Bm25Engine> {
+        self.bm25.read().clone()
+    }
+
+    pub fn replace_active_bm25(&self, bm25: Arc<Bm25Engine>) {
+        *self.bm25.write() = bm25;
+    }
+
+    pub fn remember_repo_bm25(&self, path: String, bm25: Arc<Bm25Engine>) {
+        self.repo_bm25.write().insert(path, bm25);
+    }
+
+    pub fn repo_bm25(&self, path: &str) -> Option<Arc<Bm25Engine>> {
+        self.repo_bm25.read().get(path).cloned()
+    }
+
     pub fn persist_repo_snapshot(&self, path: &str, snapshot: RepoScopeSnapshot) {
         save_repo_snapshot(&repo_snapshot_path(path), &snapshot);
         self.remember_repo_snapshot(path.to_string(), snapshot);
@@ -153,6 +171,7 @@ impl AppState {
 
     pub fn prune_repo_snapshot(&self, path: &str) {
         self.repo_snapshots.write().remove(path);
+        self.repo_bm25.write().remove(path);
     }
 
     /// Build the code graph from parsed symbols.
