@@ -4,19 +4,19 @@ Current evidence in this bundle is limited to studies and repo files present in 
 
 ## Validated Studies
 
-### Contextro repo study, 200 tasks, retained exp12 state
+### Contextro repo study, 200 tasks, retained current state
 
 Measured on this repository with the deterministic `contextro-study` harness.
 
 | Metric | Contextro | stronger_local | Delta |
 |---|---|---|---|
 | Success rate | 100% | 97.5% | +2.5 points |
-| Total tokens | 11,073 | 227,072 | 95.1% reduction |
-| Mean tokens per task | 55.37 | 1,135.36 | lower |
+| Total tokens | 6,244 | 227,072 | 97.3% reduction |
+| Mean tokens per task | 31.22 | 1,135.36 | lower |
 | Tool calls per task | 1.0 | 2.96 | lower |
 | Files read | 0 | 352 | eliminated |
 
-Source: current validated `contextro-study` figures for this working tree, retained `exp12` state.
+Source: current validated `contextro-study` figures for this working tree, retained current state.
 
 ### Retained breakthrough vs pre-optimization Contextro baseline
 
@@ -25,11 +25,11 @@ These deltas are the benchmark guardrails for this repo.
 | Metric | Baseline Contextro | Retained Contextro | Delta |
 |---|---|---|---|
 | Success rate | 100% | 100% | preserved |
-| Total tokens | 20,851 | 11,073 | 46.9% reduction |
-| `document_symbols` tokens | 10,805 | 2,664 | 75.3% reduction |
-| `exact_search` tokens | 4,230 | 3,074 | 27.3% reduction |
-| `batch_lookup` tokens | 3,568 | 3,087 | 13.5% reduction |
-| `symbol_discovery` tokens | 2,248 | 2,248 | unchanged |
+| Total tokens | 20,851 | 6,244 | 70.1% reduction |
+| `document_symbols` tokens | 10,805 | 1,854 | 82.8% reduction |
+| `exact_search` tokens | 4,230 | 1,441 | 65.9% reduction |
+| `batch_lookup` tokens | 3,568 | 1,674 | 53.1% reduction |
+| `symbol_discovery` tokens | 2,248 | 1,275 | 43.3% reduction |
 
 ### Published repo-root README study, production TypeScript monorepo, 1,000 tasks
 
@@ -48,9 +48,9 @@ Source: `/Users/japneetkalkat/contextro/README.md`
 ## Guardrails For Future Runs
 
 - Keep the `200`-task `contextro-study` success rate at `100%` on this repo when shipping compact-response changes.
-- Treat `11,073` total Contextro tokens as the current retained baseline on this repo.
+- Treat `6,244` total Contextro tokens as the current retained baseline on this repo.
 - Do not lower the default `get_document_symbols` cap below `3`; the current study tasks expect `3` symbols.
-- Retained `contextro-bench` sanity rerun on this repo: `index avg 39.10ms`, `search avg 0.12ms`. Do not accept meaningful bench regressions for marginal token wins.
+- Retained `contextro-bench` sanity rerun on this repo: cold index `31.9-32.6ms`, search `0.111-0.112ms`, code `0.27-0.28ms`, active-scope `repo_remove` restore `8.01-8.24ms`. Do not accept meaningful bench regressions for marginal token wins.
 
 ## Current Runtime Contracts
 
