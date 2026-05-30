@@ -46,3 +46,5 @@ docs-preautoresearch-master/
 scratch/
 crates/target/
 .contextro-docs/
+.contextro-sidecars/
+*.tgz
