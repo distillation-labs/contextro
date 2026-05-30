@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use crate::analysis::is_test_file;
 use contextro_core::graph::UniversalNode;
 use contextro_core::traits::Parser;
+use contextro_engines::cache::QueryCache;
 use contextro_engines::graph::CodeGraph;
 use contextro_parsing::TreeSitterParser;
 use serde_json::{json, Value};
@@ -27,7 +28,12 @@ use symbols::*;
 
 const DEFAULT_DOCUMENT_SYMBOL_LIMIT: usize = 3;
 
-pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
+pub fn handle_code(
+    args: &Value,
+    graph: &CodeGraph,
+    cache: Option<&QueryCache>,
+    codebase: Option<&str>,
+) -> Value {
     // Accept both `operation` (current) and `action` (v0.4.0 name) for backward compat
     let operation = args
         .get("operation")
@@ -35,7 +41,7 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
         .and_then(|v| v.as_str())
         .unwrap_or("");
     match operation {
-        "get_document_symbols" => get_document_symbols(args, Some(graph), codebase),
+        "get_document_symbols" => maybe_cached_document_symbols(args, graph, cache, codebase),
         // v0.4.0 name alias
         "list_symbols" => {
             // If `file_path` or `path` point to a file, use get_document_symbols;
@@ -45,7 +51,7 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
                 .map(|path| path.is_file())
                 .unwrap_or(false);
             if has_file {
-                get_document_symbols(args, Some(graph), codebase)
+                maybe_cached_document_symbols(args, graph, cache, codebase)
             } else {
                 list_symbols(args, graph, codebase)
             }
@@ -60,6 +66,43 @@ pub fn handle_code(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> V
             json!({"error": format!("Unknown code operation: '{}'. Valid operations: get_document_symbols, search_symbols, lookup_symbols, list_symbols, pattern_search, pattern_rewrite, edit_plan, search_codebase_map", operation)})
         }
     }
+}
+
+fn maybe_cached_document_symbols(
+    args: &Value,
+    graph: &CodeGraph,
+    cache: Option<&QueryCache>,
+    codebase: Option<&str>,
+) -> Value {
+    let Some(path) = get_document_path_arg(args) else {
+        return get_document_symbols(args, Some(graph), codebase);
+    };
+    let Some(cache) = cache else {
+        return get_document_symbols(args, Some(graph), codebase);
+    };
+    let include_signature = args
+        .get("include_signature")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if include_signature || codebase.is_none() || Path::new(path).is_absolute() {
+        return get_document_symbols(args, Some(graph), codebase);
+    }
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(DEFAULT_DOCUMENT_SYMBOL_LIMIT as u64);
+    let cache_key = format!(
+        "code:get_document_symbols:{}:{path}:{include_signature}:{limit}",
+        codebase.unwrap_or("")
+    );
+    if let Some(result) = cache.get(&cache_key) {
+        return result;
+    }
+    let result = get_document_symbols(args, Some(graph), codebase);
+    if result.get("error").is_none() {
+        cache.put(&cache_key, result.clone());
+    }
+    result
 }
 
 #[cfg(test)]
