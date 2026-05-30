@@ -148,6 +148,10 @@ pub(super) fn line_at(source: &[u8], row: usize) -> String {
     s.lines().nth(row).unwrap_or("").to_string()
 }
 
+pub(super) fn line_from_lines(lines: &[&str], row: usize) -> String {
+    lines.get(row).copied().unwrap_or("").to_string()
+}
+
 pub(super) fn snippet_from(source: &[u8], start_row: usize, end_row: usize) -> String {
     let s = std::str::from_utf8(source).unwrap_or("");
     let lines: Vec<&str> = s.lines().collect();
