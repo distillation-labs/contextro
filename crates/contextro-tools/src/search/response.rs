@@ -114,8 +114,10 @@ pub(super) fn build_search_response(
     confidence: &str,
     results: &[SearchResult],
     codebase: Option<&str>,
+    compact_exact_hit: bool,
 ) -> Value {
-    let include_type = !is_exact_symbol_lookup_query(query) || results.len() > 1;
+    let include_type =
+        !(compact_exact_hit || (is_exact_symbol_lookup_query(query) && results.len() == 1));
     let out: Vec<Value> = results
         .iter()
         .map(|r| {
