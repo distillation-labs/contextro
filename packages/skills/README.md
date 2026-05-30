@@ -2,7 +2,7 @@
 
 **Distribute the canonical Contextro MCP skill bundle for coding agents.**
 
-This package distributes exactly one user-facing skill bundle: `packages/skills/skills/dev-contextro-mcp/`.
+This package ships exactly one user-facing skill bundle: `skills/dev-contextro-mcp/`.
 
 That canonical bundle contains:
 - `SKILL.md`
@@ -31,6 +31,8 @@ By default the installer writes these repo-local artifacts:
 - `.opencode/skills/dev-contextro-mcp/` for OpenCode skills
 
 When you install into a normal project, each skill target receives the full bundle: `SKILL.md`, `references/`, and `evals/`.
+That bundle now includes problem-first routing for all 38 public Contextro tools plus the
+eight `code(...)` operations, with worked examples and eval coverage.
 
 ## What It Does
 
@@ -39,7 +41,7 @@ After installation, your AI agent will:
 1. **Search by meaning** instead of reading 5+ files to find one function
 2. **Check blast radius** with `impact` or `refactor_check` before renaming, deleting, or reshaping symbols
 3. **Trace call graphs** instead of grepping for usages
-4. **Use about 90% fewer tokens** for code discovery tasks in published and repo-local studies
+4. **Use about 90-97% fewer tokens** for code discovery tasks in published and repo-local studies
 
 ## Commands
 
@@ -73,7 +75,7 @@ npx @contextro/skills benchmark --dir /path/to/your/project
 
 | Skill | Description |
 |-------|-------------|
-| `dev-contextro-mcp` | Full Contextro integration: search, symbols, call graphs, impact analysis, git history, memory, AST rewrite |
+| `dev-contextro-mcp` | Full Contextro integration across all 38 public tools: search, symbols, call graphs, refactor safety, repo scope, memory/recovery, exports, and AST rewrite |
 
 No other internal Contextro skills are distributed by this package.
 
@@ -113,7 +115,7 @@ Output is written to `./experiment_results/`:
 | Metric | Without MCP | With MCP | Improvement |
 |--------|-------------|----------|-------------|
 | Tokens (1,000-task production study) | 941,748 | 93,819 | **90.0% reduction** |
-| Tokens (200-task Contextro repo study, retained exp12) | 227,072 | 11,073 | **95.1% reduction** |
+| Tokens (200-task Contextro repo study, retained current state) | 227,072 | 6,244 | **97.3% reduction** |
 | Success rate (200-task Contextro repo study) | 97.5% | 100% | **+2.5 points** |
 | Tool calls per task (1,000-task production study) | 3.2 | 1.0 | lower |
 | Tool calls per task (200-task Contextro repo study) | 2.96 | 1.0 | lower |
@@ -122,7 +124,7 @@ Output is written to `./experiment_results/`:
 
 ## How Skills Work
 
-The distributed skill is a markdown bundle (`SKILL.md` plus `references/` and `evals/`) that teaches AI agents how to use Contextro for repository discovery.
+The distributed skill is a markdown bundle (`SKILL.md` plus `references/` and `evals/`) that teaches AI agents how to use Contextro for repository discovery, refactor safety, repo lifecycle, recovery, and export workflows.
 
 Concept split:
 - `skill bundle`: reusable workflow content loaded by hosts that support `SKILL.md`
@@ -135,6 +137,10 @@ Concept split:
 - Run `impact("Symbol")` or `refactor_check("Symbol")` before higher-risk edits
 - Use `explain("Symbol")` before editing unfamiliar code
 - Prefer `find_callers()` over grep for usage discovery
+- Use `completion_check(...)` before claiming a rename/signature refactor updated every caller
+- Distinguish `health` vs `status`, `retrieve` vs `restore` vs `recall`, and `docs_bundle` vs `audit` vs `sidecar_export`
+
+Detailed per-tool routing and examples ship in `skills/dev-contextro-mcp/references/tool-decision-tree.md`.
 
 ## Platform Mapping
 
@@ -176,7 +182,7 @@ If you already have a hand-written `.github/copilot-instructions.md` or `AGENTS.
 npx @contextro/skills install --force
 ```
 
-In this repo, `.agents/skills/dev-contextro-mcp/` is development-only Contextro context. The packaged copy under `packages/skills/skills/dev-contextro-mcp/` is the distribution source that ships to end users.
+In this repo, `.agents/skills/dev-contextro-mcp/` is the canonical authoring source. The packaged copy under `packages/skills/skills/dev-contextro-mcp/` is the distribution copy that ships to end users.
 
 ## License
 
