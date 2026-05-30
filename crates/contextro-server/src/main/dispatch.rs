@@ -112,7 +112,7 @@ impl ContextroServer {
             }
             "repo_remove" => self.handle_repo_remove(&args),
             "repo_status" => contextro_tools::git_tools::handle_repo_status(&s.repo_registry),
-            "code" => contextro_tools::code::handle_code(&args, &s.graph, cb),
+            "code" => contextro_tools::code::handle_code(&args, &s.graph, Some(&s.query_cache), cb),
             "audit" => contextro_tools::artifacts::handle_audit(&s.graph, cb),
             "docs_bundle" => contextro_tools::artifacts::handle_docs_bundle(&args, &s.graph, cb),
             "sidecar_export" => {
