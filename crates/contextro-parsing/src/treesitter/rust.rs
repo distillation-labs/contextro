@@ -223,8 +223,7 @@ pub(super) fn apply_brace_depth_delta(lines: &[&str], start: usize, end: usize, 
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
-/// Recursively collect all call_expression and JSX component usages from a subtree.
-
+/// Extract leading doc comments for the item starting at `row`.
 pub(super) fn extract_rust_item_doc(lines: &[&str], row: usize) -> String {
     if row == 0 || lines.is_empty() {
         return String::new();
