@@ -11,6 +11,7 @@ fn test_repo_remove_restores_previous_active_scope_and_knowledge_scope() {
 
     let index_a = server.handle_index(&json!({"path": repo_a.to_string_lossy().to_string()}));
     assert_eq!(index_a["status"], "done");
+    let repo_a_bm25 = server.state.active_bm25();
     server
         .state
         .knowledge
@@ -50,6 +51,10 @@ fn test_repo_remove_restores_previous_active_scope_and_knowledge_scope() {
     );
     assert_eq!(server.state.knowledge.search("alpha", 5).len(), 1);
     assert!(server.state.knowledge.search("bravo", 5).is_empty());
+    assert!(std::sync::Arc::ptr_eq(
+        &repo_a_bm25,
+        &server.state.active_bm25()
+    ));
 
     let restored_codebase = server.state.codebase_path.read().clone();
     let overview = contextro_tools::analysis::handle_overview(
@@ -66,16 +71,17 @@ fn test_repo_remove_restores_previous_active_scope_and_knowledge_scope() {
         &server.state.graph,
         restored_codebase.as_deref(),
     );
+    let bm25 = server.state.active_bm25();
     let repo_a_search = contextro_tools::search::handle_search(
         &json!({"query": "repo_a_symbol"}),
-        &server.state.bm25,
+        &bm25,
         &server.state.graph,
         &server.state.query_cache,
         &server.state.vector_index,
     );
     let repo_b_search = contextro_tools::search::handle_search(
         &json!({"query": "repo_b_symbol"}),
-        &server.state.bm25,
+        &bm25,
         &server.state.graph,
         &server.state.query_cache,
         &server.state.vector_index,
@@ -198,7 +204,7 @@ fn test_repo_remove_clears_active_scope_when_no_previous_scope_exists() {
     );
     let search = contextro_tools::search::handle_search(
         &json!({"query": "repo_clear_symbol"}),
-        &server.state.bm25,
+        &server.state.active_bm25(),
         &server.state.graph,
         &server.state.query_cache,
         &server.state.vector_index,
