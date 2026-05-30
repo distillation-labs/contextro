@@ -46,10 +46,40 @@ pub(crate) fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&
         .get("include_source")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let mut results = Vec::new();
+    let match_sets: Vec<Vec<_>> = names
+        .iter()
+        .map(|name| {
+            graph
+                .find_nodes_by_name(name.as_str(), true)
+                .into_iter()
+                .take(3)
+                .collect()
+        })
+        .collect();
 
-    for name in &names {
-        let matches = graph.find_nodes_by_name(name.as_str(), true);
+    let use_columnar_exact_hits =
+        !include_source && match_sets.iter().all(|matches| matches.len() <= 1);
+    if use_columnar_exact_hits {
+        let rows: Vec<Value> = match_sets
+            .iter()
+            .flat_map(|matches| matches.iter())
+            .map(|node| {
+                json!([
+                    node.name,
+                    strip_base(&node.location.file_path, codebase),
+                    node.location.start_line,
+                ])
+            })
+            .collect();
+        return json!({
+            "columns": ["name", "file", "line"],
+            "symbols": rows,
+            "total": rows.len(),
+        });
+    }
+
+    let mut results = Vec::new();
+    for matches in &match_sets {
         let include_type = include_source || matches.len() > 1;
         for node in matches.iter().take(3) {
             let fp = strip_base(&node.location.file_path, codebase);
