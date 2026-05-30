@@ -1,5 +1,9 @@
 use super::*;
 
+use std::sync::Arc;
+
+use contextro_engines::bm25::Bm25Engine;
+
 use super::support::normalize_repo_dir;
 
 impl ContextroServer {
@@ -154,8 +158,14 @@ impl ContextroServer {
         let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
 
         let bm25_start = Instant::now();
-        self.state.bm25.clear();
-        self.state.bm25.index_chunks(&snapshot.chunks);
+        if let Some(cached_bm25) = self.state.repo_bm25(path) {
+            self.state.replace_active_bm25(cached_bm25);
+        } else {
+            let next_bm25 = Arc::new(Bm25Engine::new_in_memory());
+            next_bm25.index_chunks(&snapshot.chunks);
+            self.state.replace_active_bm25(next_bm25.clone());
+            self.state.remember_repo_bm25(path.to_string(), next_bm25);
+        }
         let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
         self.state
             .chunk_count
@@ -257,7 +267,8 @@ impl ContextroServer {
 
     pub(crate) fn clear_active_scope(&self) {
         self.state.graph.clear();
-        self.state.bm25.clear();
+        self.state
+            .replace_active_bm25(Arc::new(Bm25Engine::new_in_memory()));
         self.state.vector_index.clear();
         self.state.query_cache.invalidate();
         self.state
