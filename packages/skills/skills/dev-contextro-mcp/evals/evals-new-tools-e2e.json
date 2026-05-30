@@ -1,12 +1,13 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "eval_set": "new-tools-and-e2e",
-  "description": "Extended eval coverage for Contextro-specific tools and end-to-end problem-first tasks.",
+  "description": "Extended eval coverage for lower-frequency public tools, admin/support helpers, and end-to-end problem-first tasks.",
   "categories": {
     "new_tools": "Contextro-specific tools are invoked correctly",
     "e2e": "Real user requests complete with the expected Contextro workflow",
-    "distinctions": "The agent distinguishes nearby tools with different purposes"
+    "distinctions": "The agent distinguishes nearby tools with different purposes",
+    "admin": "Support and lifecycle tools are used correctly"
   },
   "evals": [
     {
@@ -23,10 +24,116 @@
           "passing_condition": "retrieve called with ref_id='arc_def67890'"
         }
       ]
+    },
+    {
+      "id": 402,
+      "name": "new-tool-completion-check",
+      "category": "new_tools",
+      "prompt": "Verify that my BrowserSession refactor updated every caller. The changed files are src/session.rs and src/main.rs.",
+      "expected_behavior": "Agent calls completion_check with the supported claim and the changed file list.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "completion_check gets the required shape",
+          "type": "tool_selection",
+          "passing_condition": "completion_check called with claim='all_callers_updated', symbol_name='BrowserSession', and changed_files containing src/session.rs and src/main.rs"
+        }
+      ]
+    },
+    {
+      "id": 403,
+      "name": "admin-introspect-by-tool",
+      "category": "admin",
+      "prompt": "Show me the current parameters and example call for completion_check.",
+      "expected_behavior": "Agent uses introspect with the exact tool name instead of guessing parameters from memory.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "introspect is used for exact tool docs",
+          "type": "tool_selection",
+          "passing_condition": "introspect called with tool='completion_check'"
+        }
+      ]
+    },
+    {
+      "id": 404,
+      "name": "admin-skill-prompt-bootstrap",
+      "category": "admin",
+      "prompt": "Give me the Contextro bootstrap block I can hand to another agent.",
+      "expected_behavior": "Agent uses skill_prompt because the request is explicitly for bootstrap text.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill_prompt is used only for bootstrap text",
+          "type": "tool_selection",
+          "passing_condition": "skill_prompt called"
+        }
+      ]
+    },
+    {
+      "id": 405,
+      "name": "new-tool-repo-remove-by-name",
+      "category": "new_tools",
+      "prompt": "Remove the registered external repo named browser-use-test from Contextro.",
+      "expected_behavior": "Agent calls repo_remove with the repo name.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "repo_remove accepts the repo name",
+          "type": "tool_selection",
+          "passing_condition": "repo_remove called with name='browser-use-test'"
+        }
+      ]
+    },
+    {
+      "id": 406,
+      "name": "distinction-restore-vs-session-snapshot",
+      "category": "distinctions",
+      "prompt": "I restarted the server. Summarize where I left off in this project.",
+      "expected_behavior": "Agent prefers restore for a synthesized re-entry summary, using session_snapshot only if the user needs raw recent events.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "restore is the default re-entry summary tool",
+          "type": "tool_selection",
+          "passing_condition": "restore called"
+        }
+      ]
+    },
+    {
+      "id": 407,
+      "name": "new-tool-knowledge-search",
+      "category": "new_tools",
+      "prompt": "Search the docs I indexed in this repo for cache invalidation guidance.",
+      "expected_behavior": "Agent uses knowledge search instead of general code search.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "knowledge search is used for indexed docs",
+          "type": "tool_selection",
+          "passing_condition": "knowledge called with command='search'"
+        }
+      ]
+    },
+    {
+      "id": 408,
+      "name": "admin-tags-before-forget",
+      "category": "admin",
+      "prompt": "List the durable memory tags before I delete anything.",
+      "expected_behavior": "Agent uses tags rather than forgetting blindly or inferring tags from memory.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "tags lists known memory tags",
+          "type": "tool_selection",
+          "passing_condition": "tags called"
+        }
+      ]
     }
   ],
   "targets": {
     "new_tool_accuracy": 0.95,
-    "archive_vs_memory_distinction": 0.95
+    "archive_vs_memory_distinction": 0.95,
+    "admin_tool_accuracy": 0.95
   }
 }
