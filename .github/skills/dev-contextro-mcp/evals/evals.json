@@ -1,7 +1,7 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "0.1.0",
-  "description": "Core trigger and routing evals for the Contextro MCP skill. Aligned to Anthropic skill guidance: concise frontmatter, correct triggering, problem-first routing, and avoidance of token-heavy anti-patterns.",
+  "version": "0.2.1",
+  "description": "Core trigger and routing evals for the Contextro MCP skill. Covers problem-first routing across the current 38-tool public surface, nearby-tool distinctions, and avoidance of token-heavy anti-patterns.",
   "rubric": {
     "source_docs": [
       "skills-guide.pdf",
@@ -13,14 +13,16 @@
       "not triggering on unrelated requests",
       "correct tool routing",
       "anti-pattern avoidance",
-      "current response format interpretation"
+      "current response format interpretation",
+      "nearby-tool distinctions"
     ]
   },
   "categories": {
     "triggering": "Skill loads on obvious and paraphrased Contextro requests",
     "routing": "Correct Contextro tool chosen for the user task",
     "anti_pattern": "Agent avoids wasteful or unsafe alternatives when Contextro fits",
-    "response_format": "Agent correctly interprets current response payloads and wrappers"
+    "response_format": "Agent correctly interprets current response payloads and wrappers",
+    "tool_distinction": "Agent picks the right tool among nearby Contextro options"
   },
   "evals": [
     {
@@ -57,6 +59,70 @@
     },
     {
       "id": 3,
+      "name": "trigger-completion-check-after-refactor",
+      "category": "routing",
+      "prompt": "I renamed BrowserSession and edited src/session.rs plus src/main.rs. Check whether I really updated every caller.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads. Agent uses completion_check with claim all_callers_updated, the target symbol, and the changed file list before claiming the refactor is complete.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "completion_check is used for caller-completeness verification",
+          "type": "tool_selection",
+          "passing_condition": "completion_check called with claim='all_callers_updated', symbol_name='BrowserSession', and changed_files containing src/session.rs and src/main.rs"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "non-trigger-direct-single-file-read",
+      "category": "triggering",
+      "prompt": "Open Cargo.toml and tell me which Rust edition it uses.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not trigger because a direct single-file read is cheaper than Contextro discovery.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "skill does not over-trigger on direct known-file reads",
+          "type": "non_trigger",
+          "passing_condition": "skill not loaded"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "routing-exact-identifier-bm25",
+      "category": "routing",
+      "prompt": "Find every exact reference to CTX_STORAGE_DIR in the indexed repo.",
+      "should_trigger": true,
+      "expected_behavior": "Agent uses search with bm25 for the exact identifier instead of semantic-only search or broad file reads.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "search bm25 is used for exact identifiers",
+          "type": "tool_selection",
+          "passing_condition": "search called with query='CTX_STORAGE_DIR' and mode='bm25'"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "tool-distinction-health-vs-status",
+      "category": "tool_distinction",
+      "prompt": "Before you touch any repo, tell me whether the Contextro server itself is healthy.",
+      "should_trigger": true,
+      "expected_behavior": "Agent uses health rather than status because the question is about server/runtime availability.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "health is used for runtime availability checks",
+          "type": "tool_selection",
+          "passing_condition": "health called and status not called first"
+        }
+      ]
+    },
+    {
+      "id": 7,
       "name": "response-format-columnar-file-symbols",
       "category": "response_format",
       "prompt": "Use get_document_symbols on a file and tell me the first symbol name and line. The tool returns {\"file\":\"src/cache.rs\",\"columns\":[\"name\",\"type\",\"line\",\"end_line\"],\"symbols\":[[\"QueryCache\",\"class\",14,20],[\"get\",\"method\",34,46]],\"total\":2}.",
@@ -72,7 +138,7 @@
       ]
     },
     {
-      "id": 4,
+      "id": 8,
       "name": "response-format-list-symbols-file-vs-directory",
       "category": "response_format",
       "prompt": "A file-path list_symbols call returned {\"file\":\"src/cache.rs\",\"columns\":[\"name\",\"type\",\"line\"],\"symbols\":[[\"QueryCache\",\"class\",14]],\"total\":1}, while a directory-path list_symbols call returned {\"path\":\"src\",\"symbols\":[{\"name\":\"QueryCache\",\"type\":\"class\",\"file\":\"src/cache.rs\",\"line\":14,\"callers\":2,\"callees\":4}],\"total\":1}. Explain the difference.",
@@ -86,12 +152,29 @@
           "passing_condition": "agent states that file-path list_symbols is columnar and directory-path list_symbols returns object rows with callers/callees"
         }
       ]
+    },
+    {
+      "id": 9,
+      "name": "tool-distinction-retrieve-vs-restore-vs-recall",
+      "category": "tool_distinction",
+      "prompt": "I have ref arc_ab12cd34 from compact(), and I also want the durable memory we stored about the release workflow. Which recovery tool should I use for each?",
+      "should_trigger": true,
+      "expected_behavior": "Agent distinguishes retrieve for the compact archive, recall for durable memory, and does not suggest restore/session_snapshot as substitutes for the archive ref.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "archive, session, and durable-memory recovery paths are distinguished",
+          "type": "tool_selection",
+          "passing_condition": "agent recommends retrieve(ref_id='arc_ab12cd34') for the archive and recall(query='release workflow') for the durable memory"
+        }
+      ]
     }
   ],
   "targets": {
     "trigger_rate_relevant": 0.9,
     "non_trigger_rate_irrelevant": 1.0,
     "impact_before_refactor": 1.0,
-    "response_format_accuracy": 1.0
+    "response_format_accuracy": 1.0,
+    "tool_distinction_accuracy": 0.95
   }
 }
