@@ -12,9 +12,9 @@ fn test_get_document_symbols_omits_signatures_by_default() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(result["total"], 1);
-    assert_eq!(result["columns"], json!(["name", "type", "line"]));
-    assert_eq!(result["symbols"][0], json!(["hello", "function", 1]));
+    assert!(result.get("total").is_none(), "unexpected result: {result}");
+    assert_eq!(result["columns"], json!(["name", "location"]));
+    assert_eq!(result["symbols"][0], json!(["hello", "1"]));
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -35,12 +35,9 @@ fn test_get_document_symbols_truncates_unicode_signatures_when_requested() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(result["total"], 1);
-    assert_eq!(
-        result["columns"],
-        json!(["name", "type", "line", "signature"])
-    );
-    let rendered = result["symbols"][0][3].as_str().unwrap();
+    assert!(result.get("total").is_none(), "unexpected result: {result}");
+    assert_eq!(result["columns"], json!(["name", "location", "signature"]));
+    let rendered = result["symbols"][0][2].as_str().unwrap();
     assert!(rendered.ends_with('…'));
     assert!(rendered.chars().count() <= 58);
 
@@ -63,13 +60,10 @@ fn test_get_document_symbols_uses_shared_columns_for_multiline_symbols() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(
-        result["columns"],
-        json!(["name", "type", "line", "end_line"])
-    );
-    assert_eq!(result["symbols"][0], json!(["Hello", "class", 1, 3]));
-    assert_eq!(result["symbols"][1], json!(["first", "method", 2, null]));
-    assert_eq!(result["symbols"][2], json!(["second", "function", 5, null]));
+    assert_eq!(result["columns"], json!(["name", "type", "location"]));
+    assert_eq!(result["symbols"][0], json!(["Hello", "class", "1-3"]));
+    assert_eq!(result["symbols"][1], json!(["first", "method", "2"]));
+    assert_eq!(result["symbols"][2], json!(["second", "function", "5"]));
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -93,7 +87,8 @@ fn test_get_document_symbols_truncates_large_default_payloads() {
     assert_eq!(result["total"], 30);
     assert_eq!(result["truncated"], true);
     assert_eq!(result["symbols"].as_array().unwrap().len(), 3);
-    assert_eq!(result["symbols"][0], json!(["fn_0", "function", 1]));
+    assert_eq!(result["columns"], json!(["name", "location"]));
+    assert_eq!(result["symbols"][0], json!(["fn_0", "1"]));
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -114,7 +109,7 @@ fn test_get_document_symbols_limit_override_returns_full_payload() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(result["total"], 30);
+    assert!(result.get("total").is_none(), "unexpected result: {result}");
     assert!(
         result.get("truncated").is_none(),
         "unexpected result: {result}"
@@ -190,13 +185,10 @@ fn test_get_document_symbols_uses_indexed_graph_for_file_queries() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(
-        result["columns"],
-        json!(["name", "type", "line", "end_line"])
-    );
-    assert_eq!(result["symbols"][0], json!(["Hello", "class", 1, 3]));
-    assert_eq!(result["symbols"][1], json!(["first", "method", 2, null]));
-    assert_eq!(result["symbols"][2], json!(["second", "function", 5, null]));
+    assert_eq!(result["columns"], json!(["name", "type", "location"]));
+    assert_eq!(result["symbols"][0], json!(["Hello", "class", "1-3"]));
+    assert_eq!(result["symbols"][1], json!(["first", "method", "2"]));
+    assert_eq!(result["symbols"][2], json!(["second", "function", "5"]));
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -242,7 +234,8 @@ fn test_get_document_symbols_truncates_large_indexed_graph_payloads() {
     assert_eq!(result["total"], 30);
     assert_eq!(result["truncated"], true);
     assert_eq!(result["symbols"].as_array().unwrap().len(), 3);
-    assert_eq!(result["symbols"][0], json!(["fn_0", "function", 1]));
+    assert_eq!(result["columns"], json!(["name", "location"]));
+    assert_eq!(result["symbols"][0], json!(["fn_0", "1"]));
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -279,11 +272,8 @@ fn test_get_document_symbols_falls_back_to_parser_when_signatures_requested() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(
-        result["columns"],
-        json!(["name", "type", "line", "signature"])
-    );
-    assert_eq!(result["symbols"][0][3], json!("def hello(name):"));
+    assert_eq!(result["columns"], json!(["name", "location", "signature"]));
+    assert_eq!(result["symbols"][0][2], json!("def hello(name):"));
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -301,8 +291,8 @@ fn test_list_symbols_uses_columnar_file_contract() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(result["columns"], json!(["name", "type", "line"]));
-    assert_eq!(result["symbols"][0], json!(["hello", "function", 1]));
+    assert_eq!(result["columns"], json!(["name", "location"]));
+    assert_eq!(result["symbols"][0], json!(["hello", "1"]));
 
     let _ = std::fs::remove_dir_all(dir);
 }
