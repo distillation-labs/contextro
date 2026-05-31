@@ -7,7 +7,7 @@ local `skills-guide.pdf`.
 
 - Frontmatter must say what the skill does and when to use it.
 - `SKILL.md` should stay concise; detailed guidance belongs in `references/`.
-- The bundle should teach the full 38-tool public surface plus the eight `code(...)`
+- The bundle should teach the full 40-tool public surface plus the eight `code(...)`
   operations through progressive disclosure.
 - Test three things separately: triggering, functional execution, and performance
   comparison against the no-skill baseline.
