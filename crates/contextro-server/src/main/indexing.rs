@@ -1,13 +1,12 @@
 use super::*;
 
-use std::sync::Arc;
-
-use contextro_engines::bm25::Bm25Engine;
-
 use super::support::{
     auto_populate_knowledge, maybe_prewarm_commit_search_cache, normalize_repo_dir,
-    should_build_vector_index,
+    prune_process_repo_bm25, remember_process_repo_bm25, should_build_vector_index,
+    should_share_repo_bm25,
 };
+use contextro_engines::bm25::Bm25Engine;
+use std::sync::Arc;
 
 impl ContextroServer {
     pub(crate) fn handle_status(&self) -> Value {
@@ -55,7 +54,7 @@ impl ContextroServer {
     }
 
     pub(crate) fn handle_index(&self, args: &Value) -> Value {
-        self.handle_index_internal(args, false)
+        self.handle_index_internal(args, true)
     }
 
     pub(crate) fn handle_index_internal(&self, args: &Value, prewarm_commit_search: bool) -> Value {
@@ -77,14 +76,26 @@ impl ContextroServer {
         let pipeline = contextro_indexing::IndexingPipeline::new(settings.clone());
 
         // #1: Incremental re-indexing — check if files changed since last index
-        let files = contextro_indexing::discover_files(requested_path_ref, &settings);
-        let current_hashes = contextro_indexing::fingerprint_files(&files);
+        let discovered =
+            contextro_indexing::discover_files_with_fingerprints(requested_path_ref, &settings);
+        let files = discovered.files;
+        let current_hashes = discovered.fingerprints;
         let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
         let (added, modified, deleted) =
             contextro_indexing::diff_file_states(&current_hashes, &stored_hashes);
         let changed_count = added.len() + modified.len() + deleted.len();
         let is_incremental = !stored_hashes.is_empty();
         let loaded_codebase = self.state.codebase_path.read().clone();
+        let previous_active = loaded_codebase
+            .as_deref()
+            .map(normalize_repo_dir)
+            .filter(|previous_active| previous_active != &requested_path);
+        if let Some(previous_active_path) = previous_active.as_deref() {
+            if self.state.repo_snapshot_needs_graph(previous_active_path) {
+                self.state
+                    .attach_repo_snapshot_graph(previous_active_path, self.state.graph.snapshot());
+            }
+        }
 
         // If nothing changed and we already have an index, skip re-parsing
         if Self::can_skip_reindex(
@@ -111,19 +122,20 @@ impl ContextroServer {
 
         if is_incremental && changed_count == 0 {
             if let Some(snapshot) = self.load_repo_snapshot_if_hashes_match(&requested_path) {
-                if let Some(previous_active) = loaded_codebase
-                    .as_deref()
-                    .map(normalize_repo_dir)
-                    .filter(|previous_active| previous_active != &requested_path)
-                {
+                if let Some(previous_active) = previous_active.clone() {
                     self.remember_repo_scope(previous_active, requested_path.clone());
                 }
 
                 let (mut resp, restore_metrics) =
-                    self.restore_repo_snapshot(&requested_path, &snapshot);
+                    self.restore_repo_snapshot(&requested_path, snapshot.as_ref());
                 resp["total_files"] = json!(files.len());
                 resp["message"] = json!("Restored from persisted repo snapshot.");
                 resp["index_mode"] = json!("restored");
+                let prewarm_start = Instant::now();
+                if prewarm_commit_search {
+                    maybe_prewarm_commit_search_cache(&requested_path);
+                }
+                let prewarm_ms = prewarm_start.elapsed().as_secs_f64() * 1000.0;
                 let knowledge_start = Instant::now();
                 let kb_populated = auto_populate_knowledge(&requested_path, &self.state.knowledge);
                 let knowledge_ms = knowledge_start.elapsed().as_secs_f64() * 1000.0;
@@ -131,6 +143,7 @@ impl ContextroServer {
                 set_ms_field(&mut resp, "bm25_ms", restore_metrics.bm25_ms);
                 set_ms_field(&mut resp, "vector_ms", restore_metrics.vector_ms);
                 set_ms_field(&mut resp, "scope_ms", restore_metrics.scope_ms);
+                set_ms_field(&mut resp, "prewarm_ms", prewarm_ms);
                 set_ms_field(&mut resp, "knowledge_ms", knowledge_ms);
                 set_ms_field(&mut resp, "restore_ms", restore_metrics.total_ms);
                 set_ms_field(
@@ -147,22 +160,36 @@ impl ContextroServer {
 
         match pipeline.index(requested_path_ref) {
             Ok((result, symbols, mut chunks)) => {
-                let graph_start = Instant::now();
-                self.state.graph.clear();
-                self.state.build_graph(&symbols);
-                self.state.graph.compute_pagerank();
-                let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
+                let should_share_bm25 = should_share_repo_bm25(chunks.len());
+                let (graph_ms, next_bm25, bm25_ms) = std::thread::scope(|scope| {
+                    let chunks_ref = &chunks;
+                    let bm25_task = scope.spawn(move || {
+                        let bm25_start = Instant::now();
+                        let next_bm25 = Arc::new(Bm25Engine::new_in_memory());
+                        next_bm25.index_chunks(chunks_ref);
+                        (next_bm25, bm25_start.elapsed().as_secs_f64() * 1000.0)
+                    });
 
-                // Index chunks into the shared BM25 engine
-                // Save hashes for next incremental run
-                contextro_indexing::save_hashes(&current_hashes, &storage_dir);
-                let bm25_start = Instant::now();
-                let next_bm25 = Arc::new(Bm25Engine::new_in_memory());
-                next_bm25.index_chunks(&chunks);
+                    let graph_start = Instant::now();
+                    self.state.graph.clear();
+                    self.state.build_graph(&symbols);
+                    self.state.graph.compute_pagerank();
+                    let graph_ms = graph_start.elapsed().as_secs_f64() * 1000.0;
+
+                    contextro_indexing::save_hashes(&current_hashes, &storage_dir);
+
+                    let (next_bm25, bm25_ms) =
+                        bm25_task.join().expect("bm25 indexing thread panicked");
+                    (graph_ms, next_bm25, bm25_ms)
+                });
                 self.state.replace_active_bm25(next_bm25.clone());
                 self.state
                     .remember_repo_bm25(requested_path.clone(), next_bm25);
-                let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
+                if should_share_bm25 {
+                    remember_process_repo_bm25(requested_path.clone(), self.state.active_bm25());
+                } else {
+                    prune_process_repo_bm25(&requested_path);
+                }
                 self.state
                     .chunk_count
                     .store(chunks.len(), std::sync::atomic::Ordering::Relaxed);
@@ -203,24 +230,20 @@ impl ContextroServer {
                     RepoScopeSnapshot {
                         symbols,
                         chunks,
-                        graph: self.state.graph.snapshot(),
+                        graph: contextro_engines::graph::GraphSnapshot::default(),
                     },
                 );
                 let snapshot_ms = snapshot_start.elapsed().as_secs_f64() * 1000.0;
 
                 // Swap in the persistent BM25 engine
-                if let Some(previous_active) = loaded_codebase
-                    .as_deref()
-                    .map(normalize_repo_dir)
-                    .filter(|previous_active| previous_active != &requested_path)
-                {
+                if let Some(previous_active) = previous_active {
                     self.remember_repo_scope(previous_active, requested_path.clone());
                 }
 
                 let scope_start = Instant::now();
                 *self.state.indexed.write() = true;
                 *self.state.codebase_path.write() = Some(requested_path.clone());
-                self.state.query_cache.invalidate();
+                self.state.invalidate_graph_views();
                 self.state.knowledge.set_active_scope(Some(&requested_path));
                 self.state.persist_repo_scope_state();
                 let scope_ms = scope_start.elapsed().as_secs_f64() * 1000.0;
