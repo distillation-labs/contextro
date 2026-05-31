@@ -66,15 +66,17 @@ pub(crate) fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&
             .map(|node| {
                 json!([
                     node.name,
-                    strip_base(&node.location.file_path, codebase),
-                    node.location.start_line,
+                    format!(
+                        "{}:{}",
+                        strip_base(&node.location.file_path, codebase),
+                        node.location.start_line
+                    ),
                 ])
             })
             .collect();
         return json!({
-            "columns": ["name", "file", "line"],
+            "columns": ["name", "file"],
             "symbols": rows,
-            "total": rows.len(),
         });
     }
 
@@ -105,7 +107,7 @@ pub(crate) fn lookup_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&
         }
     }
 
-    json!({"symbols": results, "total": results.len()})
+    json!({"symbols": results})
 }
 
 pub(crate) fn list_symbols(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
