@@ -7,7 +7,14 @@ use dashmap::DashMap;
 
 struct CacheEntry {
     result: serde_json::Value,
+    rendered_default: Option<String>,
     inserted_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+pub struct CachedQueryResult {
+    pub result: serde_json::Value,
+    pub rendered_default: Option<String>,
 }
 
 /// Lock-free LRU query cache with TTL expiry.
@@ -32,10 +39,17 @@ impl QueryCache {
 
     /// O(1) cache lookup.
     pub fn get(&self, query: &str) -> Option<serde_json::Value> {
+        self.get_entry(query).map(|entry| entry.result)
+    }
+
+    pub fn get_entry(&self, query: &str) -> Option<CachedQueryResult> {
         if let Some(entry) = self.entries.get(query) {
             if entry.inserted_at.elapsed().as_secs_f64() < self.ttl_secs {
                 self.hits.fetch_add(1, Ordering::Relaxed);
-                return Some(entry.result.clone());
+                return Some(CachedQueryResult {
+                    result: entry.result.clone(),
+                    rendered_default: entry.rendered_default.clone(),
+                });
             }
             // Expired — remove it
             drop(entry);
@@ -45,8 +59,33 @@ impl QueryCache {
         None
     }
 
+    pub fn get_rendered(&self, query: &str) -> Option<String> {
+        if let Some(entry) = self.entries.get(query) {
+            if entry.inserted_at.elapsed().as_secs_f64() < self.ttl_secs {
+                if let Some(rendered) = entry.rendered_default.clone() {
+                    self.hits.fetch_add(1, Ordering::Relaxed);
+                    return Some(rendered);
+                }
+                return None;
+            }
+            drop(entry);
+            self.entries.remove(query);
+        }
+        None
+    }
+
     /// Store a query result.
     pub fn put(&self, query: &str, result: serde_json::Value) {
+        self.put_with_rendered(query, result, None);
+    }
+
+    /// Store a query result and an optional pre-rendered default response string.
+    pub fn put_with_rendered(
+        &self,
+        query: &str,
+        result: serde_json::Value,
+        rendered_default: Option<String>,
+    ) {
         // Evict if at capacity (simple: just remove oldest by iterating once)
         let evict_key = if self.entries.len() >= self.max_size {
             // Clone the key in a separate scope so the iterator guard is dropped
@@ -62,6 +101,7 @@ impl QueryCache {
             query.to_string(),
             CacheEntry {
                 result,
+                rendered_default,
                 inserted_at: Instant::now(),
             },
         );
@@ -104,5 +144,39 @@ mod tests {
         assert_eq!(cache.size(), 1);
         assert!(cache.get("first").is_none());
         assert_eq!(cache.get("second"), Some(json!({"value": 2})));
+    }
+
+    #[test]
+    fn get_entry_returns_pre_rendered_default() {
+        let cache = QueryCache::new(2, 60.0);
+
+        cache.put_with_rendered(
+            "search",
+            json!({"query": "CacheEntry", "results": []}),
+            Some("{\"query\":\"CacheEntry\",\"results\":[]}".into()),
+        );
+
+        let cached = cache.get_entry("search").expect("cached entry");
+        assert_eq!(cached.result, json!({"query": "CacheEntry", "results": []}));
+        assert_eq!(
+            cached.rendered_default.as_deref(),
+            Some("{\"query\":\"CacheEntry\",\"results\":[]}")
+        );
+    }
+
+    #[test]
+    fn get_rendered_returns_pre_rendered_default() {
+        let cache = QueryCache::new(2, 60.0);
+
+        cache.put_with_rendered(
+            "search",
+            json!({"query": "CacheEntry", "results": []}),
+            Some("{\"query\":\"CacheEntry\",\"results\":[]}".into()),
+        );
+
+        assert_eq!(
+            cache.get_rendered("search").as_deref(),
+            Some("{\"query\":\"CacheEntry\",\"results\":[]}")
+        );
     }
 }
