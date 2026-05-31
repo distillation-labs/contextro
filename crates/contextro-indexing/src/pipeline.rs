@@ -70,6 +70,8 @@ impl IndexingPipeline {
         let discover_ms = discover_start.elapsed().as_secs_f64() * 1000.0;
         info!("Discovered {} files in {:?}", files.len(), codebase_path);
 
+        let start = Instant::now();
+
         if files.is_empty() {
             return Ok((
                 IndexResult {
