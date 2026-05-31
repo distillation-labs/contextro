@@ -2,15 +2,34 @@
 
 use contextro_config::get_settings;
 use contextro_core::models::{CodeChunk, Symbol};
+use rayon::prelude::*;
+
+#[derive(Clone, Copy)]
+struct ChunkTextConfig {
+    max_chars: usize,
+    path_depth: usize,
+}
 
 /// Convert a list of symbols into embeddable code chunks.
 pub fn create_chunks(symbols: &[Symbol]) -> Vec<CodeChunk> {
-    symbols.iter().map(create_chunk).collect()
+    let config = current_chunk_text_config();
+    if symbols.len() < 128 {
+        symbols
+            .iter()
+            .map(|symbol| create_chunk(symbol, config))
+            .collect()
+    } else {
+        symbols
+            .par_iter()
+            .with_min_len(32)
+            .map(|symbol| create_chunk(symbol, config))
+            .collect()
+    }
 }
 
 /// Convert a single symbol into a code chunk.
-fn create_chunk(symbol: &Symbol) -> CodeChunk {
-    let text = create_chunk_text(symbol);
+fn create_chunk(symbol: &Symbol, config: ChunkTextConfig) -> CodeChunk {
+    let text = create_chunk_text(symbol, config);
     let id = CodeChunk::generate_id(&symbol.filepath, &symbol.name, symbol.line_start);
 
     CodeChunk {
@@ -30,14 +49,13 @@ fn create_chunk(symbol: &Symbol) -> CodeChunk {
 }
 
 /// Format a symbol into embeddable text using Contextual Retrieval pattern.
-fn create_chunk_text(symbol: &Symbol) -> String {
-    let settings = get_settings().read();
-    let max_chars = settings.chunk_max_chars;
+fn create_chunk_text(symbol: &Symbol, config: ChunkTextConfig) -> String {
+    let max_chars = config.max_chars;
     let mut parts = Vec::new();
 
     // Context header
     let path_parts: Vec<&str> = symbol.filepath.split('/').collect();
-    let depth = settings.chunk_context_path_depth;
+    let depth = config.path_depth;
     let short_path = if path_parts.len() > depth {
         path_parts[path_parts.len() - depth..].join("/")
     } else {
@@ -95,6 +113,14 @@ fn create_chunk_text(symbol: &Symbol) -> String {
     }
 
     truncate_chars(parts.join("\n").trim(), max_chars)
+}
+
+fn current_chunk_text_config() -> ChunkTextConfig {
+    let settings = get_settings().read();
+    ChunkTextConfig {
+        max_chars: settings.chunk_max_chars,
+        path_depth: settings.chunk_context_path_depth,
+    }
 }
 
 fn semantic_aliases(symbol: &Symbol) -> Vec<String> {
