@@ -16,7 +16,14 @@ pub(super) fn parse_python(content: &str, filepath: &str) -> Vec<Symbol> {
     let source = content.as_bytes();
     let lines: Vec<&str> = content.lines().collect();
     let mut symbols = Vec::new();
-    extract_py_symbols(tree.root_node(), source, &lines, filepath, None, &mut symbols);
+    extract_py_symbols(
+        tree.root_node(),
+        source,
+        &lines,
+        filepath,
+        None,
+        &mut symbols,
+    );
     symbols
 }
 
