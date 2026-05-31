@@ -1,13 +1,13 @@
 //! Analysis tools: overview, architecture, analyze, focus, dead_code, circular_dependencies, test_coverage_map.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use contextro_engines::graph::CodeGraph;
 use serde_json::{json, Value};
 
 mod dead_code;
-mod file_relations;
+pub(crate) mod file_relations;
 
 pub use dead_code::handle_dead_code;
 pub use file_relations::{handle_circular_dependencies, handle_test_coverage_map};
