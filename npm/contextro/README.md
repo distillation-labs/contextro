@@ -156,7 +156,7 @@ focus(path="src/auth.rs")
 
 ---
 
-## All 38 Tools
+## All 40 Tools
 
 | Tool | What it does |
 |---|---|
@@ -168,6 +168,7 @@ focus(path="src/auth.rs")
 | `find_callees` | What does this function call? |
 | `explain` | Full symbol explanation |
 | `impact` | What breaks if I change this? |
+| `test_for` | Map a symbol to the most likely tests |
 | `refactor_check` | Pre-refactor analysis |
 | `completion_check` | Verify that a rename/signature change really updated all callers |
 | `analyze` | Code smells, complexity |
@@ -180,6 +181,7 @@ focus(path="src/auth.rs")
 | `audit` | Packaged audit report |
 | `commit_search` | Semantic git history search |
 | `commit_history` | Browse recent commits |
+| `diff_preview` | Compact git diff summary for the worktree or a revision range |
 | `repo_add` | Register another repo for later indexing/search |
 | `repo_remove` | Unregister a repo |
 | `repo_status` | View registered repos |
