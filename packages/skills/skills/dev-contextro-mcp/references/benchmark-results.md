@@ -4,32 +4,30 @@ Current evidence in this bundle is limited to studies and repo files present in 
 
 ## Validated Studies
 
-### Contextro repo study, 200 tasks, retained current state
+### Contextro repo study, 200 tasks, current refresh
 
 Measured on this repository with the deterministic `contextro-study` harness.
 
 | Metric | Contextro | stronger_local | Delta |
 |---|---|---|---|
-| Success rate | 100% | 97.5% | +2.5 points |
-| Total tokens | 6,244 | 227,072 | 97.3% reduction |
-| Mean tokens per task | 31.22 | 1,135.36 | lower |
-| Tool calls per task | 1.0 | 2.96 | lower |
-| Files read | 0 | 352 | eliminated |
+| Success rate | 100% | 93.0% | +7.0 points |
+| Total tokens | 5,412 | 225,153 | 97.6% reduction |
+| Mean tokens per task | 27.06 | 1,125.77 | lower |
+| Tool calls per task | 1.0 | 3.045 | lower |
+| Files read | 0 | 369 | eliminated |
 
-Source: current validated `contextro-study` figures for this working tree, retained current state.
+Source: current validated `contextro-study` figures for this working tree.
 
-### Retained breakthrough vs pre-optimization Contextro baseline
+### Current repo study by task family
 
-These deltas are the benchmark guardrails for this repo.
+All rows below come from the same refreshed `200`-task `contextro-study` run on this repository.
 
-| Metric | Baseline Contextro | Retained Contextro | Delta |
+| Family | Tasks | Contextro success | stronger_local success | Contextro tokens | stronger_local tokens | Reduction |
 |---|---|---|---|
-| Success rate | 100% | 100% | preserved |
-| Total tokens | 20,851 | 6,244 | 70.1% reduction |
-| `document_symbols` tokens | 10,805 | 1,854 | 82.8% reduction |
-| `exact_search` tokens | 4,230 | 1,441 | 65.9% reduction |
-| `batch_lookup` tokens | 3,568 | 1,674 | 53.1% reduction |
-| `symbol_discovery` tokens | 2,248 | 1,275 | 43.3% reduction |
+| `batch_lookup` | 40 | 100% | 90.0% | 2,034 | 57,159 | 96.4% reduction |
+| `document_symbols` | 40 | 100% | 100% | 1,507 | 66,994 | 97.8% reduction |
+| `exact_search` | 60 | 100% | 95.0% | 788 | 59,283 | 98.7% reduction |
+| `symbol_discovery` | 60 | 100% | 88.3% | 1,083 | 41,717 | 97.4% reduction |
 
 ### Published repo-root README study, production TypeScript monorepo, 1,000 tasks
 
@@ -43,14 +41,35 @@ This is the published study already cited in the repo root README.
 | Tool calls per task | 3.2 | 1.0 | lower |
 | Files read | 1,961 | 0 | eliminated |
 
-Source: `/Users/japneetkalkat/contextro/README.md`
+Source: `README.md`
+
+## Latest Release-Bench Refresh On This Repo
+
+The latest `contextro-bench` refresh on this repository covered the full public tool surface.
+
+| Metric | Actual | Target | Status |
+|---|---|---|---|
+| Cold index average | 43.53ms | `<= 40ms` | open |
+| Search latency average | 110.6us | `<= 137us` | pass |
+| MCP throughput | 6911/s | `>= 500/s` | pass |
+| Tool coverage | 40/40 tools, 41 cases | full surface | pass |
+
+Current hotspot references from that refresh:
+
+- `test_for`: `0.28ms` average
+- `diff_preview`: `0.79ms` average
+- `repo_add`: `1.19ms` average
+- `repo_rm_active`: `4.47ms` average
+- `docs_bundle`: `0.37ms` average
+- `sidecar_export`: `0.13ms` average
 
 ## Guardrails For Future Runs
 
 - Keep the `200`-task `contextro-study` success rate at `100%` on this repo when shipping compact-response changes.
-- Treat `6,244` total Contextro tokens as the current retained baseline on this repo.
+- Treat `5,412` total Contextro tokens as the current repo baseline on this repo.
 - Do not lower the default `get_document_symbols` cap below `3`; the current study tasks expect `3` symbols.
-- Retained `contextro-bench` sanity rerun on this repo: cold index `31.9-32.6ms`, search `0.111-0.112ms`, code `0.27-0.28ms`, active-scope `repo_remove` restore `8.01-8.24ms`. Do not accept meaningful bench regressions for marginal token wins.
+- Keep the full-surface `contextro-bench` refresh green on search latency and throughput while continuing to push cold index back under the `<=40ms` target.
+- Do not accept meaningful `test_for`, `diff_preview`, `repo_add`, `repo_rm_active`, `docs_bundle`, or `sidecar_export` regressions for marginal token wins.
 
 ## Current Runtime Contracts
 
@@ -141,5 +160,5 @@ Notes:
 
 ## Guidance For Claims
 
-Use the retained `200`-task repo study and the published `1,000`-task README study for external-facing benchmark claims in this skill bundle.
+Use the refreshed `200`-task repo study and the published `1,000`-task README study for external-facing benchmark claims in this skill bundle.
 Do not cite older `100`-task repo numbers, compact-key token tables, MRR claims, or sandbox-response behavior unless a current repo source is added that supports them.
