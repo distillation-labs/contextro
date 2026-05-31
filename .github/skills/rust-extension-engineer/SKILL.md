@@ -1,13 +1,14 @@
 ---
 name: rust-extension-engineer
 description: >
-  Comprehensive Rust best-practices guidance for writing, reviewing, and refactoring Rust code,
-  especially PyO3/maturin extensions, FFI boundaries, hot paths, and Python fallback parity in the
-  MCP codebase.
+  Comprehensive Rust best-practices guidance for writing, reviewing, and refactoring Rust code in
+  Contextro's workspace, especially hot paths in parsing, indexing, search, memory, transports,
+  and concurrency. Use the PyO3 or FFI guidance only when a real extension boundary exists.
 when_to_use: >
-  Use for Rust ownership, errors, async, memory, API design, testing, docs, linting, performance,
-  FFI, and extension-boundary decisions. Profile first, keep boundaries small, and prefer
-  benchmarked, testable designs over novelty.
+  Use for Rust ownership, errors, async, memory, API design, testing, docs, linting,
+  performance, rmcp server work, storage and concurrency design, and any real FFI or extension
+  boundary. Profile first, keep boundaries small, and prefer benchmarked, testable designs over
+  novelty.
 metadata:
   version: "0.1.0"
   category: mcp-development
@@ -21,6 +22,11 @@ license: MIT
 ---
 
 # Rust Extension Engineer
+
+Contextro is a pure Rust workspace today. Favor guidance for search/indexing hot paths,
+concurrency, persistence, and transport behavior first; treat the PyO3 and maturin portions of
+this skill as conditional guidance for future extension boundaries rather than current repo
+requirements.
 
 Rust should buy measurable performance, correctness, or a cleaner boundary. Use these rules for
 Rust code generally, and especially when Rust sits behind a Python or FFI interface.
