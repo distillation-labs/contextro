@@ -4,14 +4,14 @@ description: >
   Use for designing, building, or refactoring FastMCP servers and MCP surfaces: tool/resource/
   prompt boundaries, lifecycle, capability negotiation, discovery, notifications, transport,
   middleware, validation, context, structured outputs, and deployment/runtime behavior. Trigger
-  when the user asks how an MCP feature should be modeled in FastMCP, how to choose between a
-  tool, resource, or prompt, how to structure a production-ready FastMCP server, or how to wire
-  typed schemas and middleware correctly. Do not use for pure protocol theory with no FastMCP
-  implementation intent.
+  when the user explicitly wants FastMCP, wants to model an MCP feature in FastMCP, wants to
+  choose between a tool, resource, or prompt in a FastMCP server, or wants to compare or port
+  ideas between FastMCP and another MCP stack. Do not use for pure protocol theory with no
+  FastMCP implementation intent.
 when_to_use: >
-  Especially useful when the repo already uses FastMCP and the question is about protocol
-  primitive selection, decorators, typed schemas, return shaping, request context, discovery,
-  notifications, validation mode, deployment, or server lifecycle.
+  Especially useful for FastMCP-specific protocol primitive selection, decorators, typed schemas,
+  return shaping, request context, discovery, notifications, validation mode, deployment, or
+  server lifecycle. Do not assume the current repo already uses FastMCP.
 metadata:
   version: "0.4.0"
   category: mcp-development
@@ -20,6 +20,11 @@ license: Proprietary
 ---
 
 # FastMCP Server Engineer
+
+Contextro's production server is a Rust `rmcp` server in `crates/contextro-server`, not a
+FastMCP Python server. Use this skill for FastMCP-specific work, framework comparisons, or
+companion servers. For current Contextro server internals, prefer `dev-contextro-mcp`,
+`mcp-protocol-architect`, or `rust-extension-engineer`.
 
 Implement FastMCP in the framework's grain. Keep the server thin, the schema explicit, and the
 output shape intentional.
