@@ -1,70 +1,60 @@
-# Breakthrough Research Patterns
+# Research Patterns
 
-This reference captures the mechanisms that recur across leading AI research and coding-agent teams.
+These patterns keep Contextro research grounded and experimentally useful.
 
-## Shared Patterns
+## Start With The Current System
 
-### OpenAI
+Before looking outward, answer:
 
-- Keep top-level instructions short and map-like.
-- Treat the repository as the system of record.
-- Make architecture and quality legible through docs, linters, and structured artifacts.
-- Favor harnesses and feedback loops over manual heroics.
+- What does Contextro already measure?
+- Which benchmark number is actually unsatisfactory?
+- Which constraint is binding: latency, tokens, success, memory, contract truthfulness, or
+  release stability?
 
-### Anthropic
+If that is unclear, the research question is still too broad.
 
-- Use the smallest high-signal context that still solves the task.
-- Use progressive disclosure rather than dumping full state by default.
-- Separate initialization and execution for long-running work.
-- Preserve continuity with explicit artifacts, not hidden chat memory.
+## Mechanism-First Synthesis
 
-### Google DeepMind
+For each external idea, capture:
 
-- Define a clean baseline before changing the system.
-- Use ablations to identify what actually matters.
-- Separate signal from confounders.
+1. **mechanism** — what actually changed
+2. **metric** — what improved
+3. **transfer path** — where it fits in Contextro
+4. **limits** — where the analogy breaks
 
-### Cursor
+Example:
 
-- Start with the local codebase and keep retrieval tightly coupled to the edit surface.
-- Favor fast explore-compare-apply loops over large up-front plans when the problem is still being localized.
-- Keep research grounded in concrete files, symbols, and repo constraints so recommendations stay actionable.
+- "Progressive disclosure" is a mechanism.
+- "Anthropic does it" is not enough.
 
-### Windsurf
+## High-Leverage Contextro Research Themes
 
-- Treat long tasks as paired reasoning and execution flows that need visible state.
-- Preserve enough working memory to resume without rebuilding the full trajectory every turn.
-- Keep IDE context, repo state, and in-flight hypotheses aligned so execution does not drift from the research goal.
+1. **Compact, truthful response contracts**
+   - How can outputs shrink without hiding exact names, files, lines, or risk?
+2. **Hybrid retrieval routing**
+   - Where should exact/BM25, graph, vector, and AST paths win by default?
+3. **Hot-path latency**
+   - Which index or ranking stages dominate wall time?
+4. **Study integrity**
+   - Which benchmark tasks catch over-compression or misleading summaries?
+5. **Long-running workflow resilience**
+   - How do compaction, recovery, repo scope, and release gating stay stable under iteration?
 
-### Mistral
+## Good Top-Experiment Shape
 
-- Efficient models and clean decomposition often beat larger undifferentiated reasoning passes.
-- Route subtasks by difficulty and cost instead of assuming one heavyweight pass should do everything.
-- Prefer modular context slices that can be recombined for research, evaluation, and implementation.
+Each recommended experiment should be:
 
-### Devin And Cognition
+- narrow enough to falsify quickly
+- tied to one main metric
+- explicit about the expected gain
+- explicit about the guardrails
+- reversible
 
-- Evaluate agents in realistic environments.
-- Prefer autonomous feedback and evaluator loops when deterministic checks are insufficient.
-- External notes and environment state improve long-horizon continuity.
-- Critiquing a candidate solution is usually easier than generating it.
+Poor experiment:
 
-### NVIDIA
+- "Improve search a lot"
 
-- Retrieval systems must be benchmarked end-to-end.
-- Chunking, retrieval, reranking, output shaping, and latency trade off together.
-- Use the real corpus and real query shapes when choosing defaults.
+Good experiment:
 
-### DeepSeek
-
-- Long-horizon systems need explicit checkpointing and resumability.
-- Stable prefixes and repeated structure improve cache reuse.
-- Keep a trajectory that can be replayed or inspected after failure.
-- Preserve state selectively in tool-calling scenarios instead of replaying everything.
-
-## What This Means For Contextro
-
-- Research should start from the current benchmark and architecture, not from hypothetical rewrites.
-- Good proposals include a transfer mechanism and a non-transfer rationale.
-- High-ROI directions usually improve retrieval quality, token efficiency, compaction recovery, or workflow control rather than adding arbitrary complexity.
-- Best-in-class comparison should include coding-agent product patterns from Cursor and Windsurf, plus efficiency-oriented model-system patterns from Mistral, when they transfer to Contextro.
+- "Add a lower-token exact-hit response path for unique symbol matches and rerun the retained
+  200-task repo study; keep only if total tokens fall materially and success stays 100%."
