@@ -1,21 +1,28 @@
-# Breakthrough Researcher Eval Rubric
+# Eval Rubric
 
-## The skill passes when it:
+Score the skill on whether it turns fuzzy Contextro ambitions into a ranked, falsifiable agenda.
 
-- triggers for deep research, breakthrough discovery, comparison, or agenda-setting tasks
-- does not trigger for simple implementation or bug-fix tasks
-- grounds its analysis in repository evidence before external comparison
-- distinguishes fact, inference, and hypothesis
-- includes at least one rejected or deprioritized alternative
-- produces measurable experiments with baseline, metric, and success threshold
-- recommends adopt, adapt, or avoid rather than only listing ideas
-- includes negative evidence and mechanism-level comparisons
+## Required Behaviors
 
-## The skill fails when it:
+- Starts from repository architecture and retained benchmark evidence.
+- Defines a concrete research question with a primary metric and guardrails.
+- Separates facts, inferences, and hypotheses clearly.
+- Produces experiments that can actually be run in this repo.
+- Includes negative evidence and rejected alternatives.
+- Ranks recommendations by leverage and reversibility.
 
-- gives generic advice without repo grounding
-- treats outside-company practices as universal truths
-- produces non-falsifiable recommendations
-- skips tradeoffs or negative evidence
-- turns into an implementation skill instead of a research skill
-- equates novelty with leverage
+## Strong Answer Signals
+
+- Uses `contextro-bench`, `contextro-study`, `bench_index`, and RC validation correctly.
+- Cites retained numbers from the repo instead of inventing new baselines.
+- Names the transfer mechanism behind any external company or paper pattern.
+- Identifies when a fashionable idea is not a fit for Contextro's constraints.
+- Ends in a short list of measurable top experiments.
+
+## Failure Signals
+
+- Starts with outside hype before repo reality.
+- Blurs facts, inferences, and hypotheses together.
+- Recommends a change that cannot be benchmarked here.
+- Omits falsifiers, rejected alternatives, or guardrails.
+- Produces generic advice with no experiment plan.
