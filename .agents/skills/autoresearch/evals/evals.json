@@ -1,0 +1,78 @@
+{
+  "skill_name": "autoresearch",
+  "version": "1.0.0",
+  "description": "Autonomous experiment-loop evals for Contextro benchmark work. Covers correct triggering, benchmark selection, baseline discipline, keep/discard rigor, and guardrail preservation.",
+  "real_world_context": {
+    "benchmark_commands": {
+      "bench": "cd crates && cargo run --release -p contextro --bin contextro-bench -- <repo-path>",
+      "study": "cd crates && cargo run --release -p contextro --bin contextro-study -- --codebase <repo-path> --output-dir <dir> --tasks 200",
+      "indexing": "cd crates && cargo test --quiet -p contextro-indexing --test bench_index -- --nocapture",
+      "release": "./scripts/release-candidate.sh --skip-study"
+    },
+    "retained_metrics": {
+      "repo_study_success_rate": 1.0,
+      "repo_study_total_tokens": 6244,
+      "cold_index_ms_upper_bound": 32.6,
+      "search_latency_us_upper_bound": 112.0,
+      "mcp_throughput_ops_per_s_floor": 500.0
+    },
+    "read_only_files": [
+      "crates/contextro-server/src/bench.rs",
+      "crates/contextro-server/src/study.rs",
+      "crates/contextro-indexing/tests/bench_index.rs",
+      "scripts/release-candidate.sh",
+      ".agents/skills/dev-contextro-mcp/references/benchmark-results.md"
+    ],
+    "modifiable_files": [
+      "crates/contextro-indexing/**",
+      "crates/contextro-engines/**",
+      "crates/contextro-tools/**",
+      "crates/contextro-server/**",
+      ".agents/skills/**"
+    ]
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "trigger-cold-index-breakthrough",
+      "prompt": "Run autoresearch on Contextro and keep iterating until cold index latency breaks 25ms without hurting tool correctness.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads, chooses contextro-bench as the primary harness, names the cold-index metric and a sub-25ms breakthrough target, and establishes the retained ~32ms baseline before edits."
+    },
+    {
+      "id": 2,
+      "name": "trigger-token-breakthrough",
+      "prompt": "Keep improving the retained 200-task Contextro repo study until we beat 6,244 total tokens without dropping below 100% success.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads, chooses contextro-study as the primary harness, keeps 100% success as a hard guardrail, and treats 6,244 tokens as the retained baseline to beat."
+    },
+    {
+      "id": 3,
+      "name": "baseline-discipline-indexing",
+      "prompt": "Experiment on the indexing pipeline and find a real win, not a benchmark illusion.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads, reads retained results first, uses bench_index for localized signal and contextro-bench for confirmation, and does not start editing before a reproducible baseline exists."
+    },
+    {
+      "id": 4,
+      "name": "keep-or-discard-guardrails",
+      "prompt": "We found a change that cuts study tokens a bit, but success fell to 99.5%. Decide whether to keep it and continue.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads and discards or reverts the change because success dropped below the retained 100% guardrail."
+    },
+    {
+      "id": 5,
+      "name": "non-trigger-explain-benchmark",
+      "prompt": "Explain what contextro-study measures and how it differs from contextro-bench.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load because the user asked for explanation, not an autonomous experiment loop."
+    },
+    {
+      "id": 6,
+      "name": "non-trigger-single-bug-fix",
+      "prompt": "Fix this one Rust compile error in crates/contextro-tools/src/search.rs.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load because the request is a direct code fix, not a benchmark loop."
+    }
+  ]
+}
