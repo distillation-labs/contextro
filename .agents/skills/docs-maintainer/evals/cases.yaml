@@ -8,7 +8,7 @@ suites:
       unrelated_non_trigger_rate: "100%"
     cases:
       - id: trig-01
-        prompt: Update the README and changelog for this new MCP tool.
+        prompt: Update the README and changelog for this new Contextro MCP tool.
         expect_trigger: true
       - id: trig-02
         prompt: Fix broken docs links after the API reference moved.
@@ -20,13 +20,13 @@ suites:
         prompt: Implement the new MCP tool itself.
         expect_trigger: false
       - id: nontrig-02
-        prompt: Research better browser automation architectures.
+        prompt: Research better low-token code retrieval architectures.
         expect_trigger: false
   - name: functional
     objective: Keep docs accurate, scoped, and synced to the codebase.
     cases:
       - id: func-01
-        prompt: A tool was added. Update all affected docs without inventing claims.
+        prompt: A Contextro tool contract changed. Update all affected docs without inventing claims.
         success_criteria:
           - Identifies the authoritative source of truth.
           - Updates dependent docs in one pass.
