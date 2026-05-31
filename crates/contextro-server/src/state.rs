@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -27,6 +27,10 @@ use contextro_memory::store::MemoryStore;
 use contextro_tools::KnowledgeStore;
 use contextro_tools::RepoRegistry;
 
+use super::repo_snapshot::{load_repo_snapshot, save_repo_snapshot};
+
+static NEXT_GRAPH_EPOCH: AtomicU64 = AtomicU64::new(1);
+
 pub struct AppState {
     pub started_at: Instant,
     pub graph: Arc<CodeGraph>,
@@ -40,11 +44,12 @@ pub struct AppState {
     pub archive: Arc<CompactionArchive>,
     pub knowledge: Arc<KnowledgeStore>,
     pub repo_registry: Arc<RepoRegistry>,
-    pub repo_snapshots: RwLock<HashMap<String, RepoScopeSnapshot>>,
+    pub repo_snapshots: RwLock<HashMap<String, Arc<RepoScopeSnapshot>>>,
     pub repo_bm25: RwLock<HashMap<String, Arc<Bm25Engine>>>,
     pub repo_scope_history: RwLock<Vec<String>>,
     pub indexed: RwLock<bool>,
     pub codebase_path: RwLock<Option<String>>,
+    pub graph_epoch: AtomicU64,
     pub chunk_count: AtomicUsize,
     repo_scope_state_path: PathBuf,
 }
@@ -123,6 +128,7 @@ impl AppState {
                     .active_scope
                     .filter(|path| !path.is_empty()),
             ),
+            graph_epoch: AtomicU64::new(0),
             chunk_count: AtomicUsize::new(0),
             repo_scope_state_path,
         })
@@ -136,7 +142,7 @@ impl AppState {
         save_repo_scope_state(&self.repo_scope_state_path, &persisted);
     }
 
-    pub fn remember_repo_snapshot(&self, path: String, snapshot: RepoScopeSnapshot) {
+    pub fn remember_repo_snapshot(&self, path: String, snapshot: Arc<RepoScopeSnapshot>) {
         self.repo_snapshots.write().insert(path, snapshot);
     }
 
@@ -158,15 +164,51 @@ impl AppState {
 
     pub fn persist_repo_snapshot(&self, path: &str, snapshot: RepoScopeSnapshot) {
         save_repo_snapshot(&repo_snapshot_path(path), &snapshot);
-        self.remember_repo_snapshot(path.to_string(), snapshot);
+        self.remember_repo_snapshot(path.to_string(), Arc::new(snapshot));
     }
 
-    pub fn repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
+    pub fn repo_snapshot(&self, path: &str) -> Option<Arc<RepoScopeSnapshot>> {
         self.repo_snapshots.read().get(path).cloned()
+    }
+
+    pub fn repo_snapshot_needs_graph(&self, path: &str) -> bool {
+        self.repo_snapshots
+            .read()
+            .get(path)
+            .map(|snapshot| snapshot.graph.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn attach_repo_snapshot_graph(&self, path: &str, graph: GraphSnapshot) {
+        let mut snapshots = self.repo_snapshots.write();
+        let Some(snapshot) = snapshots.get(path).cloned() else {
+            return;
+        };
+        if !snapshot.graph.is_empty() {
+            return;
+        }
+        snapshots.insert(
+            path.to_string(),
+            Arc::new(RepoScopeSnapshot {
+                symbols: snapshot.symbols.clone(),
+                chunks: snapshot.chunks.clone(),
+                graph,
+            }),
+        );
     }
 
     pub fn load_persisted_repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
         load_repo_snapshot(&repo_snapshot_path(path))
+    }
+
+    pub fn graph_epoch(&self) -> u64 {
+        self.graph_epoch.load(Ordering::Relaxed)
+    }
+
+    pub fn invalidate_graph_views(&self) {
+        self.query_cache.invalidate();
+        let next_epoch = NEXT_GRAPH_EPOCH.fetch_add(1, Ordering::Relaxed);
+        self.graph_epoch.store(next_epoch, Ordering::Relaxed);
     }
 
     pub fn prune_repo_snapshot(&self, path: &str) {
@@ -261,12 +303,6 @@ fn repo_snapshot_path(path: &str) -> PathBuf {
     contextro_config::project_storage_dir(path).join("repo-snapshot.json")
 }
 
-fn load_repo_snapshot(path: &Path) -> Option<RepoScopeSnapshot> {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<RepoScopeSnapshot>(&bytes).ok())
-}
-
 fn save_repo_scope_state(path: &Path, state: &PersistedRepoScopeState) {
     if state.active_scope.is_none() && state.history.is_empty() {
         let _ = std::fs::remove_file(path);
@@ -279,30 +315,6 @@ fn save_repo_scope_state(path: &Path, state: &PersistedRepoScopeState) {
     let tmp_path = path.with_extension("json.tmp");
     if let Ok(bytes) = serde_json::to_vec(state) {
         if std::fs::write(&tmp_path, bytes).is_ok() {
-            let _ = std::fs::rename(&tmp_path, path);
-        }
-    }
-}
-
-fn save_repo_snapshot(path: &Path, snapshot: &RepoScopeSnapshot) {
-    #[derive(Serialize)]
-    struct PersistedRepoScopeSnapshot<'a> {
-        symbols: &'a [Symbol],
-        chunks: &'a [CodeChunk],
-    }
-
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let tmp_path = path.with_extension("json.tmp");
-    if let Ok(file) = std::fs::File::create(&tmp_path) {
-        let mut writer = std::io::BufWriter::new(file);
-        let persisted = PersistedRepoScopeSnapshot {
-            symbols: &snapshot.symbols,
-            chunks: &snapshot.chunks,
-        };
-        use std::io::Write;
-        if serde_json::to_writer(&mut writer, &persisted).is_ok() && writer.flush().is_ok() {
             let _ = std::fs::rename(&tmp_path, path);
         }
     }
@@ -402,25 +414,14 @@ mod tests {
             imports: vec![],
             calls: vec![],
         }];
+        let mut chunks = contextro_indexing::create_chunks(&symbols);
+        chunks[0].vector = vec![0.1, 0.2, 0.3];
         state.build_graph(&symbols);
         state.graph.compute_pagerank();
 
         let snapshot = RepoScopeSnapshot {
             symbols,
-            chunks: vec![CodeChunk {
-                id: "chunk-1".into(),
-                text: "pub fn snapshot_symbol() {}".into(),
-                filepath: "src/lib.rs".into(),
-                symbol_name: "snapshot_symbol".into(),
-                symbol_type: "function".into(),
-                language: "rust".into(),
-                line_start: 1,
-                line_end: 1,
-                signature: "pub fn snapshot_symbol()".into(),
-                parent: String::new(),
-                docstring: String::new(),
-                vector: vec![0.1, 0.2, 0.3],
-            }],
+            chunks,
             graph: state.graph.snapshot(),
         };
 
@@ -430,9 +431,19 @@ mod tests {
             .load_persisted_repo_snapshot(repo_path.to_string_lossy().as_ref())
             .expect("snapshot should load");
 
+        let persisted_path = repo_snapshot_path(repo_path.to_string_lossy().as_ref());
+        let persisted_json: serde_json::Value =
+            serde_json::from_slice(&fs::read(&persisted_path).unwrap()).unwrap();
+        assert!(persisted_json.get("chunks").is_none());
+        assert_eq!(persisted_json["symbols"].as_array().unwrap().len(), 1);
+        assert_eq!(persisted_json["vectors"].as_array().unwrap().len(), 1);
+
         assert_eq!(restored.symbols.len(), 1);
         assert_eq!(restored.symbols[0].name, "snapshot_symbol");
         assert_eq!(restored.chunks.len(), 1);
+        assert!(restored.chunks[0]
+            .text
+            .contains("pub fn snapshot_symbol() {}"));
         assert_eq!(restored.chunks[0].vector, vec![0.1, 0.2, 0.3]);
         assert!(restored.graph.is_empty());
 
