@@ -4,6 +4,12 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.24] - 2026-05-30
+
+### Fixed
+
+- **Tagged release sources now keep `Cargo.lock` in sync with the shipped crate version** - the release follow-up includes the lockfile version bump so Docker builds that use `cargo build --locked` can publish from the tagged source tree without failing on a lockfile rewrite.
+
 ## [1.6.23] - 2026-05-30
 
 ### Added
