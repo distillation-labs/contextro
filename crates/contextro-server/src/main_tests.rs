@@ -200,6 +200,40 @@ fn test_find_symbol_missing_exact_match_suggests_fuzzy_lookup() {
     assert!(result["did_you_mean"].is_array());
 }
 
+#[test]
+fn test_find_symbol_omits_total_for_untruncated_exact_match() {
+    let server = ContextroServer::new();
+    server
+        .state
+        .graph
+        .add_node(contextro_core::graph::UniversalNode {
+            id: "unique-query-cache".into(),
+            name: "UniqueQueryCacheTest".into(),
+            node_type: contextro_core::NodeType::Class,
+            location: contextro_core::graph::UniversalLocation {
+                file_path: "/tmp/repo/crates/contextro-engines/src/cache.rs".into(),
+                start_line: 10,
+                end_line: 80,
+                start_column: 0,
+                end_column: 0,
+                language: "rust".into(),
+            },
+            language: "rust".into(),
+            ..Default::default()
+        });
+    *server.state.indexed.write() = true;
+
+    let result =
+        server.handle_find_symbol(&json!({"symbol_name":"UniqueQueryCacheTest","exact":true}));
+
+    assert!(result.get("total").is_none(), "unexpected result: {result}");
+    assert!(
+        result.get("truncated").is_none(),
+        "unexpected result: {result}"
+    );
+    assert_eq!(result["symbols"][0]["name"], "UniqueQueryCacheTest");
+}
+
 fn temp_repo_dir(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
