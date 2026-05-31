@@ -26,8 +26,18 @@ impl ContextroServer {
             .track(name, &summary, tracked_args.clone());
 
         if let Some(cache_key) = response_cache_key.as_deref() {
-            if let Some(cached) = s.query_cache.get(cache_key) {
-                return cached_tool_result(cached, &args);
+            let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            if max_tokens == 0 {
+                if let Some(rendered) = s.query_cache.get_rendered(cache_key) {
+                    return CallToolResult::success(vec![Content::text(rendered)]);
+                }
+            }
+            if let Some(cached) = s.query_cache.get_entry(cache_key) {
+                return cached_tool_result(
+                    &cached.result,
+                    cached.rendered_default.as_deref(),
+                    &args,
+                );
             }
         }
 
@@ -43,6 +53,12 @@ impl ContextroServer {
             "find_callees" => {
                 contextro_tools::graph_tools::handle_find_callees(&args, &s.graph, cb)
             }
+            "test_for" => contextro_tools::graph_tools::handle_test_for_with_epoch(
+                &args,
+                &s.graph,
+                cb,
+                s.graph_epoch(),
+            ),
             "explain" => contextro_tools::graph_tools::handle_explain(&args, &s.graph, cb),
             "impact" => contextro_tools::graph_tools::handle_impact(&args, &s.graph, cb),
             "overview" => contextro_tools::analysis::handle_overview(
@@ -79,6 +95,7 @@ impl ContextroServer {
             "retrieve" => contextro_tools::session::handle_retrieve(&args, &s.archive),
             "commit_search" => contextro_tools::git_tools::handle_commit_search(&args, cb),
             "commit_history" => contextro_tools::git_tools::handle_commit_history(&args, cb),
+            "diff_preview" => contextro_tools::git_tools::handle_diff_preview(&args, cb),
             "repo_add" => {
                 let reg_result =
                     contextro_tools::git_tools::handle_repo_add(&args, &s.repo_registry);
@@ -86,7 +103,7 @@ impl ContextroServer {
                     reg_result
                 } else {
                     // Auto-index the added repo
-                    let index_result = self.handle_index_internal(&args, false);
+                    let index_result = self.handle_index_internal(&args, true);
                     let mut combined = reg_result;
                     if index_result.get("status") == Some(&json!("done")) {
                         combined["indexed"] = json!(true);
@@ -114,10 +131,15 @@ impl ContextroServer {
             "repo_status" => contextro_tools::git_tools::handle_repo_status(&s.repo_registry),
             "code" => contextro_tools::code::handle_code(&args, &s.graph, Some(&s.query_cache), cb),
             "audit" => contextro_tools::artifacts::handle_audit(&s.graph, cb),
-            "docs_bundle" => contextro_tools::artifacts::handle_docs_bundle(&args, &s.graph, cb),
-            "sidecar_export" => {
-                contextro_tools::artifacts::handle_sidecar_export(&args, &s.graph, cb)
+            "docs_bundle" => {
+                contextro_tools::artifacts::handle_docs_bundle(&args, &s.graph, cb, s.graph_epoch())
             }
+            "sidecar_export" => contextro_tools::artifacts::handle_sidecar_export(
+                &args,
+                &s.graph,
+                cb,
+                s.graph_epoch(),
+            ),
             "skill_prompt" => contextro_tools::artifacts::handle_skill_prompt(),
             "introspect" => contextro_tools::artifacts::handle_introspect(&args),
             "refactor_check" => self.handle_refactor_check(&args),
@@ -140,10 +162,20 @@ impl ContextroServer {
         } else {
             result
         };
+        let rendered_default = if result.get("error").is_none() && response_cache_key.is_some() {
+            let rendered = format_response(&result, 0);
+            (rendered.len() <= 2048).then_some(rendered)
+        } else {
+            None
+        };
 
         if let Some(cache_key) = response_cache_key.as_deref() {
             if result.get("error").is_none() {
-                s.query_cache.put(cache_key, result.clone());
+                s.query_cache.put_with_rendered(
+                    cache_key,
+                    result.clone(),
+                    rendered_default.clone(),
+                );
             }
         }
 
@@ -156,6 +188,7 @@ impl ContextroServer {
                     "find_symbol"
                         | "find_callers"
                         | "find_callees"
+                        | "test_for"
                         | "explain"
                         | "impact"
                         | "refactor_check"
@@ -203,7 +236,12 @@ impl ContextroServer {
             };
             CallToolResult::error(vec![Content::text(format_response(&enhanced, max_tokens))])
         } else {
-            CallToolResult::success(vec![Content::text(format_response(&result, max_tokens))])
+            let rendered = if max_tokens == 0 {
+                rendered_default.unwrap_or_else(|| format_response(&result, 0))
+            } else {
+                format_response(&result, max_tokens)
+            };
+            CallToolResult::success(vec![Content::text(rendered)])
         }
     }
 }
