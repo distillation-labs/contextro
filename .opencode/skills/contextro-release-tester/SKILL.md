@@ -49,7 +49,7 @@ the previous public version and no high-risk workflow regresses.
 - RC testing after MCP tool, schema, search, memory, git, or packaging changes
 - Running a regression pass against external repos
 - Producing a go/block release decision with evidence
-- Rechecking `evaluation.md` findings before another release
+- Rechecking retained benchmark and release findings before another release
 
 ## Do Not Use It For
 
@@ -64,8 +64,10 @@ the previous public version and no high-risk workflow regresses.
 
 ```text
 1. ./scripts/release-candidate.sh --skip-study
-2. Use scratch/release-candidate/contextro-rc.sh as the binary under test
-3. Use the fixed CTX_STORAGE_DIR created by the RC workflow
+2. Use `${RC_DIR}/${ALIAS}.sh` as the binary under test
+   - defaults: `RC_DIR=scratch/release-candidate`, `ALIAS=contextro-rc`
+   - default wrapper path: `scratch/release-candidate/contextro-rc.sh`
+3. Use the fixed `CTX_STORAGE_DIR` and generated repo list created by the RC workflow
 4. Register the wrapper in a real MCP client before testing
 ```
 
@@ -74,7 +76,7 @@ the previous public version and no high-risk workflow regresses.
 ```text
 1. Engine gate: cargo test --quiet, contextro-bench on at least one repo
 2. Real MCP gate: connect the wrapper through a real client
-3. Developer gate: external-repo matrix + restart/persistence checks
+3. Developer gate: external-repo matrix + restart/persistence checks + generated checklist review
 4. Packaging gate: npm pack or publish flow only after all above pass
 ```
 
