@@ -4,15 +4,21 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+## [1.6.23] - 2026-05-30
+
 ### Added
 
 - **`test_for` and `diff_preview` are now part of the public Contextro surface** - the root README and distributed skill docs now cover the two newer agent-facing tools alongside the existing manifest so the documented surface matches the live server.
+- **A new public `skills-guide.md` gives users a bundled end-to-end guide to building Claude skills** - the repo now ships the complete skill-authoring guide alongside the maintained skill set.
 
 ### Fixed
 
 - **Public docs now match the live `40`-tool manifest and current tier counts** - the root README now lists all `40` tools and the current `CTX_TOOL_TIER` split (`core=11`, `standard=24`, `full=40`) instead of the older `38`-tool surface.
 - **The shipped benchmark references now use the refreshed `200`-task repo study** - the canonical `dev-contextro-mcp` bundle, adjacent applied-AI guidance, and the package README now cite the current repo-local study (`5,412` Contextro tokens, `100%` success, `97.6%` token reduction versus `stronger_local` at `93.0%` success) instead of stale interim numbers.
 - **Release-facing benchmark guidance now reflects the current full-surface bench refresh** - the benchmark reference bundle now points at the latest `40/40`-tool, `41`-case `contextro-bench` run, including the current hot-path references (`test_for`, `diff_preview`, `repo_add`, `repo_rm_active`, `docs_bundle`, `sidecar_export`) and the still-open cold-index frontier against the `<=40ms` target.
+- **The shipped skill bundle is now aligned with the curated 2026 surface instead of carrying stale or local-only content** - the release keeps the maintained skill set, adds scenario-based eval cases for the retained public skills, and mirrors the maintained skills across the distributed host-specific bundles.
+- **Skill guidance is more actionable for real users and MCP builders** - the retained skill docs now add clearer examples, troubleshooting guidance, composition rules, and stronger surface-modeling guidance for areas like applied AI hardening, documentation maintenance, and FastMCP server design.
+- **The repository is cleaner for public consumers** - generated sidecars, local Playwright traces, packaged tarballs, and personal `opencode.json` config are no longer part of the tracked release surface, while `.gitignore` now keeps those local artifacts out of future releases.
 
 ## [1.6.22] - 2026-05-29
 
