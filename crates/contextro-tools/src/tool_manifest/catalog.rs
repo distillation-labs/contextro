@@ -15,6 +15,7 @@ const KNOWLEDGE_SCHEMA: &str = r#"{"type":"object","properties":{"command":{"typ
 const REF_ID_SCHEMA: &str = r#"{"type":"object","properties":{"ref_id":{"type":"string","description":"Reference ID returned by compact"}},"required":["ref_id"]}"#;
 const COMMIT_SEARCH_SCHEMA: &str = r#"{"type":"object","properties":{"query":{"type":"string","description":"Keywords or description to search commit messages"},"limit":{"type":"integer","description":"Max results"},"author":{"type":"string","description":"Filter by author name"}},"required":["query"]}"#;
 const COMMIT_HISTORY_SCHEMA: &str = r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Number of commits to return (default: 20)"},"since":{"type":"string","description":"Only return commits on or after this timestamp/date (RFC3339 or YYYY-MM-DD)"},"author":{"type":"string","description":"Only return commits whose author matches this string"}}}"#;
+const DIFF_PREVIEW_SCHEMA: &str = r#"{"type":"object","properties":{"base":{"type":"string","description":"Base revision to diff from (default: HEAD)"},"head":{"type":"string","description":"Optional target revision; omit to diff against the working tree"},"path":{"type":"string","description":"Optional file or directory path filter"},"limit":{"type":"integer","description":"Maximum changed files to return (default: 20)"},"preview_lines":{"type":"integer","description":"Maximum changed-line previews per file (default: 4)"}}}"#;
 const ARCHITECTURE_SCHEMA: &str = r#"{"type":"object","properties":{"limit":{"type":"integer","description":"Maximum hub symbols to return (default: 10)"}}}"#;
 const ANALYZE_SCHEMA: &str = r#"{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file or directory path"},"min_connections":{"type":"integer","description":"Minimum connectivity threshold for hotspot reporting (default: 6)"},"top_n":{"type":"integer","description":"Maximum hotspot symbols to return (default: 10)"}}}"#;
 const FORGET_SCHEMA: &str = r#"{"type":"object","properties":{"id":{"type":"string","description":"ID returned by remember()"},"memory_id":{"type":"string","description":"Legacy alias for the memory ID"},"tags":{"type":"string","description":"Delete all memories with this tag"},"memory_type":{"type":"string","description":"Delete all memories of this type"}}}"#;
@@ -123,6 +124,18 @@ const TOOL_DOCS: &[ToolDoc] = &[
         ],
         example: r#"impact({"symbol_name":"BrowserSession","max_depth":3})"#,
         schema_json: IMPACT_SCHEMA,
+        min_tier: ToolTier::Core,
+    },
+    ToolDoc {
+        name: "test_for",
+        description: "Find the most likely tests for a symbol using call-graph, inline-test, and file-name signals.",
+        parameters: &[
+            "symbol_name (preferred): target symbol name",
+            "name / symbol: backward-compatible aliases",
+            "limit: maximum candidate test files to return, default 50",
+        ],
+        example: r#"test_for({"symbol_name":"BrowserSession","limit":10})"#,
+        schema_json: SYMBOL_RELATION_SCHEMA,
         min_tier: ToolTier::Core,
     },
     ToolDoc {
@@ -334,6 +347,20 @@ const TOOL_DOCS: &[ToolDoc] = &[
         ],
         example: r#"commit_history({"limit":10})"#,
         schema_json: COMMIT_HISTORY_SCHEMA,
+        min_tier: ToolTier::Standard,
+    },
+    ToolDoc {
+        name: "diff_preview",
+        description: "Show a compact git diff preview for the working tree or an explicit revision range.",
+        parameters: &[
+            "base: base revision to diff from, default HEAD",
+            "head: optional target revision; omit to diff against the working tree",
+            "path: optional file or directory path filter",
+            "limit: maximum changed files to return, default 20",
+            "preview_lines: maximum added/removed preview lines per file, default 4",
+        ],
+        example: r#"diff_preview({"base":"HEAD~1","head":"HEAD","limit":10})"#,
+        schema_json: DIFF_PREVIEW_SCHEMA,
         min_tier: ToolTier::Standard,
     },
     ToolDoc {
