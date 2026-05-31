@@ -31,7 +31,7 @@ By default the installer writes these repo-local artifacts:
 - `.opencode/skills/dev-contextro-mcp/` for OpenCode skills
 
 When you install into a normal project, each skill target receives the full bundle: `SKILL.md`, `references/`, and `evals/`.
-That bundle now includes problem-first routing for all 38 public Contextro tools plus the
+That bundle now includes problem-first routing for all 40 public Contextro tools plus the
 eight `code(...)` operations, with worked examples and eval coverage.
 
 ## What It Does
@@ -75,7 +75,7 @@ npx @contextro/skills benchmark --dir /path/to/your/project
 
 | Skill | Description |
 |-------|-------------|
-| `dev-contextro-mcp` | Full Contextro integration across all 38 public tools: search, symbols, call graphs, refactor safety, repo scope, memory/recovery, exports, and AST rewrite |
+| `dev-contextro-mcp` | Full Contextro integration across all 40 public tools: search, symbols, call graphs, refactor safety, repo scope, memory/recovery, exports, and AST rewrite |
 
 No other internal Contextro skills are distributed by this package.
 
@@ -115,12 +115,12 @@ Output is written to `./experiment_results/`:
 | Metric | Without MCP | With MCP | Improvement |
 |--------|-------------|----------|-------------|
 | Tokens (1,000-task production study) | 941,748 | 93,819 | **90.0% reduction** |
-| Tokens (200-task Contextro repo study, retained current state) | 227,072 | 6,244 | **97.3% reduction** |
-| Success rate (200-task Contextro repo study) | 97.5% | 100% | **+2.5 points** |
+| Tokens (200-task Contextro repo study, current refresh) | 225,153 | 5,412 | **97.6% reduction** |
+| Success rate (200-task Contextro repo study) | 93.0% | 100% | **+7.0 points** |
 | Tool calls per task (1,000-task production study) | 3.2 | 1.0 | lower |
-| Tool calls per task (200-task Contextro repo study) | 2.96 | 1.0 | lower |
+| Tool calls per task (200-task Contextro repo study) | 3.045 | 1.0 | lower |
 | Files read (1,000-task production study) | 1,961 | 0 | **100% reduction** |
-| Files read (200-task Contextro repo study) | 352 | 0 | **100% reduction** |
+| Files read (200-task Contextro repo study) | 369 | 0 | **100% reduction** |
 
 ## How Skills Work
 
