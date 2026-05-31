@@ -70,13 +70,12 @@ pub(crate) fn render_parsed_document_symbols(
     let truncated = symbol_limit
         .map(|limit| total_symbols > limit)
         .unwrap_or(false);
-    let mut columns = vec![json!("name"), json!("type"), json!("line")];
-    let has_multiline = symbols
-        .iter()
-        .any(|symbol| symbol.line_end > symbol.line_start + 1);
-    if has_multiline {
-        columns.push(json!("end_line"));
+    let include_type = !parsed_symbols_share_type(symbols);
+    let mut columns = vec![json!("name")];
+    if include_type {
+        columns.push(json!("type"));
     }
+    columns.push(json!("location"));
     if include_signature {
         columns.push(json!("signature"));
     }
@@ -84,18 +83,11 @@ pub(crate) fn render_parsed_document_symbols(
     let mut rows: Vec<Value> = symbols
         .iter()
         .map(|s| {
-            let mut row = vec![
-                json!(s.name),
-                json!(s.symbol_type.to_string()),
-                json!(s.line_start),
-            ];
-            if has_multiline {
-                if s.line_end > s.line_start + 1 {
-                    row.push(json!(s.line_end));
-                } else {
-                    row.push(Value::Null);
-                }
+            let mut row = vec![json!(s.name)];
+            if include_type {
+                row.push(json!(s.symbol_type.to_string()));
             }
+            row.push(json!(format_location(s.line_start, s.line_end)));
             if include_signature {
                 // Truncate long signatures to bound payload size when callers opt in.
                 let sig = if s.signature.chars().count() > 60 {
@@ -117,9 +109,9 @@ pub(crate) fn render_parsed_document_symbols(
         "file": strip_base(&abs_path.to_string_lossy(), codebase),
         "columns": columns,
         "symbols": rows,
-        "total": total_symbols
     });
     if truncated {
+        response["total"] = json!(total_symbols);
         response["truncated"] = json!(true);
     }
     response
@@ -144,29 +136,24 @@ pub(crate) fn render_indexed_document_symbols(
     let truncated = symbol_limit
         .map(|limit| total_symbols > limit)
         .unwrap_or(false);
-    let has_multiline = sorted
-        .iter()
-        .any(|symbol| symbol.location.end_line > symbol.location.start_line + 1);
-    let mut columns = vec![json!("name"), json!("type"), json!("line")];
-    if has_multiline {
-        columns.push(json!("end_line"));
+    let include_type = !indexed_symbols_share_type(&sorted);
+    let mut columns = vec![json!("name")];
+    if include_type {
+        columns.push(json!("type"));
     }
+    columns.push(json!("location"));
 
     let mut rows: Vec<Value> = sorted
         .iter()
         .map(|symbol| {
-            let mut row = vec![
-                json!(symbol.name),
-                json!(document_symbol_type(symbol)),
-                json!(symbol.location.start_line),
-            ];
-            if has_multiline {
-                if symbol.location.end_line > symbol.location.start_line + 1 {
-                    row.push(json!(symbol.location.end_line));
-                } else {
-                    row.push(Value::Null);
-                }
+            let mut row = vec![json!(symbol.name)];
+            if include_type {
+                row.push(json!(document_symbol_type(symbol)));
             }
+            row.push(json!(format_location(
+                symbol.location.start_line,
+                symbol.location.end_line
+            )));
             Value::Array(row)
         })
         .collect();
@@ -179,12 +166,39 @@ pub(crate) fn render_indexed_document_symbols(
         "file": strip_base(&abs_path.to_string_lossy(), codebase),
         "columns": columns,
         "symbols": rows,
-        "total": total_symbols
     });
     if truncated {
+        response["total"] = json!(total_symbols);
         response["truncated"] = json!(true);
     }
     response
+}
+
+fn format_location(start_line: u32, end_line: u32) -> String {
+    if end_line > start_line + 1 {
+        format!("{start_line}-{end_line}")
+    } else {
+        start_line.to_string()
+    }
+}
+
+fn parsed_symbols_share_type(symbols: &[contextro_core::models::Symbol]) -> bool {
+    let Some(first) = symbols.first() else {
+        return false;
+    };
+    symbols
+        .iter()
+        .all(|symbol| symbol.symbol_type == first.symbol_type)
+}
+
+fn indexed_symbols_share_type(symbols: &[UniversalNode]) -> bool {
+    let Some(first) = symbols.first() else {
+        return false;
+    };
+    let first_type = document_symbol_type(first);
+    symbols
+        .iter()
+        .all(|symbol| document_symbol_type(symbol) == first_type)
 }
 
 pub(crate) fn document_symbol_type(node: &UniversalNode) -> &'static str {
