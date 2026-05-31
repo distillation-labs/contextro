@@ -1,38 +1,53 @@
-# Autoresearch Experiment Patterns
+# Experiment Patterns
 
-Autoresearch exists to run an autonomous but disciplined benchmark loop against real repository
-surfaces.
+Use these patterns to keep Contextro experiment loops discriminating and comparable.
 
-## Core Loop
+## Pick The Smallest Honest Harness
 
-1. Read prior results.
-2. Verify the benchmark still runs.
-3. Set a breakthrough target.
-4. Generate and rank hypotheses.
-5. Run one-variable experiments.
-6. Keep only measured wins.
-7. Log the result and the insight.
-8. Reassess after clusters of failures or wins.
+| Goal | Preferred harness | Why |
+|---|---|---|
+| cold index, search latency, throughput | `contextro-bench` | Measures end-to-end hot-path behavior and shipping thresholds |
+| total tokens at fixed success | `contextro-study` | Captures token efficiency plus task success, not just one proxy |
+| indexing pipeline changes | `cargo test -p contextro-indexing --test bench_index -- --nocapture` | Fast localized signal before rerunning broader bench/study |
+| pre-release product safety | `./scripts/release-candidate.sh --skip-study` | Exercises real wrapper, persistence, and external-repo workflows |
 
-## Contextro-Specific Surfaces
+## Good Contextro Experiment Shapes
 
-- Retrieval quality: `python scripts/benchmark_retrieval_quality.py --path src --query-limit 20`
-- Chunking: `python scripts/benchmark_chunk_profiles.py --path src --query-limit 20`
-- Token efficiency: `python scripts/benchmark_token_efficiency.py`
-- Disclosure and compression: `python scripts/benchmark_disclosure.py`
-- Embeddings: `python scripts/benchmark_embeddings.py`
-- Full benchmark: `python scripts/bench_final.py`
+1. **Compact response contract**
+   - Hypothesis: a more compact payload keeps the same task success with fewer tokens.
+   - Primary metric: lower `contextro-study` total tokens.
+   - Guardrails: unchanged success, unchanged correctness, no missing fields the task depends on.
 
-## Keep Or Discard Rules
+2. **Hot-path latency improvement**
+   - Hypothesis: a cache, ranking shortcut, or data-structure change reduces latency.
+   - Primary metric: lower `contextro-bench` search or cold-index latency.
+   - Guardrails: same or better ranking quality, no throughput regression, no stale results.
 
-- Keep only if the delta is real and guardrails hold.
-- Revert regressions immediately.
-- Treat failing tests, broken lint, or invalid benchmark outputs as blockers.
-- Do not treat benchmark-script edits as valid optimization work.
+3. **Exactness or routing improvement**
+   - Hypothesis: better tool routing or contract guidance reduces wrong-tool calls and tokens.
+   - Primary metric: lower study tokens or fewer tool calls at unchanged success.
+   - Guardrails: no hidden work, no truthfulness regression, no benchmark harness changes.
 
-## Battle-Test Expectations
+## Keep / Discard Examples
 
-- Read existing result history before proposing the first experiment.
-- Reuse winning directions before jumping to unrelated ideas.
-- Change angle after repeated failures.
-- Stop only on breakthrough target, explicit user interruption, or a true external blocker.
+- **Keep**: `contextro-study` total tokens fall materially, success stays `100%`, and task outputs
+  stay equally informative.
+- **Discard**: average search latency falls slightly but the delta is within run noise.
+- **Discard**: a response gets shorter but omits the caller list or exact file path needed by the
+  task.
+- **Keep with caution**: a localized indexing improvement wins `bench_index`, then also holds on
+  `contextro-bench`.
+
+## Logging Discipline
+
+For each experiment, record:
+
+- hypothesis
+- files changed
+- exact command
+- baseline
+- measured result
+- keep or discard
+- what was learned
+
+If the result is ambiguous, say so and rerun rather than narrating certainty.
