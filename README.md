@@ -188,7 +188,7 @@ focus(path="src/auth.rs")
 
 ---
 
-## All 38 Tools
+## All 40 Tools
 
 | Tool | What it does |
 |---|---|
@@ -200,6 +200,7 @@ focus(path="src/auth.rs")
 | `find_callees` | What does this function call? |
 | `explain` | Full symbol explanation |
 | `impact` | What breaks if I change this? |
+| `test_for` | Map a symbol to the most likely tests |
 | `refactor_check` | Pre-refactor analysis: callers + callees + impact + risk in one call |
 | `completion_check` | Verify that a rename/signature change really updated all callers |
 | `analyze` | Code smells, complexity |
@@ -212,6 +213,7 @@ focus(path="src/auth.rs")
 | `audit` | Packaged audit report |
 | `commit_search` | Semantic git history search |
 | `commit_history` | Browse recent commits |
+| `diff_preview` | Compact git diff summary for the worktree or a revision range |
 | `repo_add` | Register another repo for later indexing/search |
 | `repo_remove` | Unregister a repo |
 | `repo_status` | View registered repos |
@@ -245,7 +247,7 @@ All settings via `CTX_` environment variables:
 | `CTX_HTTP_PORT` | `8000` | HTTP port |
 | `CTX_LOG_LEVEL` | `INFO` | Logging level |
 | `CTX_EMBEDDING_MODEL` | `potion-code-16m` | Embedding model for vector search |
-| `CTX_TOOL_TIER` | `full` | `core` (10 tools), `standard` (22), or `full` (38) |
+| `CTX_TOOL_TIER` | `full` | `core` (11 tools), `standard` (24), or `full` (40) |
 | `CTX_NO_UPDATE_CHECK` | unset | Set to `1` to disable update checks |
 
 ---

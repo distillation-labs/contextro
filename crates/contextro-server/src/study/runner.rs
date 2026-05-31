@@ -210,7 +210,7 @@ fn render_columnar_rows(response: &Value) -> Option<String> {
         for (index, column) in columns.iter().enumerate() {
             let value = row.get(index)?;
             match column.as_str()? {
-                "name" | "type" | "file" => {
+                "name" | "type" | "file" | "location" => {
                     if let Some(text) = value.as_str() {
                         parts.push(text.to_string());
                     }

@@ -1,9 +1,16 @@
 //! Parallel file discovery using the `ignore` crate.
 
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use contextro_config::Settings;
 use ignore::WalkBuilder;
+
+#[derive(Debug, Default)]
+pub struct DiscoveredFileStates {
+    pub files: Vec<PathBuf>,
+    pub fingerprints: Vec<(PathBuf, String)>,
+}
 
 /// Directories to always skip during file discovery.
 const SKIP_DIRS: &[&str] = &[
@@ -83,13 +90,84 @@ pub fn discover_files(root: &Path, settings: &Settings) -> Vec<PathBuf> {
     files
 }
 
+/// Discover source files and compute metadata fingerprints in a single walk.
+pub fn discover_files_with_fingerprints(root: &Path, settings: &Settings) -> DiscoveredFileStates {
+    let max_size = settings.max_file_size_mb as u64 * 1024 * 1024;
+    let supported_extensions = contextro_parsing::get_supported_extensions();
+
+    let mut builder = WalkBuilder::new(root);
+    builder
+        .hidden(true)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true);
+
+    let walker = builder.build();
+    let mut files = Vec::new();
+    let mut fingerprints = Vec::new();
+
+    for entry in walker.flatten() {
+        if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+            continue;
+        }
+
+        let path = entry.path();
+
+        if path.components().any(|c| {
+            c.as_os_str()
+                .to_str()
+                .map(|s| SKIP_DIRS.contains(&s))
+                .unwrap_or(false)
+        }) {
+            continue;
+        }
+
+        let ext = match path.extension().and_then(|e| e.to_str()) {
+            Some(e) => e,
+            None => continue,
+        };
+
+        if !supported_extensions.contains(&ext) {
+            continue;
+        }
+
+        let metadata = std::fs::metadata(path).ok();
+        if metadata
+            .as_ref()
+            .map(|meta| meta.len() > max_size)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        let path_buf = path.to_path_buf();
+        files.push(path_buf.clone());
+
+        if let Some(meta) = metadata {
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0);
+            fingerprints.push((path_buf, format!("{}:{modified}", meta.len())));
+        }
+    }
+
+    files.sort();
+    fingerprints.sort_by(|(left, _), (right, _)| left.cmp(right));
+    DiscoveredFileStates {
+        files,
+        fingerprints,
+    }
+}
+
 /// Compute file-state fingerprints for files in parallel.
 ///
 /// These fingerprints are used only for incremental change detection, so we
 /// prefer fast metadata-derived signatures over full content reads.
 pub fn fingerprint_files(paths: &[PathBuf]) -> Vec<(PathBuf, String)> {
     use rayon::prelude::*;
-    use std::time::UNIX_EPOCH;
 
     paths
         .par_iter()
@@ -183,6 +261,25 @@ mod tests {
         assert!(!files
             .iter()
             .any(|f| f.to_string_lossy().contains("readme.md")));
+
+        fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_discover_files_with_fingerprints_matches_existing_helpers() {
+        let tmp = std::env::temp_dir().join("ctx_test_discover_with_fingerprints");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("src")).unwrap();
+        fs::write(tmp.join("src/main.py"), "def hello(): pass").unwrap();
+        fs::write(tmp.join("src/lib.rs"), "pub fn value() -> u32 { 1 }\n").unwrap();
+
+        let settings = Settings::default();
+        let discovered = discover_files_with_fingerprints(&tmp, &settings);
+        let files = discover_files(&tmp, &settings);
+        let fingerprints = fingerprint_files(&files);
+
+        assert_eq!(discovered.files, files);
+        assert_eq!(discovered.fingerprints, fingerprints);
 
         fs::remove_dir_all(tmp).ok();
     }

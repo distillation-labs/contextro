@@ -1,5 +1,16 @@
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
+
+use contextro_engines::bm25::Bm25Engine;
+use parking_lot::RwLock;
+
 use super::response_utils::format_response;
 use super::*;
+
+fn process_repo_bm25_cache() -> &'static RwLock<HashMap<String, Arc<Bm25Engine>>> {
+    static PROCESS_REPO_BM25: OnceLock<RwLock<HashMap<String, Arc<Bm25Engine>>>> = OnceLock::new();
+    PROCESS_REPO_BM25.get_or_init(|| RwLock::new(HashMap::new()))
+}
 
 pub(super) fn edit_distance(a: &str, b: &str) -> usize {
     let (m, n) = (a.len(), b.len());
@@ -62,6 +73,22 @@ pub(super) fn should_build_vector_index(chunk_count: usize) -> bool {
     chunk_count > 1
 }
 
+pub(super) fn should_share_repo_bm25(chunk_count: usize) -> bool {
+    (1..=8).contains(&chunk_count)
+}
+
+pub(super) fn process_repo_bm25(path: &str) -> Option<Arc<Bm25Engine>> {
+    process_repo_bm25_cache().read().get(path).cloned()
+}
+
+pub(super) fn remember_process_repo_bm25(path: String, bm25: Arc<Bm25Engine>) {
+    process_repo_bm25_cache().write().insert(path, bm25);
+}
+
+pub(super) fn prune_process_repo_bm25(path: &str) {
+    process_repo_bm25_cache().write().remove(path);
+}
+
 pub(super) fn response_cache_key(
     name: &str,
     args: &Value,
@@ -107,9 +134,20 @@ pub(super) fn strip_render_only_args(args: &Value) -> Value {
     }
 }
 
-pub(super) fn cached_tool_result(result: Value, args: &Value) -> CallToolResult {
+pub(super) fn cached_tool_result(
+    result: &Value,
+    rendered_default: Option<&str>,
+    args: &Value,
+) -> CallToolResult {
     let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-    CallToolResult::success(vec![Content::text(format_response(&result, max_tokens))])
+    let rendered = if max_tokens == 0 {
+        rendered_default
+            .map(str::to_owned)
+            .unwrap_or_else(|| format_response(result, 0))
+    } else {
+        format_response(result, max_tokens)
+    };
+    CallToolResult::success(vec![Content::text(rendered)])
 }
 
 pub(super) fn maybe_prewarm_commit_search_cache(path: &str) {

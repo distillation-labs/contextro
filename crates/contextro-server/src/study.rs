@@ -324,4 +324,18 @@ mod tests {
             "crates/contextro-server/src/study.rs\ntotal 2\nrun_tasks function line 28\nbuild_config function line 40"
         );
     }
+
+    #[test]
+    fn contextro_renderer_compacts_location_rows() {
+        let rendered = runner::render_contextro_response(&json!({
+            "file": "crates/contextro-server/src/study.rs",
+            "columns": ["name", "type", "location"],
+            "symbols": [["run_tasks", "function", "28-36"], ["build_config", "function", "40"]],
+        }));
+
+        assert_eq!(
+            rendered,
+            "crates/contextro-server/src/study.rs\nrun_tasks function 28-36\nbuild_config function 40"
+        );
+    }
 }

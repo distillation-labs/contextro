@@ -31,7 +31,7 @@ history, memory recovery, cross-repo search, and AST-aware search or rewrite.
 
 Pure Rust binary. No Python. No interpreter.
 
-Full routing for all 38 public Contextro tools plus the eight `code(...)` operations
+Full routing for all 40 public Contextro tools plus the eight `code(...)` operations
 lives in `references/tool-decision-tree.md`. If you are unsure which tool or parameter
 shape fits, use `introspect(query="...")` or `introspect(tool="completion_check")`.
 
@@ -104,7 +104,7 @@ Index persists. Do not re-index before every call. A successful `index()` respon
 | Structural rewrite | `code(operation="pattern_rewrite", ..., dry_run=true)` | Preview first, then apply |
 | Plan an edit | `code(operation="edit_plan", goal="...", symbol_name="...")` | Heuristic planning aid: affected symbols/files, risks, next steps |
 | Search commit history | `commit_search(query="...")` or `commit_history(limit=N)` | `commit_search` works best with descriptive commit subjects; use `commit_history` when they are terse |
-| Add/search another repo | `repo_add(path="...", name="...")`, `index(path="...")`, `search(...)` | `repo_add()` registers the repo; run `index(path)` before search/explain flows |
+| Add/search another repo | `repo_add(path="...", name="...")`, then `search(...)` / `explain(...)` | `repo_add()` registers, auto-indexes, and switches active scope to that repo; use `index(path)` later only for explicit re-indexing |
 | Remove a registered repo | `repo_remove(name="...")` or `repo_remove(path="...")` | Cleanup after temporary cross-repo work |
 | Store a durable decision | `remember(content="...", memory_type="decision")` | Persistent memory |
 | Archive pre-compaction context | `compact(content="...")` | Archive path; returns `ref_id` |
@@ -205,8 +205,8 @@ This is the default orientation path. Do not start with broad file reads.
 ```text
 1. health() if the server/runtime itself may be down
 2. status() if active repo or index readiness is unclear
-3. repo_add(path="...", name="...") to register an external repo
-4. index(path="...") before cross-repo search/explain flows on that repo
+3. repo_add(path="...", name="...") to register, auto-index, and activate an external repo
+4. index(path="...") only when you explicitly need to re-index an already registered repo
 5. repo_status() when you need the registered-repo list
 6. repo_remove(name="...") or repo_remove(path="...") to clean up temporary repos
 7. audit(), docs_bundle(...), or sidecar_export(...) only when the user wants generated artifacts
@@ -237,6 +237,8 @@ This is the default orientation path. Do not start with broad file reads.
 - Do not use `skill_prompt()` for routine discovery or analysis; it is a bootstrap block for other agents/clients.
 - Do not replace exact-history questions with shell `git log` when `commit_search()` or `commit_history()` is available.
 - Do not pass `name=` to `find_callers/find_callees/explain/impact`; use `symbol_name=`.
+- Do not call `repo_add()` and then immediately `index()` the same repo unless you explicitly need
+  a second indexing pass.
 
 ## Escalation Rule
 
@@ -249,21 +251,22 @@ Current study-backed evidence to cite safely:
 
 | Study | Contextro success | Baseline success | Contextro tokens | Baseline tokens | Reduction | Tool calls/task | Files read |
 |---|---|---|---|---|---|---|---|
-| Contextro repo, 200 tasks, retained current state | 100% | 97.5% | 6,244 | 227,072 | 97.3% | 1.0 | 0 |
+| Contextro repo, 200 tasks, current refresh | 100% | 93.0% | 5,412 | 225,153 | 97.6% | 1.0 | 0 |
 | Production TypeScript monorepo, 1,000 tasks | 100% | 99.5% | 93,819 | 941,748 | 90.0% | 1.0 | 0 |
 
-Useful category notes from the retained 200-task Contextro repo study:
+Useful category notes from the current 200-task Contextro repo study:
 
-- `batch_lookup`: `1,674` total Contextro tokens
-- `document_symbols`: `1,854` total Contextro tokens
-- `exact_search`: `1,441` total Contextro tokens
-- `symbol_discovery`: `1,275` total Contextro tokens
+- `batch_lookup`: `2,034` total Contextro tokens
+- `document_symbols`: `1,507` total Contextro tokens
+- `exact_search`: `788` total Contextro tokens
+- `symbol_discovery`: `1,083` total Contextro tokens
 
 Guardrails for future runs:
 
 - Keep `contextro-study` at `100%` success on this repo.
-- Treat `6,244` total Contextro tokens as the retained repo baseline.
+- Treat `5,412` total Contextro tokens as the current repo baseline.
 - Do not lower default `get_document_symbols` below `3`; the study tasks depend on `3` symbols.
+- Latest `contextro-bench` refresh on this repo covered `40/40` tools across `41` cases; keep search around `0.11ms`, `test_for` around `0.28ms`, `diff_preview` around `0.79ms`, `repo_add` around `1.19ms`, and `repo_rm_active` around `4.47ms`. Cold index remains the main frontier on the current sample at `43.53ms` versus the `<=40ms` target.
 - Do not take meaningful `contextro-bench` regressions for marginal token wins.
 
 Use these study numbers instead of older `100`-task figures, per-tool token estimates, or compact-key claims.

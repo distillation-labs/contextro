@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use contextro_engines::bm25::Bm25Engine;
 
-use super::support::normalize_repo_dir;
+use super::support::{
+    normalize_repo_dir, process_repo_bm25, prune_process_repo_bm25, remember_process_repo_bm25,
+    should_share_repo_bm25,
+};
 
 impl ContextroServer {
     pub(crate) fn handle_repo_remove(&self, args: &Value) -> Value {
@@ -110,6 +113,7 @@ impl ContextroServer {
 
     pub(crate) fn prune_repo_scope_history(&self, removed_path: &str) {
         self.state.prune_repo_snapshot(removed_path);
+        prune_process_repo_bm25(removed_path);
         self.state
             .repo_scope_history
             .write()
@@ -126,10 +130,13 @@ impl ContextroServer {
         None
     }
 
-    pub(crate) fn repo_snapshot_matches_disk(path: &str) -> bool {
+    pub(crate) fn repo_snapshot_matches_disk(&self, path: &str) -> bool {
         let settings = get_settings().read().clone();
-        let files = contextro_indexing::discover_files(std::path::Path::new(path), &settings);
-        let current_hashes = contextro_indexing::fingerprint_files(&files);
+        let current_hashes = contextro_indexing::discover_files_with_fingerprints(
+            std::path::Path::new(path),
+            &settings,
+        )
+        .fingerprints;
         let storage_dir = contextro_config::project_storage_dir(path);
         let stored_hashes = contextro_indexing::load_hashes(&storage_dir);
         if stored_hashes.is_empty() {
@@ -148,8 +155,8 @@ impl ContextroServer {
     ) -> (Value, RestoreSnapshotMetrics) {
         let restore_start = Instant::now();
         let graph_start = Instant::now();
-        self.state.graph.clear();
         if snapshot.graph.is_empty() {
+            self.state.graph.clear();
             self.state.build_graph(&snapshot.symbols);
             self.state.graph.compute_pagerank();
         } else {
@@ -160,11 +167,17 @@ impl ContextroServer {
         let bm25_start = Instant::now();
         if let Some(cached_bm25) = self.state.repo_bm25(path) {
             self.state.replace_active_bm25(cached_bm25);
+        } else if let Some(cached_bm25) = process_repo_bm25(path) {
+            self.state.replace_active_bm25(cached_bm25.clone());
+            self.state.remember_repo_bm25(path.to_string(), cached_bm25);
         } else {
             let next_bm25 = Arc::new(Bm25Engine::new_in_memory());
             next_bm25.index_chunks(&snapshot.chunks);
             self.state.replace_active_bm25(next_bm25.clone());
             self.state.remember_repo_bm25(path.to_string(), next_bm25);
+            if should_share_repo_bm25(snapshot.chunks.len()) {
+                remember_process_repo_bm25(path.to_string(), self.state.active_bm25());
+            }
         }
         let bm25_ms = bm25_start.elapsed().as_secs_f64() * 1000.0;
         self.state
@@ -199,7 +212,7 @@ impl ContextroServer {
         let scope_start = Instant::now();
         *self.state.indexed.write() = true;
         *self.state.codebase_path.write() = Some(path.to_string());
-        self.state.query_cache.invalidate();
+        self.state.invalidate_graph_views();
         self.state.knowledge.set_active_scope(Some(path));
         self.state.persist_repo_scope_state();
         let scope_ms = scope_start.elapsed().as_secs_f64() * 1000.0;
@@ -229,21 +242,23 @@ impl ContextroServer {
 
     pub(crate) fn try_restore_cached_repo_scope(&self, path: &str) -> Option<Value> {
         let snapshot = self.load_valid_repo_snapshot(path)?;
-        Some(self.restore_repo_snapshot(path, &snapshot).0)
+        Some(self.restore_repo_snapshot(path, snapshot.as_ref()).0)
     }
 
-    pub(crate) fn load_valid_repo_snapshot(&self, path: &str) -> Option<RepoScopeSnapshot> {
+    pub(crate) fn load_valid_repo_snapshot(&self, path: &str) -> Option<Arc<RepoScopeSnapshot>> {
         if let Some(snapshot) = self.state.repo_snapshot(path) {
-            if !Self::repo_snapshot_matches_disk(path) {
+            if !self.repo_snapshot_matches_disk(path) {
                 self.state.prune_repo_snapshot(path);
+                prune_process_repo_bm25(path);
                 return None;
             }
             return Some(snapshot);
         }
 
-        let snapshot = self.state.load_persisted_repo_snapshot(path)?;
-        if !Self::repo_snapshot_matches_disk(path) {
+        let snapshot = Arc::new(self.state.load_persisted_repo_snapshot(path)?);
+        if !self.repo_snapshot_matches_disk(path) {
             self.state.prune_repo_snapshot(path);
+            prune_process_repo_bm25(path);
             return None;
         }
         self.state
@@ -254,12 +269,12 @@ impl ContextroServer {
     pub(crate) fn load_repo_snapshot_if_hashes_match(
         &self,
         path: &str,
-    ) -> Option<RepoScopeSnapshot> {
+    ) -> Option<Arc<RepoScopeSnapshot>> {
         if let Some(snapshot) = self.state.repo_snapshot(path) {
             return Some(snapshot);
         }
 
-        let snapshot = self.state.load_persisted_repo_snapshot(path)?;
+        let snapshot = Arc::new(self.state.load_persisted_repo_snapshot(path)?);
         self.state
             .remember_repo_snapshot(path.to_string(), snapshot.clone());
         Some(snapshot)
@@ -270,7 +285,7 @@ impl ContextroServer {
         self.state
             .replace_active_bm25(Arc::new(Bm25Engine::new_in_memory()));
         self.state.vector_index.clear();
-        self.state.query_cache.invalidate();
+        self.state.invalidate_graph_views();
         self.state
             .chunk_count
             .store(0, std::sync::atomic::Ordering::Relaxed);

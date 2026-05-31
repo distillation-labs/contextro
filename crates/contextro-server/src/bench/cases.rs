@@ -143,6 +143,13 @@ pub(crate) fn build_tool_cases(
             allow_error: false,
         },
         ToolCase {
+            display_name: "test_for",
+            tool_name: "test_for",
+            args: json!({"symbol_name": fixture.symbol_exact, "limit": 10}),
+            notes: "symbol test locator",
+            allow_error: false,
+        },
+        ToolCase {
             display_name: "overview",
             tool_name: "overview",
             args: json!({}),
@@ -273,6 +280,19 @@ pub(crate) fn build_tool_cases(
             tool_name: "commit_history",
             args: json!({"limit": 5}),
             notes: "git history",
+            allow_error: false,
+        },
+        ToolCase {
+            display_name: "diff_preview",
+            tool_name: "diff_preview",
+            args: json!({
+                "base": "HEAD~1",
+                "head": "HEAD",
+                "path": fixture.code_file_rel,
+                "limit": 10,
+                "preview_lines": 2
+            }),
+            notes: "scoped git diff preview",
             allow_error: false,
         },
         ToolCase {

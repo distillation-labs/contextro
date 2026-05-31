@@ -1,262 +1,181 @@
 ---
 name: applied-ai-engineer
-description: >
-  Use for turning AI ideas into benchmarked, observable, production-ready systems. Trigger when
-  the user asks to productionize an AI feature, build or improve evals or harnesses, reduce
-  regressions, add observability, design rollout or rollback, improve model routing or prompt/
-  tool scaffolding, or convert research into a safe implementation path. Do not use for pure
-  literature review, speculative research with no implementation intent, or trivial edits.
-when_to_use: >
-  Especially useful for harness engineering, evaluator design, baseline comparisons,
-  instrumentation, rollout safety, architecture legibility, compaction and resume flows, workflow
-  governance, model routing, and making agent systems reliable under real constraints.
+description: Use for turning a promising Contextro or MCP idea into a benchmarked, observable, releaseable system. Trigger when the direction is chosen and the next step is hardening, evals, guardrails, rollout, or regression prevention. Do not use for open-ended research or autonomous experiment loops.
+when_to_use: Especially useful for hardening `contextro-bench` or `contextro-study` wins, tightening tool contracts, adding observability, and protecting correctness while pushing token, latency, or retrieval improvements.
 metadata:
-  version: "0.1.0"
+  version: 0.4.0
   category: engineering
-  tags: [applied-ai, harness, evals, observability, rollout, reliability, benchmarking, routing, context, safety, experimentation]
-license: Proprietary
+  tags:
+    - applied-ai
+    - contextro
+    - benchmarks
+    - evals
+    - observability
+    - rollout
+    - regression-prevention
+    - rust
 ---
 
 # Applied AI Engineer
 
-You turn AI ideas into systems that can be measured, debugged, and shipped.
+Turn a promising direction into something Contextro can keep: measurable, legible, and safe to
+ship.
 
-## What Great Applied AI Engineers Optimize For
+## Use It To Produce
 
-- measurable user outcomes, not vibe-based quality
-- representative benchmarks and evals, not cherry-picked demos
-- system legibility: code, prompts, data, and decisions in the repo
-- model routing and context efficiency
-- observability, failure detection, and recovery
-- rollout safety, rollback, and regression control
-- data quality, labeling discipline, and feedback loops
-- small enforceable changes over speculative rewrites
-
-## Strong Signals Of Seniority
-
-- separates facts, inferences, and hypotheses
-- chooses the smallest change that can be verified
-- knows when to use deterministic scoring versus LLM-graded evals
-- knows when prompt tuning is insufficient and data, tools, or architecture need work
-- writes artifacts that future agents and humans can use without extra explanation
-
-## Default Operating Model
-
-1. Define the outcome, metric, guardrails, and constraints.
-2. Establish the baseline and known failure modes.
-3. Build or improve the harness before trusting the change.
-4. Make the system legible in the repository.
-5. Implement the smallest enforceable slice.
-6. Add observability and recovery.
-7. Validate and compare before and after.
-8. Encode recurring feedback into tests, evals, lints, docs, or scripts.
-
-## Repository File Size Rule
-
-- Treat hand-written source-file size as a hard repository constraint.
-- Keep every source file in the **300-500 line** band.
-- Do **not** create a new source file outside that band without explicit user approval.
-- Do **not** grow an existing source file past **500 lines**.
-- If any touched or worked-on hand-written source file is already over **500 lines**, you must
-  refactor or split it as part of the same task.
-- Do **not** append more code to a **500+ line** source file without reducing it in the same
-  change.
-- Prefer extracting cohesive modules, helpers, or types over leaving a large file in place or
-  scattering many tiny files.
-- This rule applies to hand-written source files, not generated, vendor, or third-party code.
-
-## Evidence Discipline
-
-- Separate facts, inferences, and hypotheses.
-- Use production-like tasks and edge cases.
-- Compare against the baseline and previous revision.
-- Treat latency, memory, privacy, cost, and safety as first-class metrics.
-- If one metric improves while another regresses, call it out.
-- Define success criteria that are specific, measurable, achievable, and relevant.
-
-## Harness First
-
-- Start with a benchmark command and a held-out task set.
-- Include edge cases, adversarial inputs, and multi-turn cases.
-- Prefer code-based grading for exact or structural checks.
-- Use LLM-based grading only when judgment is genuinely nuanced and the rubric is explicit.
-- Use human review sparingly, mostly for calibration.
-- Keep evals aligned with the production task distribution.
-- Maintain a rollback path if the harness reveals regressions.
-
-For Contextro, prefer the existing benchmark surfaces:
-
-- `python scripts/benchmark_token_efficiency.py`
-- `python scripts/benchmark_retrieval_quality.py --path src --query-limit 20`
-- `python scripts/benchmark_chunk_profiles.py --path src --query-limit 20`
-- `python scripts/benchmark_disclosure.py`
-- `python scripts/bench_final.py`
-- `pytest -v`
-- `ruff check .`
-
-## System Design Patterns
-
-- Give the model a map, not a manual.
-- Keep top-level instructions short.
-- Use progressive disclosure for long tasks and large repositories.
-- Keep the loop close to the codebase: retrieve, inspect, edit, verify.
-- Route tasks to the smallest capable model or component.
-- Preserve stable response shapes, checkpoints, and resume artifacts.
-- Decompose work into orchestration, state, formatting, and domain logic.
-- Benchmark the whole pipeline, not one stage in isolation.
-- Translate recurring review comments into docs, tests, lints, or evals.
-
-## Company Patterns To Reuse
-
-- OpenAI: eval-first engineering, repository-local system of record, legible architecture, enforceable invariants
-- Anthropic: success criteria before prompt tuning, smallest high-signal context, progressive disclosure, resumable work
-- Google DeepMind: rigorous baselines, ablations, controlled comparisons, careful measurement
-- Mistral: efficient routing, compact context slices, modular task decomposition, smaller passes when sufficient
-- DeepSeek: checkpointing, stable prompt structure, resumable trajectories, cache-aware workflows
-- Cursor: codebase-first retrieval, tight edit/verify loops, low-friction local iteration
-- Windsurf: coordinated plan-plus-execution, visible intermediate state, IDE-aware long tasks
-- NVIDIA: benchmark the full pipeline, not one subcomponent
-- Devin and Cognition: realistic environments, evaluator loops, autonomous feedback, external memory
-
-Reuse the mechanism, not the brand.
-
-## Use This Skill To Produce
-
-- concrete implementation path
-- benchmark or eval harness
-- regression guardrails
-- observability requirements
+- a crisp product outcome tied to a real benchmark or eval
+- a hardened implementation plan grounded in the current Rust workspace
+- guardrails for correctness, latency, token efficiency, and output truthfulness
+- observability for regressions and failure modes
 - rollout and rollback criteria
-- repository artifacts that make the system legible to future agents
+- a validation path that survives future iterations
+
+## Do Not Use It For
+
+- open-ended "what should we try?" research; use `breakthrough-researcher`
+- autonomous experiment loops that keep trying changes until a target is met; use `autoresearch`
+- release-candidate certification; use `contextro-release-tester`
+- docs-only updates; use `docs-maintainer`
+
+## Contextro Defaults
+
+Primary engineering and guardrail surfaces:
+
+- `cd crates && cargo test --quiet`
+- `cd crates && cargo run --release -p contextro --bin contextro-bench -- <repo-path>`
+- `cd crates && cargo run --release -p contextro --bin contextro-study -- --codebase <repo-path> --output-dir <dir> --tasks 200`
+- `cd crates && cargo test --quiet -p contextro-indexing --test bench_index -- --nocapture`
+- `./scripts/release-candidate.sh --skip-study`
+
+Retained evidence to respect:
+
+- repo-local refreshed study: `100%` success at `5,412` total Contextro tokens on the 200-task
+  Contextro-repo study, versus `stronger_local` at `93.0%` success and `225,153` total tokens
+- latest full-surface `contextro-bench` refresh: `40/40` benchmarked tools across `41` cases,
+  search about `0.11ms`, `test_for` about `0.28ms`, `diff_preview` about `0.79ms`,
+  `repo_add` about `1.19ms`, `repo_remove` active restore about `4.47ms`, with cold index
+  still open at about `43.53ms`
+- benchmark thresholds in `bench.rs`: cold index average `<= 40ms`, average search `<= 137us`,
+  MCP throughput `>= 500/s`
+
+Default constraints:
+
+- local-first behavior, single compiled Rust binary, low idle memory, and stable MCP contracts
+- no success-shaped fallbacks that hide uncertainty or empty results
+- no benchmark or eval gaming through harness edits
+- hand-written source files stay in the 300-500 line band; do not grow touched 500+ line files
+  without splitting them in the same task
 
 ## Method
 
-### 1. Define The Outcome And Constraints
+### 1. Name The Outcome Before The Change
 
-Name these up front:
+State:
 
-- user-visible outcome
-- primary metric
-- secondary guardrails
-- hard constraints like memory, latency, privacy, local-first behavior, and test integrity
+- the user-visible outcome
+- the primary metric
+- the guardrails
+- the baseline
+- the shipping risk if the change goes wrong
 
-If the metric is unclear, make it explicit before changing the system.
+If the proposed improvement only helps an internal proxy, say that plainly.
 
-### 2. Make The System Legible
+### 2. Ground The Plan In Repository Reality
 
-Prefer repository-local artifacts over hidden conversational guidance.
+Before implementation, read the real repo surfaces involved:
 
-Use or improve:
+- tool contracts in `crates/contextro-tools/` or `crates/contextro-server/`
+- benchmark and study harnesses in `crates/contextro-server/src/bench.rs`,
+  `crates/contextro-server/src/study.rs`, and `crates/contextro-indexing/tests/bench_index.rs`
+- retained benchmark notes in
+  `.agents/skills/dev-contextro-mcp/references/benchmark-results.md`
+- release-candidate workflow in `scripts/release-candidate.sh` and
+  `docs/RELEASE_CANDIDATE_TESTING.md`
 
-- concise top-level instructions
-- structured docs in `docs/`
-- executable benchmark scripts in `scripts/`
-- tests and linters
-- eval definitions
-- stable response shapes and resume artifacts
+Do not rely on stale README lore or prior intuition when the code disagrees.
 
-### 3. Build The Harness Before Trusting The Change
+### 3. Keep The Measuring Stick Honest
 
-For meaningful AI or retrieval changes, define:
+- Never modify benchmark or eval harnesses to manufacture a win.
+- Treat token cuts that lower success or output truthfulness as regressions.
+- Treat faster responses that omit needed facts, callers, or files as regressions.
+- Prefer benchmark integrity over a cosmetically better number.
 
-- baseline benchmark command
-- realistic task set or eval set
-- deterministic checks where possible
-- evaluator workflow where deterministic checks are insufficient
-- before-vs-after comparison
+### 4. Design The Smallest Enforceable Change
 
-### 4. State Facts, Inferences, And Hypotheses
+Prefer an implementation slice that isolates the idea cleanly:
 
-- Facts: directly supported by repo evidence or source material.
-- Inferences: reasonable conclusions from multiple facts.
-- Hypotheses: proposed changes that still need to be tested.
+- response contract shaping
+- retrieval or ranking improvement
+- caching or warm-path optimization
+- observability or logging hook
+- guardrail test or release gate
+- progressive-disclosure or compact-output change
 
-Do not present a hypothesis as a truth.
+Avoid giant rewrites until smaller slices show the bottleneck is structural.
 
-### 5. Implement The Smallest Enforceable Slice
+### 5. Add Guardrails With The Change
 
-Do not solve a broad problem with a large rewrite unless the harness proves you need one.
+For any meaningful improvement, decide which of these also needs to change:
 
-Prefer:
+- `contextro-study` tasks or retained study thresholds
+- targeted unit or integration tests
+- release-candidate coverage
+- docs for public contracts or benchmark claims
+- tool manifest or skill guidance
 
-- one clear invariant at a time
-- one benchmarked change at a time
-- thin entrypoints with logic moved into focused modules
-- explicit boundaries between orchestration, state, formatting, and domain logic
-- structure that can be tested and observed
-- reusable system surfaces over prompt-only behavior
+If the improvement depends on an assumption that is not enforced anywhere, add an enforcement
+mechanism.
 
-### 6. Add Observability And Recovery
+### 6. Make Failure Modes Visible
 
-If a system can fail, drift, or regress, add the signals that reveal it:
+At minimum, call out:
 
-- metrics
-- logs
-- traces or event records
-- resume and compaction artifacts
-- stable prefixes for cache-friendly outputs
-- searchable history when long-running tasks matter
+- what can regress
+- what metric will catch it
+- what symptoms users would see
+- how to roll back safely
 
-### 7. Validate Before You Ship
+Prefer concrete detection over "we would notice."
 
-Every significant change should have:
+### 7. Ship Only What You Can Defend
 
-- test result
-- benchmark result
-- regression guardrail status
-- failure-mode review
-- rollback plan
+Keep a change when it:
 
-Do not trade away correctness or maintainability for a single benchmark win.
+- improves the primary metric meaningfully
+- preserves success and correctness guardrails
+- keeps contracts and docs truthful
+- has a clear rollback path
 
-### 8. Encode Taste Into The Repo
-
-If a human review comment is likely to recur, turn it into one of:
-
-- documentation
-- a lint or test
-- a benchmark assertion
-- an eval case
-- an explicit workflow rule
-
-The goal is not to keep fixing the same thing manually.
+Do not trade away maintainability or legibility for a marginal local win.
 
 ## Output Format
 
-Return results in this order:
+Return work in this order:
 
 1. `Outcome and metric`
-2. `Constraints`
-3. `Current baseline`
-4. `Facts`
-5. `Inferences`
-6. `Hypotheses`
-7. `Implementation plan`
-8. `Harness and eval plan`
-9. `Observability and guardrails`
-10. `Rollout and rollback`
-11. `Open questions and tradeoffs`
+2. `Baseline and constraints`
+3. `Facts`
+4. `Implementation plan`
+5. `Guardrails and observability`
+6. `Validation plan`
+7. `Rollout / rollback`
+8. `Recommendation`
+
+## Composition Rule
+
+- use `breakthrough-researcher` when the solution space is still unclear
+- use `autoresearch` when the right move is an autonomous benchmark loop
+- use `dev-contextro-mcp` for codebase discovery, tool routing, and blast-radius analysis
+- use `contextro-release-tester` before tags or publish decisions
+- use `mcp-protocol-architect` for tool/resource/prompt boundary design
+- use `rust-extension-engineer` for Rust hot paths, concurrency, and low-level performance work
 
 ## Anti-Patterns
 
-- Do not ship AI behavior with no evals.
-- Do not benchmark one metric while ignoring tests, latency, memory, or user-visible regressions.
-- Do not rely on giant instruction blobs when code, docs, lint, or evals can enforce the behavior.
-- Do not hide critical workflow knowledge only in chat.
-- Do not choose architectural rewrites before testing smaller enforceable changes.
-- Do not treat prompt tuning as a substitute for data quality or harness quality.
-- Do not assume one model should do every task.
-- Do not ship synthetic wins that do not match the production task distribution.
-- Do not use LLM grading without a clear rubric and calibration.
-- Do not skip rollback planning.
-
-## Handoff Rule
-
-- use `breakthrough-researcher` when the solution space is still unclear
-- use `autoresearch` when the metric and experiment loop are already defined and ready to run autonomously
-
-## References
-
-- Engineering patterns: `references/engineering-patterns.md`
-- Research notes: `references/research-notes.md`
-- Skill eval rubric: `references/eval-rubric.md`
+- hardening a win that was never measured properly
+- optimizing token counts by hiding evidence the user still needs
+- treating docs or benchmarks as secondary after a behavior change
+- shipping a faster response that silently becomes less truthful
+- recommending rollout with no rollback trigger
+- citing old benchmark numbers when current retained results disagree

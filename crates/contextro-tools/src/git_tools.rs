@@ -1,13 +1,13 @@
-//! Git tools: commit_search, commit_history, repo_add, repo_remove, repo_status.
+//! Git tools: commit_search, commit_history, diff_preview, repo_add, repo_remove, repo_status.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
 
 use chrono::{DateTime, Utc};
+#[cfg(test)]
 use contextro_config::get_settings;
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
+use contextro_git::{current_branch, head_hash};
 use serde_json::{json, Value};
 
 mod commit_search;
@@ -80,6 +80,84 @@ pub fn handle_commit_history(args: &Value, codebase: Option<&str>) -> Value {
         "author": author_filter,
         "since": args.get("since").and_then(|v| v.as_str()),
     })
+}
+
+pub fn handle_diff_preview(args: &Value, codebase: Option<&str>) -> Value {
+    let repo_path = codebase.unwrap_or(".");
+    let repo = match git2::Repository::discover(repo_path) {
+        Ok(repo) => repo,
+        Err(_) => return json!({"error": "Not a git repository"}),
+    };
+
+    let repo_root = match repo_root_path(&repo) {
+        Some(root) => root,
+        None => return json!({"error": "Failed to determine repository root"}),
+    };
+    let base = args.get("base").and_then(|value| value.as_str());
+    let head = args.get("head").and_then(|value| value.as_str());
+    let path = args
+        .get("path")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty());
+    let limit = args
+        .get("limit")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(20) as usize;
+    let preview_lines = args
+        .get("preview_lines")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(4) as usize;
+
+    let (diff, mode, base_label, head_label) =
+        match build_diff_preview(&repo, &repo_root, base, head, path) {
+            Ok(result) => result,
+            Err(error) => return json!({"error": error}),
+        };
+
+    let stats = match diff.stats() {
+        Ok(stats) => stats,
+        Err(_) => return json!({"error": "Failed to collect diff stats"}),
+    };
+    let previews = match collect_diff_previews(&diff, &repo_root, preview_lines) {
+        Ok(previews) => previews,
+        Err(_) => return json!({"error": "Failed to read diff preview"}),
+    };
+
+    let candidate_total = previews.len();
+    let truncated = candidate_total > limit;
+    let files: Vec<Value> = previews
+        .into_iter()
+        .take(limit)
+        .map(DiffFilePreview::into_json)
+        .collect();
+    let total = files.len();
+
+    let repo_root_str = repo_root.to_string_lossy().to_string();
+    let mut response = json!({
+        "mode": mode,
+        "base": base_label,
+        "head": head_label,
+        "path": path,
+        "files": files,
+        "total": total,
+        "candidate_total": candidate_total,
+        "truncated": truncated,
+        "diffstat": {
+            "files": stats.files_changed(),
+            "insertions": stats.insertions(),
+            "deletions": stats.deletions(),
+        },
+    });
+    if let Some(branch) = current_branch(&repo_root_str) {
+        response["branch"] = json!(branch);
+    }
+    if let Some(hash) = head_hash(&repo_root_str) {
+        response["head_hash"] = json!(short_hash(&hash));
+    }
+    if candidate_total == 0 {
+        response["hint"] = json!("No changes found for the selected diff.");
+    }
+    response
 }
 
 pub fn handle_repo_add(args: &Value, registry: &RepoRegistry) -> Value {
@@ -164,6 +242,203 @@ fn load_repos(path: &Path) -> HashMap<String, String> {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+struct DiffFilePreview {
+    path: String,
+    status: &'static str,
+    previous_path: Option<String>,
+    insertions: usize,
+    deletions: usize,
+    preview: Vec<String>,
+    preview_count: usize,
+}
+
+impl DiffFilePreview {
+    fn from_delta(delta: &git2::DiffDelta<'_>, repo_root: &Path) -> Self {
+        let previous_path = delta
+            .old_file()
+            .path()
+            .map(|path| relativize_repo_path(path, repo_root));
+        let current_path = delta
+            .new_file()
+            .path()
+            .or_else(|| delta.old_file().path())
+            .map(|path| relativize_repo_path(path, repo_root))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        Self {
+            path: current_path,
+            status: diff_status(delta.status()),
+            previous_path,
+            insertions: 0,
+            deletions: 0,
+            preview: Vec::new(),
+            preview_count: 0,
+        }
+    }
+
+    fn into_json(self) -> Value {
+        let mut value = json!({
+            "path": self.path,
+            "status": self.status,
+            "insertions": self.insertions,
+            "deletions": self.deletions,
+            "preview": self.preview,
+        });
+        if let Some(previous_path) = self.previous_path.filter(|old| old != &self.path) {
+            value["previous_path"] = json!(previous_path);
+        }
+        value
+    }
+}
+
+fn build_diff_preview<'repo>(
+    repo: &'repo git2::Repository,
+    repo_root: &Path,
+    base: Option<&str>,
+    head: Option<&str>,
+    path: Option<&str>,
+) -> Result<(git2::Diff<'repo>, &'static str, String, String), String> {
+    let mut options = git2::DiffOptions::new();
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_typechange(true)
+        .ignore_submodules(true);
+    if let Some(path) = path {
+        options.pathspec(normalize_diff_path(path, repo_root));
+    }
+
+    match head {
+        Some(head_rev) => {
+            let base_rev = base.unwrap_or("HEAD");
+            let base_tree = resolve_tree(repo, base_rev)?;
+            let head_tree = resolve_tree(repo, head_rev)?;
+            let diff = repo
+                .diff_tree_to_tree(Some(&base_tree), Some(&head_tree), Some(&mut options))
+                .map_err(|_| format!("Failed to diff {}..{}", base_rev, head_rev))?;
+            Ok((diff, "range", base_rev.to_string(), head_rev.to_string()))
+        }
+        None => {
+            let base_rev = base.unwrap_or("HEAD");
+            let base_tree = resolve_tree(repo, base_rev)?;
+            let diff = repo
+                .diff_tree_to_workdir_with_index(Some(&base_tree), Some(&mut options))
+                .map_err(|_| format!("Failed to diff {} against the working tree", base_rev))?;
+            Ok((
+                diff,
+                "worktree",
+                base_rev.to_string(),
+                "WORKTREE".to_string(),
+            ))
+        }
+    }
+}
+
+fn collect_diff_previews(
+    diff: &git2::Diff<'_>,
+    repo_root: &Path,
+    preview_lines: usize,
+) -> Result<Vec<DiffFilePreview>, git2::Error> {
+    let previews = RefCell::new(Vec::new());
+    diff.foreach(
+        &mut |delta, _| {
+            previews
+                .borrow_mut()
+                .push(DiffFilePreview::from_delta(&delta, repo_root));
+            true
+        },
+        None,
+        None,
+        Some(&mut |_, _, line| {
+            if let Some(file) = previews.borrow_mut().last_mut() {
+                match line.origin() {
+                    '+' => file.insertions += 1,
+                    '-' => file.deletions += 1,
+                    _ => {}
+                }
+                if matches!(line.origin(), '+' | '-') && file.preview_count < preview_lines {
+                    if let Some(compact) = compact_diff_line(line.origin(), line.content()) {
+                        file.preview.push(compact);
+                        file.preview_count += 1;
+                    }
+                }
+            }
+            true
+        }),
+    )?;
+    Ok(previews.into_inner())
+}
+
+fn resolve_tree<'repo>(
+    repo: &'repo git2::Repository,
+    rev: &str,
+) -> Result<git2::Tree<'repo>, String> {
+    let object = repo
+        .revparse_single(rev)
+        .map_err(|_| format!("Unknown revision: {}", rev))?;
+    object
+        .peel_to_tree()
+        .map_err(|_| format!("Revision '{}' does not resolve to a tree", rev))
+}
+
+fn repo_root_path(repo: &git2::Repository) -> Option<PathBuf> {
+    repo.workdir()
+        .map(Path::to_path_buf)
+        .or_else(|| repo.path().parent().map(Path::to_path_buf))
+}
+
+fn normalize_diff_path(path: &str, repo_root: &Path) -> String {
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        candidate
+            .strip_prefix(repo_root)
+            .unwrap_or(candidate)
+            .to_string_lossy()
+            .to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+fn relativize_repo_path(path: &Path, repo_root: &Path) -> String {
+    path.strip_prefix(repo_root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn diff_status(status: git2::Delta) -> &'static str {
+    match status {
+        git2::Delta::Added => "added",
+        git2::Delta::Deleted => "deleted",
+        git2::Delta::Modified => "modified",
+        git2::Delta::Renamed => "renamed",
+        git2::Delta::Copied => "copied",
+        git2::Delta::Typechange => "typechange",
+        git2::Delta::Untracked => "untracked",
+        git2::Delta::Ignored => "ignored",
+        git2::Delta::Unreadable => "unreadable",
+        git2::Delta::Conflicted => "conflicted",
+        _ => "unknown",
+    }
+}
+
+fn compact_diff_line(origin: char, content: &[u8]) -> Option<String> {
+    let line = String::from_utf8_lossy(content).trim().to_string();
+    if line.is_empty() {
+        return None;
+    }
+    let compact = if line.chars().count() > 120 {
+        format!("{}...", line.chars().take(117).collect::<String>())
+    } else {
+        line
+    };
+    Some(format!("{origin}{compact}"))
+}
+
+fn short_hash(hash: &str) -> String {
+    hash.chars().take(12).collect()
+}
 
 fn tokenize(text: &str) -> Vec<String> {
     text.to_lowercase()

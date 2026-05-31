@@ -1,6 +1,6 @@
 # Tool Decision Tree
 
-Full routing guide for all 38 public Contextro tools plus the eight `code(...)`
+Full routing guide for all 40 public Contextro tools plus the eight `code(...)`
 operations. Use this reference when the short table in `SKILL.md` is not enough.
 
 ## Fast Default
@@ -29,7 +29,7 @@ operations. Use this reference when the short table in `SKILL.md` is not enough.
 | Check refactor blast radius | `refactor_check(...)` then `impact(...)` | `completion_check(...)` after the edit |
 | Verify a rename/signature refactor is done | `completion_check({"claim":"all_callers_updated", ...})` | Use before claiming all callers were updated |
 | Plan AST-aware or symbol-heavy edits | `code(...)` operations | See the dedicated section below |
-| Compare or search another repo | `repo_add(...)` -> `index(...)` -> `search` / `explain` | `repo_add` only registers the repo; `index(path)` makes it queryable |
+| Compare or search another repo | `repo_add(...)` -> `search` / `explain` | `repo_add` registers, auto-indexes, and activates the repo; use `index(path)` later only for explicit re-indexing |
 | Recover archives, memories, or session state | `retrieve`, `recall`, `restore`, `session_snapshot` | Pick the exact recovery path; see distinctions below |
 | Generate packaged artifacts | `audit`, `docs_bundle`, `sidecar_export` | Use only when the user wants an artifact |
 | Ask Contextro which tool fits | `introspect(...)` | Prefer this over guessing params or tool choice |
@@ -41,13 +41,14 @@ operations. Use this reference when the short table in `SKILL.md` is not enough.
 | `health` | You need to know whether the server/runtime is up | You only need active repo/index state | `health({})` |
 | `status` | You need active repo, index counts, memory counts, or uptime | `index()` just returned `status: "done"` and work can start | `status({})` |
 | `index` | A repo is new, changed, or not indexed yet | You are already on the active indexed repo | `index({"path":"/repo"})` |
-| `repo_add` | You want to register an external repo before indexing/searching it | You only need the current repo | `repo_add({"path":"/Users/alice/platform","name":"platform"})` |
+| `repo_add` | You want to register, auto-index, and activate an external repo | You only need the current repo | `repo_add({"path":"/Users/alice/platform","name":"platform"})` |
 | `repo_status` | You need the registered repo list | You need runtime stats or active repo (`status`) instead | `repo_status({})` |
 | `repo_remove` | Temporary repo work is done and you want to remove it by name or path | You only need to switch queries inside the current repo | `repo_remove({"name":"platform"})` |
 
 Notes:
 
-- `repo_add` only registers the repo. Run `index({"path":"..."})` before search or explain flows on that repo.
+- `repo_add` auto-indexes the repo and switches active scope. Run `index({"path":"..."})`
+  later only when you explicitly want to re-index an already registered repo.
 - `repo_remove` accepts either `name` or `path`.
 - Do not simulate repo management by manually deleting files under storage.
 

@@ -224,7 +224,7 @@ pub fn handle_test_coverage_map(graph: &CodeGraph, codebase: Option<&str>) -> Va
     })
 }
 
-fn file_stem_stripped(fp: &str) -> String {
+pub(crate) fn file_stem_stripped(fp: &str) -> String {
     let stem = Path::new(fp)
         .file_stem()
         .unwrap_or_default()
@@ -239,7 +239,7 @@ fn file_stem_stripped(fp: &str) -> String {
     stem
 }
 
-fn coverage_tokens(text: &str) -> HashSet<String> {
+pub(crate) fn coverage_tokens(text: &str) -> HashSet<String> {
     const GENERIC_COVERAGE_TOKENS: &[&str] = &[
         "test",
         "tests",
@@ -338,7 +338,7 @@ fn normalize_lookup_path(path: &Path) -> String {
     normalized.to_string_lossy().replace('\\', "/")
 }
 
-fn has_probable_test_signal(
+pub(crate) fn has_probable_test_signal(
     source_tokens: &HashSet<String>,
     test_tokens: &HashSet<String>,
     source_token_frequency: &HashMap<String, usize>,

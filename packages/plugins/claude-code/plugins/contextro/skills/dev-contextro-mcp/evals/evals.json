@@ -1,6 +1,6 @@
 {
   "skill_name": "dev-contextro-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Core trigger and routing evals for the Contextro MCP skill. Covers problem-first routing across the current 38-tool public surface, nearby-tool distinctions, and avoidance of token-heavy anti-patterns.",
   "rubric": {
     "source_docs": [
@@ -166,6 +166,22 @@
           "text": "archive, session, and durable-memory recovery paths are distinguished",
           "type": "tool_selection",
           "passing_condition": "agent recommends retrieve(ref_id='arc_ab12cd34') for the archive and recall(query='release workflow') for the durable memory"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "routing-repo-add-auto-index",
+      "category": "tool_distinction",
+      "prompt": "Register /Users/alice/platform as repo platform and then search it for retry middleware.",
+      "should_trigger": true,
+      "expected_behavior": "Agent uses repo_add to register, auto-index, and activate the repo, then proceeds to search without redundantly calling index first.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "repo_add is treated as auto-indexing",
+          "type": "tool_selection",
+          "passing_condition": "repo_add called with path='/Users/alice/platform' and name='platform', followed by search without an immediate index call on the same repo"
         }
       ]
     }

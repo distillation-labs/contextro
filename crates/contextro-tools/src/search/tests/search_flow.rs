@@ -131,7 +131,6 @@ fn test_handle_search_returns_cached_tool_response() {
             "line": 1,
             "score": 1.0,
         }],
-        "total": 1,
         "limit": 5,
     });
 

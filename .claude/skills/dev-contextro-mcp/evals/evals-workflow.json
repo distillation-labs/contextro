@@ -1,0 +1,147 @@
+{
+  "skill_name": "dev-contextro-mcp",
+  "version": "0.2.1",
+  "eval_set": "workflow-functional-performance",
+  "description": "Functional workflow evals for the Contextro skill. Covers the highest-value problem-first flows across discovery, refactor safety, cross-repo work, recovery, exports, and AST rewrite safety.",
+  "categories": {
+    "workflow": "Multi-step tool sequences happen in the right order",
+    "functional": "The chosen tools solve the user task correctly",
+    "output_format": "The agent handles confidence, text-first outputs, archive retrieval, and current response contracts correctly",
+    "performance_comparison": "The skill reduces reads and tool chatter relative to baseline",
+    "distinctions": "The workflow keeps nearby tools with different purposes separate"
+  },
+  "evals": [
+    {
+      "id": 101,
+      "name": "workflow-safe-refactor-order",
+      "category": "workflow",
+      "prompt": "I want to rename BaseEmbeddingService to EmbeddingBackend across the codebase.",
+      "expected_behavior": "Agent starts with refactor_check for the one-shot pre-edit view, uses impact before rename guidance, and keeps completion_check for the post-edit caller-completeness step.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "refactor_check starts the refactor workflow",
+          "type": "workflow",
+          "passing_condition": "refactor_check('BaseEmbeddingService') called before any rename recommendation"
+        },
+        {
+          "id": "a2",
+          "text": "impact happens before rename guidance",
+          "type": "workflow",
+          "passing_condition": "impact('BaseEmbeddingService') called before any rename recommendation"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "name": "workflow-orient-unfamiliar-repo",
+      "category": "workflow",
+      "prompt": "I just opened a large unfamiliar repo. Orient me before we touch the auth subsystem.",
+      "expected_behavior": "Agent uses overview then architecture before narrowing with search/explain, instead of starting with broad file reads.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "overview leads orientation",
+          "type": "workflow",
+          "passing_condition": "overview called before architecture/search/explain"
+        },
+        {
+          "id": "a2",
+          "text": "architecture follows orientation",
+          "type": "workflow",
+          "passing_condition": "architecture called before broad file reads"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "name": "workflow-cross-repo-investigation",
+      "category": "workflow",
+      "prompt": "Compare retry logic in the current repo and /Users/alice/platform.",
+      "expected_behavior": "Agent registers the external repo with repo_add, indexes that path, then uses Contextro discovery tools instead of ad hoc shell search.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "repo_add is used for the external repo",
+          "type": "workflow",
+          "passing_condition": "repo_add called with path='/Users/alice/platform'"
+        },
+        {
+          "id": "a2",
+          "text": "the external repo is indexed before search/explain",
+          "type": "workflow",
+          "passing_condition": "index called with path='/Users/alice/platform' before search/explain on that repo"
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "name": "workflow-recovery-distinction",
+      "category": "distinctions",
+      "prompt": "I am back after a restart. I have archive ref arc_ab12cd34 and I also want the recent session steps.",
+      "expected_behavior": "Agent uses retrieve for the archive ref and restore or session_snapshot for project/session re-entry without mixing those paths up.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "retrieve is used for the archive ref",
+          "type": "workflow",
+          "passing_condition": "retrieve called with ref_id='arc_ab12cd34'"
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "name": "workflow-docs-and-sidecars",
+      "category": "functional",
+      "prompt": "Generate a docs bundle for this indexed repo and export graph sidecars for src/.",
+      "expected_behavior": "Agent uses docs_bundle for the docs artifact and sidecar_export for the graph sidecars.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "docs bundle is generated through the dedicated tool",
+          "type": "tool_selection",
+          "passing_condition": "docs_bundle called"
+        },
+        {
+          "id": "a2",
+          "text": "sidecar export is generated through the dedicated tool",
+          "type": "tool_selection",
+          "passing_condition": "sidecar_export called with path='src/' or path='src'"
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "name": "workflow-ast-rewrite-safety",
+      "category": "workflow",
+      "prompt": "Replace println! with tracing::info! across Rust files.",
+      "expected_behavior": "Agent uses pattern_search first and keeps pattern_rewrite in dry_run mode before any applying step.",
+      "assertions": [
+        {
+          "id": "a1",
+          "text": "pattern search happens before rewrite",
+          "type": "workflow",
+          "passing_condition": "code(pattern_search) called before code(pattern_rewrite)"
+        },
+        {
+          "id": "a2",
+          "text": "pattern rewrite previews before apply",
+          "type": "workflow",
+          "passing_condition": "first pattern_rewrite call uses dry_run=true"
+        }
+      ]
+    }
+  ],
+  "baseline_comparison": {
+    "without_skill": {
+      "orientation": {
+        "tool_calls": 15,
+        "readFile_calls": 8,
+        "tokens_consumed": 18060
+      }
+    },
+    "with_skill_target": {
+      "orientation": { "tool_calls": 3, "readFile_calls": 0 }
+    }
+  }
+}

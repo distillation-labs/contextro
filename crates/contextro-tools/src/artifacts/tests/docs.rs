@@ -93,7 +93,12 @@ fn test_docs_bundle_writes_rich_overview_markdown() {
     });
 
     let base = codebase.to_string_lossy().to_string();
-    let result = handle_docs_bundle(&json!({"output_dir":"docs"}), &graph, Some(base.as_str()));
+    let result = handle_docs_bundle(
+        &json!({"output_dir":"docs"}),
+        &graph,
+        Some(base.as_str()),
+        1,
+    );
     assert_eq!(result["status"], "generated");
 
     let overview = std::fs::read_to_string(codebase.join("docs/overview.md")).unwrap();
@@ -114,7 +119,12 @@ fn test_docs_bundle_requires_indexed_graph() {
     let graph = CodeGraph::new();
 
     let base = codebase.to_string_lossy().to_string();
-    let result = handle_docs_bundle(&json!({"output_dir":"docs"}), &graph, Some(base.as_str()));
+    let result = handle_docs_bundle(
+        &json!({"output_dir":"docs"}),
+        &graph,
+        Some(base.as_str()),
+        1,
+    );
 
     assert_eq!(
         result["error"],
@@ -124,6 +134,54 @@ fn test_docs_bundle_requires_indexed_graph() {
         !codebase.join("docs/overview.md").exists(),
         "docs bundle should not write placeholder docs when no graph is loaded"
     );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn test_docs_bundle_skips_rewriting_current_outputs() {
+    let root = temp_dir("docs-bundle-cache");
+    let codebase = root.join("repo");
+    std::fs::create_dir_all(codebase.join("src")).unwrap();
+
+    let graph = CodeGraph::new();
+    graph.add_node(UniversalNode {
+        id: "browser-session".into(),
+        name: "BrowserSession".into(),
+        node_type: NodeType::Class,
+        location: UniversalLocation {
+            file_path: codebase
+                .join("src/session.py")
+                .to_string_lossy()
+                .to_string(),
+            start_line: 1,
+            end_line: 20,
+            start_column: 0,
+            end_column: 0,
+            language: "python".into(),
+        },
+        language: "python".into(),
+        ..Default::default()
+    });
+
+    let base = codebase.to_string_lossy().to_string();
+    let args = json!({"output_dir":"docs"});
+    handle_docs_bundle(&args, &graph, Some(base.as_str()), 7);
+
+    let overview_path = codebase.join("docs/overview.md");
+    let first_modified = std::fs::metadata(&overview_path)
+        .unwrap()
+        .modified()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(25));
+
+    handle_docs_bundle(&args, &graph, Some(base.as_str()), 7);
+
+    let second_modified = std::fs::metadata(&overview_path)
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert_eq!(first_modified, second_modified);
 
     let _ = std::fs::remove_dir_all(root);
 }

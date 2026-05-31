@@ -1,10 +1,17 @@
-//! Graph-based tools: find_callers, find_callees, explain, impact.
+//! Graph-based tools: find_callers, find_callees, test_for, explain, impact.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::Path;
+use std::sync::{Arc, OnceLock};
 
 use contextro_engines::graph::CodeGraph;
+use parking_lot::RwLock;
 use serde_json::{json, Value};
+
+use crate::analysis::{
+    file_relations::{coverage_tokens, file_stem_stripped, has_probable_test_signal},
+    is_test_file, strip_base,
+};
 
 /// Resolve the preferred `symbol_name` plus backward-compatible aliases.
 fn get_symbol_name(args: &Value) -> &str {
@@ -111,6 +118,103 @@ pub fn handle_find_callees(args: &Value, graph: &CodeGraph, codebase: Option<&st
                  Try querying its methods directly by name."
             );
         }
+    }
+    result
+}
+
+pub fn handle_test_for(args: &Value, graph: &CodeGraph, codebase: Option<&str>) -> Value {
+    handle_test_for_with_epoch(args, graph, codebase, graph.mutation_epoch())
+}
+
+pub fn handle_test_for_with_epoch(
+    args: &Value,
+    graph: &CodeGraph,
+    codebase: Option<&str>,
+    graph_epoch: u64,
+) -> Value {
+    let name = get_symbol_name(args);
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+    if name.is_empty() {
+        return json!({"error": "Missing required parameter: symbol_name"});
+    }
+
+    let matches = resolve_symbol(name, graph);
+    if matches.is_empty() {
+        return json!({"error": format!("Symbol '{}' not found.", name)});
+    }
+    let source_tokens = collect_source_tokens(&matches, codebase);
+    let cached = cached_test_for_graph_data(graph, codebase, graph_epoch);
+    let source_stems: HashSet<String> = matches
+        .iter()
+        .map(|node| file_stem_stripped(&node.location.file_path))
+        .filter(|stem| !stem.is_empty())
+        .collect();
+
+    let mut candidates: HashMap<String, TestCandidate> = HashMap::new();
+
+    for node in &matches {
+        if file_has_inline_tests(&node.location.file_path) {
+            add_test_signal(
+                &mut candidates,
+                &node.location.file_path,
+                90,
+                "inline_test",
+                None,
+                None,
+            );
+        }
+    }
+
+    queue_test_callers(&matches, graph, &mut candidates);
+
+    for (test_file, tokens) in cached.test_file_tokens.iter() {
+        if source_stems.contains(&file_stem_stripped(test_file)) {
+            add_test_signal(&mut candidates, test_file, 60, "exact_stem", None, None);
+        }
+        if has_probable_test_signal(&source_tokens, tokens, &cached.source_token_frequency) {
+            add_test_signal(&mut candidates, test_file, 30, "token_overlap", None, None);
+        }
+    }
+
+    let candidate_total = candidates.len();
+    let mut tests: Vec<Value> = candidates
+        .into_iter()
+        .map(|(file, candidate)| candidate.to_json(&file, codebase))
+        .collect();
+    tests.sort_by(|left, right| {
+        right["score"]
+            .as_u64()
+            .cmp(&left["score"].as_u64())
+            .then_with(|| left["file"].as_str().cmp(&right["file"].as_str()))
+    });
+    if tests.len() > limit {
+        tests.truncate(limit);
+    }
+
+    let definitions: Vec<Value> = matches
+        .iter()
+        .map(|node| {
+            json!({
+                "name": node.name,
+                "type": node.node_type.to_string(),
+                "file": relativize(&node.location.file_path, codebase),
+                "line": node.location.start_line,
+            })
+        })
+        .collect();
+
+    let mut result = json!({
+        "symbol": name,
+        "definitions": definitions,
+        "tests": tests,
+        "total": tests.len(),
+        "candidate_total": candidate_total,
+        "limit": limit,
+    });
+    if candidate_total == 0 {
+        result["hint"] = json!(
+            "No direct or heuristic test matches found. Try test_coverage_map() for repo-wide gaps."
+        );
     }
     result
 }
@@ -265,7 +369,7 @@ fn relativize(filepath: &str, codebase: Option<&str>) -> String {
 
 /// Resolve a symbol name: exact match first, fall back to fuzzy.
 /// Ranks candidates by call frequency so the most-connected symbol wins on name collision.
-fn resolve_symbol(name: &str, graph: &CodeGraph) -> Vec<contextro_core::UniversalNode> {
+pub(crate) fn resolve_symbol(name: &str, graph: &CodeGraph) -> Vec<contextro_core::UniversalNode> {
     let exact = graph.find_nodes_by_name(name, true);
     if !exact.is_empty() {
         let mut ranked = exact;
@@ -305,6 +409,210 @@ fn build_explanation_summary(
         "{} is a {} defined at {}. It currently has {} caller(s) and {} callee(s).{}",
         node.name, node.node_type, location, callers_count, callees_count, doc
     )
+}
+
+#[derive(Default)]
+struct TestCandidate {
+    score: u64,
+    signals: BTreeSet<&'static str>,
+    callers: BTreeSet<String>,
+    line: Option<u32>,
+}
+
+#[derive(Clone, Default)]
+struct CachedTestForGraphData {
+    graph_ptr: usize,
+    graph_epoch: u64,
+    codebase: Option<String>,
+    test_file_tokens: Arc<HashMap<String, HashSet<String>>>,
+    source_token_frequency: Arc<HashMap<String, usize>>,
+}
+
+fn test_for_graph_cache() -> &'static RwLock<CachedTestForGraphData> {
+    static CACHE: OnceLock<RwLock<CachedTestForGraphData>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(CachedTestForGraphData::default()))
+}
+
+fn cached_test_for_graph_data(
+    graph: &CodeGraph,
+    codebase: Option<&str>,
+    graph_epoch: u64,
+) -> CachedTestForGraphData {
+    let graph_ptr = graph as *const CodeGraph as usize;
+    let codebase_owned = codebase.map(str::to_owned);
+    {
+        let cache = test_for_graph_cache().read();
+        if cache.graph_ptr == graph_ptr
+            && cache.graph_epoch == graph_epoch
+            && cache.codebase == codebase_owned
+        {
+            return cache.clone();
+        }
+    }
+
+    let refreshed = CachedTestForGraphData {
+        graph_ptr,
+        graph_epoch,
+        codebase: codebase_owned,
+        test_file_tokens: Arc::new(collect_test_file_tokens(graph, codebase)),
+        source_token_frequency: Arc::new(build_source_token_frequency(graph, codebase)),
+    };
+    *test_for_graph_cache().write() = refreshed.clone();
+    refreshed
+}
+
+impl TestCandidate {
+    fn to_json(self, file: &str, codebase: Option<&str>) -> Value {
+        let mut value = json!({
+            "file": strip_base(file, codebase),
+            "score": self.score,
+            "signals": self.signals.into_iter().collect::<Vec<_>>(),
+        });
+        if !self.callers.is_empty() {
+            value["callers"] = json!(self.callers.into_iter().collect::<Vec<_>>());
+        }
+        if let Some(line) = self.line {
+            value["line"] = json!(line);
+        }
+        value
+    }
+}
+
+fn add_test_signal(
+    candidates: &mut HashMap<String, TestCandidate>,
+    file: &str,
+    score: u64,
+    signal: &'static str,
+    caller_name: Option<&str>,
+    line: Option<u32>,
+) {
+    let entry = candidates.entry(file.to_string()).or_default();
+    entry.score += score;
+    entry.signals.insert(signal);
+    if let Some(name) = caller_name {
+        entry.callers.insert(name.to_string());
+    }
+    if let Some(line) = line {
+        entry.line = Some(entry.line.map_or(line, |current| current.min(line)));
+    }
+}
+
+fn queue_test_callers(
+    matches: &[contextro_core::UniversalNode],
+    graph: &CodeGraph,
+    candidates: &mut HashMap<String, TestCandidate>,
+) {
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<(String, usize)> = VecDeque::new();
+    for node in matches {
+        visited.insert(node.id.clone());
+        queue.push_back((node.id.clone(), 0));
+    }
+
+    while let Some((node_id, depth)) = queue.pop_front() {
+        if depth >= 2 {
+            continue;
+        }
+        for caller in graph.get_callers(&node_id) {
+            if !visited.insert(caller.id.clone()) {
+                continue;
+            }
+
+            let next_depth = depth + 1;
+            if is_test_file(&caller.location.file_path) {
+                let (signal, score) = if next_depth == 1 {
+                    ("direct_call", 100)
+                } else {
+                    ("transitive_call", 80)
+                };
+                add_test_signal(
+                    candidates,
+                    &caller.location.file_path,
+                    score,
+                    signal,
+                    Some(&caller.name),
+                    Some(caller.location.start_line),
+                );
+            }
+
+            if next_depth < 2 {
+                queue.push_back((caller.id.clone(), next_depth));
+            }
+        }
+    }
+}
+
+fn collect_source_tokens(
+    matches: &[contextro_core::UniversalNode],
+    codebase: Option<&str>,
+) -> HashSet<String> {
+    let mut tokens = HashSet::new();
+    for node in matches {
+        tokens.extend(coverage_tokens(&strip_base(
+            &node.location.file_path,
+            codebase,
+        )));
+        tokens.extend(coverage_tokens(&node.name));
+        if let Some(parent) = &node.parent {
+            tokens.extend(coverage_tokens(parent));
+        }
+    }
+    tokens
+}
+
+fn collect_test_file_tokens(
+    graph: &CodeGraph,
+    codebase: Option<&str>,
+) -> HashMap<String, HashSet<String>> {
+    let mut test_tokens = HashMap::new();
+    for node in graph.all_nodes() {
+        if !is_test_file(&node.location.file_path) {
+            continue;
+        }
+        let entry = test_tokens
+            .entry(node.location.file_path.clone())
+            .or_insert_with(|| coverage_tokens(&strip_base(&node.location.file_path, codebase)));
+        entry.extend(coverage_tokens(&node.name));
+        if let Some(parent) = &node.parent {
+            entry.extend(coverage_tokens(parent));
+        }
+    }
+    test_tokens
+}
+
+fn build_source_token_frequency(
+    graph: &CodeGraph,
+    codebase: Option<&str>,
+) -> HashMap<String, usize> {
+    let mut file_tokens = HashMap::<String, HashSet<String>>::new();
+    for node in graph.all_nodes() {
+        if is_test_file(&node.location.file_path) {
+            continue;
+        }
+        file_tokens
+            .entry(node.location.file_path.clone())
+            .or_insert_with(|| coverage_tokens(&strip_base(&node.location.file_path, codebase)));
+    }
+
+    let mut frequency = HashMap::new();
+    for tokens in file_tokens.into_values() {
+        for token in tokens {
+            *frequency.entry(token).or_insert(0) += 1;
+        }
+    }
+    frequency
+}
+
+fn file_has_inline_tests(file_path: &str) -> bool {
+    std::fs::read_to_string(file_path)
+        .map(|content| {
+            content.contains("#[cfg(test)]")
+                || content.contains("#[test]")
+                || content.contains("describe(")
+                || content.contains("test(")
+                || content.contains("it(")
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

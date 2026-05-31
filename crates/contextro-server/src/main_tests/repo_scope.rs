@@ -95,7 +95,7 @@ fn test_repo_remove_restores_previous_active_scope_and_knowledge_scope() {
     );
     assert!(overview["total_symbols"].as_u64().unwrap_or(0) >= 1);
     assert!(architecture["total_nodes"].as_u64().unwrap_or(0) >= 1);
-    assert!(repo_a_search["total"].as_u64().unwrap_or(0) >= 1);
+    assert!(repo_a_search.get("total").is_none());
     assert!(repo_a_results
         .iter()
         .any(|result| result["name"] == "repo_a_symbol"));
@@ -143,6 +143,39 @@ fn test_repo_remove_reindexes_previous_scope_when_cached_snapshot_is_stale() {
     assert!(!old_results
         .iter()
         .any(|result| result["name"] == "repo_a_symbol"));
+
+    let _ = std::fs::remove_dir_all(repo_a);
+    let _ = std::fs::remove_dir_all(repo_b);
+    let _ = std::fs::remove_dir_all(storage_dir);
+}
+
+#[test]
+fn test_remember_repo_scope_attaches_graph_snapshot_on_scope_handoff() {
+    let storage_dir = temp_storage_dir("repo-scope-graph-handoff");
+    let repo_a = temp_repo_dir("repo-handoff-a");
+    let repo_b = temp_repo_dir("repo-handoff-b");
+    write_indexable_repo(&repo_a, "repo_handoff_a_symbol");
+    write_indexable_repo(&repo_b, "repo_handoff_b_symbol");
+
+    let server = test_server(&storage_dir);
+    let indexed_a = server.handle_index(&json!({"path": repo_a.to_string_lossy().to_string()}));
+    assert_eq!(indexed_a["status"], "done");
+    let normalized_a = normalize_repo_dir(repo_a.to_string_lossy().as_ref());
+    assert!(server
+        .state
+        .repo_snapshot(&normalized_a)
+        .expect("repo A snapshot")
+        .graph
+        .is_empty());
+
+    let indexed_b = server.handle_index(&json!({"path": repo_b.to_string_lossy().to_string()}));
+    assert_eq!(indexed_b["status"], "done");
+    assert!(!server
+        .state
+        .repo_snapshot(&normalized_a)
+        .expect("repo A snapshot after handoff")
+        .graph
+        .is_empty());
 
     let _ = std::fs::remove_dir_all(repo_a);
     let _ = std::fs::remove_dir_all(repo_b);
@@ -213,7 +246,8 @@ fn test_repo_remove_clears_active_scope_when_no_previous_scope_exists() {
     assert_eq!(overview["codebase_path"], Value::Null);
     assert_eq!(overview["total_symbols"], 0);
     assert_eq!(architecture["total_nodes"], 0);
-    assert_eq!(search["total"], 0);
+    assert!(search.get("total").is_none());
+    assert_eq!(search["results"].as_array().map_or(0, Vec::len), 0);
 
     let _ = std::fs::remove_dir_all(repo);
     let _ = std::fs::remove_dir_all(storage_dir);
@@ -236,6 +270,7 @@ fn test_handle_index_restores_from_persisted_snapshot_when_repo_is_unchanged() {
         .state
         .load_persisted_repo_snapshot(&normalized_repo)
         .is_some());
+    let initial_bm25 = server.state.active_bm25();
 
     let restored_server = test_server(&restore_storage_dir);
     let restored =
@@ -255,6 +290,10 @@ fn test_handle_index_restores_from_persisted_snapshot_when_repo_is_unchanged() {
     assert!(results
         .iter()
         .any(|result| result["name"] == "persisted_snapshot_symbol"));
+    assert!(std::sync::Arc::ptr_eq(
+        &initial_bm25,
+        &restored_server.state.active_bm25()
+    ));
 
     let _ = std::fs::remove_dir_all(repo.clone());
     let _ = std::fs::remove_dir_all(initial_storage_dir);

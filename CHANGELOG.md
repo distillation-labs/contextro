@@ -4,6 +4,16 @@ All notable changes to this project are tracked here.
 
 ## [Unreleased]
 
+### Added
+
+- **`test_for` and `diff_preview` are now part of the public Contextro surface** - the root README and distributed skill docs now cover the two newer agent-facing tools alongside the existing manifest so the documented surface matches the live server.
+
+### Fixed
+
+- **Public docs now match the live `40`-tool manifest and current tier counts** - the root README now lists all `40` tools and the current `CTX_TOOL_TIER` split (`core=11`, `standard=24`, `full=40`) instead of the older `38`-tool surface.
+- **The shipped benchmark references now use the refreshed `200`-task repo study** - the canonical `dev-contextro-mcp` bundle, adjacent applied-AI guidance, and the package README now cite the current repo-local study (`5,412` Contextro tokens, `100%` success, `97.6%` token reduction versus `stronger_local` at `93.0%` success) instead of stale interim numbers.
+- **Release-facing benchmark guidance now reflects the current full-surface bench refresh** - the benchmark reference bundle now points at the latest `40/40`-tool, `41`-case `contextro-bench` run, including the current hot-path references (`test_for`, `diff_preview`, `repo_add`, `repo_rm_active`, `docs_bundle`, `sidecar_export`) and the still-open cold-index frontier against the `<=40ms` target.
+
 ## [1.6.22] - 2026-05-29
 
 ### Fixed

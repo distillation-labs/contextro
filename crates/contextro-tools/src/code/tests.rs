@@ -61,7 +61,7 @@ fn test_get_document_symbols_accepts_path_alias() {
         None,
         Some(dir.to_string_lossy().as_ref()),
     );
-    assert_eq!(result["total"], 1);
+    assert!(result.get("total").is_none(), "unexpected result: {result}");
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -303,8 +303,8 @@ fn test_lookup_symbols_omits_type_for_unique_exact_match() {
         Some(dir.to_string_lossy().as_ref()),
     );
 
-    assert_eq!(result["columns"], json!(["name", "file", "line"]));
-    assert_eq!(result["symbols"][0], json!(["hello", "module.py", 1]));
+    assert_eq!(result["columns"], json!(["name", "file"]));
+    assert_eq!(result["symbols"][0], json!(["hello", "module.py:1"]));
 
     let _ = std::fs::remove_dir_all(dir);
 }

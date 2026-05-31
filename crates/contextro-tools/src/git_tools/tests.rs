@@ -9,6 +9,7 @@ fn temp_file(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("contextro-repos-{unique}-{name}"))
 }
 
+mod diff_preview;
 mod registry;
 mod search_a;
 mod search_b;

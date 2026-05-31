@@ -24,6 +24,7 @@ pub struct SessionEvent {
 /// Tracks session events for context continuity.
 pub struct SessionTracker {
     events: Mutex<VecDeque<SessionEvent>>,
+    append_file: Mutex<Option<std::fs::File>>,
     overflow_appends_since_compaction: AtomicUsize,
     max_events: usize,
     file_path: PathBuf,
@@ -44,6 +45,7 @@ impl SessionTracker {
         trim_events(&mut events, max_events);
         Self {
             events: Mutex::new(events),
+            append_file: Mutex::new(None),
             overflow_appends_since_compaction: AtomicUsize::new(0),
             max_events,
             file_path,
@@ -106,6 +108,7 @@ impl SessionTracker {
     fn save_locked(&self, events: &VecDeque<SessionEvent>) {
         self.overflow_appends_since_compaction
             .store(0, Ordering::Relaxed);
+        *self.append_file.lock() = None;
         if let Some(parent) = self.file_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -129,12 +132,19 @@ impl SessionTracker {
         if let Some(parent) = self.file_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.file_path)?;
-        serde_json::to_writer(&mut file, event).map_err(std::io::Error::other)?;
-        writeln!(&mut file)
+        let mut append_file = self.append_file.lock();
+        if append_file.is_none() {
+            *append_file = Some(
+                OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&self.file_path)?,
+            );
+        }
+        let file = append_file.as_mut().expect("append file initialized");
+        serde_json::to_writer(&mut *file, event).map_err(std::io::Error::other)?;
+        writeln!(&mut *file)?;
+        file.flush()
     }
 }
 

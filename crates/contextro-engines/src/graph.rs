@@ -27,6 +27,12 @@ pub struct GraphSnapshot {
     pagerank: HashMap<String, f64>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NodeDegreeSnapshot {
+    nodes: Vec<UniversalNode>,
+    degrees: HashMap<String, (usize, usize)>,
+}
+
 impl GraphSnapshot {
     pub fn nodes(&self) -> &[UniversalNode] {
         &self.nodes
@@ -42,6 +48,16 @@ impl GraphSnapshot {
 
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty() && self.relationships.is_empty()
+    }
+}
+
+impl NodeDegreeSnapshot {
+    pub fn nodes(&self) -> &[UniversalNode] {
+        &self.nodes
+    }
+
+    pub fn degree(&self, node_id: &str) -> (usize, usize) {
+        self.degrees.get(node_id).copied().unwrap_or((0, 0))
     }
 }
 
@@ -62,6 +78,7 @@ struct GraphInner {
     token_index: HashMap<String, Vec<String>>, // token → [node_ids]
     // Pre-computed PageRank scores
     pagerank: HashMap<String, f64>,
+    mutation_epoch: u64,
 }
 
 impl CodeGraph {
@@ -76,6 +93,7 @@ impl CodeGraph {
                 nodes_by_file: HashMap::new(),
                 token_index: HashMap::new(),
                 pagerank: HashMap::new(),
+                mutation_epoch: 0,
             }),
         }
     }
@@ -104,6 +122,7 @@ impl CodeGraph {
                 .push(node.id.clone());
         }
         inner.nodes.insert(node.id.clone(), node);
+        inner.mutation_epoch = inner.mutation_epoch.wrapping_add(1);
     }
 
     pub fn add_relationship(&self, rel: UniversalRelationship) {
@@ -127,6 +146,7 @@ impl CodeGraph {
             _ => {}
         }
         inner.relationships.insert(rel.id.clone(), rel);
+        inner.mutation_epoch = inner.mutation_epoch.wrapping_add(1);
     }
 
     /// Find nodes by name. Exact uses the name index (O(1)). Fuzzy uses the token index.
@@ -278,6 +298,22 @@ impl CodeGraph {
         }
     }
 
+    pub fn node_degree_snapshot(&self) -> NodeDegreeSnapshot {
+        let inner = self.inner.read();
+        let nodes = inner.nodes.values().cloned().collect();
+        let degrees = inner
+            .nodes
+            .keys()
+            .map(|node_id| {
+                let in_deg = inner.callers.get(node_id).map(|v| v.len()).unwrap_or(0);
+                let out_deg = inner.callees.get(node_id).map(|v| v.len()).unwrap_or(0);
+                (node_id.clone(), (in_deg, out_deg))
+            })
+            .collect();
+
+        NodeDegreeSnapshot { nodes, degrees }
+    }
+
     pub fn restore_snapshot(&self, snapshot: &GraphSnapshot) {
         let mut inner = self.inner.write();
         inner.nodes = snapshot
@@ -298,6 +334,7 @@ impl CodeGraph {
         inner.nodes_by_file = snapshot.nodes_by_file.clone();
         inner.token_index = snapshot.token_index.clone();
         inner.pagerank = snapshot.pagerank.clone();
+        inner.mutation_epoch = inner.mutation_epoch.wrapping_add(1);
     }
 
     pub fn all_nodes(&self) -> Vec<UniversalNode> {
@@ -312,8 +349,15 @@ impl CodeGraph {
         self.inner.read().relationships.len()
     }
 
+    pub fn mutation_epoch(&self) -> u64 {
+        self.inner.read().mutation_epoch
+    }
+
     pub fn clear(&self) {
         let mut inner = self.inner.write();
+        if inner.nodes.is_empty() && inner.relationships.is_empty() {
+            return;
+        }
         inner.nodes.clear();
         inner.relationships.clear();
         inner.callers.clear();
@@ -322,6 +366,7 @@ impl CodeGraph {
         inner.nodes_by_file.clear();
         inner.token_index.clear();
         inner.pagerank.clear();
+        inner.mutation_epoch = inner.mutation_epoch.wrapping_add(1);
     }
 
     /// Compute PageRank over the call graph. Call after all edges are added.
@@ -373,6 +418,9 @@ impl CodeGraph {
     pub fn remove_file_nodes(&self, file_path: &str) {
         let mut inner = self.inner.write();
         let node_ids = inner.nodes_by_file.remove(file_path).unwrap_or_default();
+        if node_ids.is_empty() {
+            return;
+        }
         for id in &node_ids {
             if let Some(node) = inner.nodes.remove(id) {
                 if let Some(names) = inner.nodes_by_name.get_mut(&node.name.to_lowercase()) {
@@ -396,6 +444,7 @@ impl CodeGraph {
         inner.relationships.retain(|_, rel| {
             !node_ids.contains(&rel.source_id) && !node_ids.contains(&rel.target_id)
         });
+        inner.mutation_epoch = inner.mutation_epoch.wrapping_add(1);
     }
 }
 

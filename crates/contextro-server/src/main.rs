@@ -19,6 +19,8 @@ mod dispatch;
 mod http;
 #[path = "main/indexing.rs"]
 mod indexing;
+#[path = "repo_snapshot.rs"]
+mod repo_snapshot;
 #[path = "main/response_utils.rs"]
 mod response_utils;
 #[path = "main/scopes.rs"]

@@ -11,9 +11,7 @@ use context::commit_diff_context_score;
 
 use serde_json::{json, Value};
 
-use super::{
-    load_repos, normalize_repo_path, parse_since_filter, token_overlap_score_lower, tokenize,
-};
+use super::{load_repos, normalize_repo_path, token_overlap_score_lower, tokenize};
 
 #[derive(Clone)]
 struct CachedCommitRecord {

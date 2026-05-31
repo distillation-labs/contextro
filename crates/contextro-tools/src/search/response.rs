@@ -138,10 +138,10 @@ pub(super) fn build_search_response(
         "query": query,
         "confidence": confidence,
         "results": out,
-        "total": total,
         "limit": limit,
     });
-    if total > limit {
+    if total > results.len() {
+        response["total"] = json!(total);
         response["truncated"] = json!(true);
     }
     response
