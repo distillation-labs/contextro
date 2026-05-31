@@ -1,125 +1,139 @@
 ---
 name: docs-maintainer
-description: >
-  Use for writing and maintaining product documentation and release-facing docs:
-  changelogs, README updates, release notes, version/tag docs, publication manifests,
-  installation and usage docs, and cross-doc sync. Trigger when the user asks to
-  add or revise documentation that reflects shipped behavior, to update release notes,
-  to keep docs aligned with code changes, to remove stale claims, or to fix broken
-  documentation links and references. Do not use for implementing product features,
-  code architecture decisions, or general prose writing unrelated to repo documentation.
-when_to_use: >
-  Especially useful after code changes, before releases/tags, when doc claims drift
-  from implementation, when changelog or README updates are required, or when multiple
-  docs must be kept consistent across launch, release, and publication artifacts.
+description: Use for writing and maintaining product, benchmark, release, and skill documentation so Contextro's docs stay aligned with the real Rust workspace, public tool contracts, and retained benchmark evidence.
+when_to_use: Especially useful for README, release notes, benchmark claims, installation and usage docs, skill docs, and cross-doc sync after behavior or contract changes.
 metadata:
-  version: "0.1.0"
-  category: docs-ops
-  tags: [docs, changelog, readme, release-notes, publication, release, sync, links]
-license: Proprietary
+  version: 0.2.0
+  category: documentation
+  tags:
+    - documentation
+    - benchmark-claims
+    - release-notes
+    - readme
+    - skills
+    - contextro
 ---
 
 # Docs Maintainer
 
-Maintain the documentation surface that users, release managers, and future agents
-rely on.
+Treat documentation as part of the product surface. For Contextro, stale docs are not cosmetic;
+they create wrong tool choices, wrong benchmark expectations, and wrong release decisions.
 
-## Agentyc Documentation Structure
+## Use It To Produce
 
-The primary doc surface follows CLAUDE.md guidelines:
+- accurate README and installation guidance
+- benchmark and study claims that match retained evidence
+- release notes and RC docs that match the actual workflow
+- skill docs that reflect the current repo and tool contracts
+- cross-doc sync after a contract, command, or architecture change
 
-- **README.md**: Primary public surface. Contains comparison table (vs browser-use, Playwright MCP), tool inventory, and benchmark table.
-- **`docs/` directory**: Overview, Features, and API Reference. Can defer detail to README.
-- **CLAUDE.md & AGENTS.md**: Repository-specific guidance for coding agents. Keep these aligned to the public modules listed in CLAUDE.md.
+## Canonical Sources To Check First
 
-When adding a new MCP tool, update all three: README tool tables, `docs/features.md`, and `docs/api.md`.
-When release-gate thresholds change: update README benchmarks table.
+Use code and retained benchmark evidence as the system of record:
 
-## Core Rules
+- `README.md`
+- `CHANGELOG.md`
+- `docs/RELEASE_CANDIDATE_TESTING.md`
+- `docs/EXPERIMENT_FRAMEWORK.md`
+- `.agents/skills/README.md`
+- `.agents/skills/dev-contextro-mcp/references/benchmark-results.md`
+- `.agents/skills/dev-contextro-mcp/references/tool-decision-tree.md`
+- `packages/skills/README.md`
+- `crates/contextro-tools/src/tool_manifest/catalog.rs`
+- `crates/contextro-server/src/bench.rs`
+- `crates/contextro-server/src/study.rs`
+- `scripts/release-candidate.sh`
 
-- Keep docs true to the codebase as it exists now.
-- Do not publish unsupported benchmark or performance claims.
-- Avoid version-specific marketing language unless backed by current package metadata.
-- If there is a mismatch between code and docs, call it out explicitly rather than papering over it.
-- Prefer small, targeted updates over broad rewrites.
+When a README or skill conflicts with code, trust the code and update the docs.
 
-## Use It For
+## Contextro-Specific Drift Checks
 
-- Changelog entries for user-visible changes.
-- README updates for installation, usage, and release instructions.
-- Tag/release notes, version bumps, and artifact manifests.
-- Documentation path updates after file moves or deletions.
-- Cross-document consistency checks after code or packaging changes.
-- Publication-facing docs that summarize benchmarks, launch notes, or evidence.
+Always verify:
 
-## Do Not Use It For
+- public tool count and tool names
+- response-shape or routing changes
+- benchmark commands and threshold values
+- retained study numbers and token reductions
+- release-candidate wrapper paths and generated artifacts
+- active-repo and persistence semantics
+- which skill directories are canonical versus derived
 
-- Implementing product features or code refactors.
-- Drafting marketing copy without a repo-docs maintenance goal.
-- Rewriting large docs when a surgical patch is sufficient.
-- Fabricating measurements, claims, or release outcomes.
+Do not repeat benchmark numbers from memory if `benchmark-results.md`, `bench.rs`, or
+`study.rs` say otherwise.
 
-## Preferred Workflow
+## Method
 
-```text
-1. Identify the authoritative source of truth (code, tests, release artifacts).
-2. Update the most specific doc first (changelog, README, release note, manifest).
-3. Sync dependent docs only where necessary.
-4. Remove stale links, paths, screenshots, and claims.
-5. Verify all references and filenames still resolve.
-```
+### 1. Start From The Change Surface
 
-## Common Tasks
+Identify what changed:
 
-| Task | Use | Notes |
-|---|---|---|
-| Add a release entry | changelog | Summarize shipped user-visible changes |
-| Update install steps | README / installation docs | Match current commands and package names |
-| Revise release notes | publication / tag docs | Keep claims bounded and evidence-based |
-| Fix broken links | all docs | Update paths after moves or deletions |
-| Sync docs after code change | README + changelog | Keep scope narrow and consistent |
-| Remove outdated doc sections | docs | Prefer deletion over contradictory duplication |
+- tool contract
+- benchmark result
+- architecture or runtime behavior
+- release workflow
+- skill guidance
 
-## Examples
+Then find every doc surface that makes a promise about that behavior.
 
-Example 1: New tool shipped
-User says: "Update the docs for this new MCP tool."
-Actions:
-- confirm the shipped behavior from code and tests
-- update README and dependent docs together
-- keep claims bounded to what actually shipped
-Result: the public docs match the repo state
+### 2. Update All Dependent Surfaces In One Pass
 
-Example 2: Path drift cleanup
-User says: "Fix the broken docs links after this refactor."
-Actions:
-- find stale paths and commands
-- update all dependent references in one pass
-Result: no dead links or contradictory instructions remain
+For Contextro, common linked surfaces are:
 
-## Troubleshooting
+- `README.md`
+- `CHANGELOG.md`
+- `docs/*`
+- `.agents/skills/*`
+- derived `.github/skills/*` or `.opencode/skills/*`
+- `packages/skills/README.md`
 
-- If docs disagree with code, prefer the code and make the mismatch explicit.
-- If a claim cannot be verified from the repo, remove or soften it.
-- If a change touches multiple docs, update them in one pass to avoid temporary drift.
+Do not fix one copy and leave the others stale.
 
-## Output Rules
+### 3. Prefer Precise Claims Over Marketing Drift
 
-- Favor concrete file-level edits over abstract recommendations.
-- Preserve the repo's documentation tone and structure.
-- Call out any doc claims that cannot be verified from the current repository state.
-- If a change affects multiple docs, update them in a single consistent pass.
+Good docs state:
+
+- the exact command
+- the exact path
+- the retained benchmark number and scope
+- the condition under which the claim holds
+
+Avoid vague claims like "very fast" when the repo already has defendable numbers.
+
+### 4. Treat Benchmark Claims As Evidence-Bound
+
+Before publishing a metric, confirm:
+
+- which harness produced it
+- whether it is retained/current or historical/older
+- what task count, repo, or environment it refers to
+- what guardrails were preserved
+
+If the scope is ambiguous, clarify it instead of inflating the claim.
+
+### 5. Preserve Reader Workflow
+
+For docs that guide action, make the next step obvious:
+
+- installation docs should end in a runnable command
+- benchmark docs should point to the harness and result source
+- release docs should show the exact wrapper or checklist path
+- skill docs should route to the right adjacent skill when appropriate
+
+## Output Format
+
+Return work in this order:
+
+1. `Doc surface`
+2. `Authoritative source`
+3. `Drift found`
+4. `Update plan`
+5. `Cross-doc sync`
+6. `Result`
 
 ## Anti-Patterns
 
-- leaving stale paths or obsolete commands in examples
-- adding release claims without evidence
-- duplicating the same content in multiple docs without a source of truth
-- making docs broader than the actual shipped scope
-- hiding a breaking doc change behind unrelated prose edits
-
-## References
-
-- `references/docs-maintenance-patterns.md`
-- `references/eval-rubric.md`
-- `evals/cases.yaml`
+- updating a README without checking the tool manifest or benchmark code
+- copying numbers from old studies after retained results changed
+- fixing only `.github/skills` or only `.agents/skills`
+- documenting a generated path without naming how it is produced
+- writing release docs that do not match `release-candidate.sh`
