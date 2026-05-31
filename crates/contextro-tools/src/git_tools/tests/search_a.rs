@@ -1,4 +1,5 @@
 use super::*;
+use contextro_config::get_settings;
 
 #[test]
 fn test_handle_commit_search_returns_differentiated_scores() {
