@@ -1,0 +1,64 @@
+{
+  "skill_name": "breakthrough-researcher",
+  "version": "1.0.0",
+  "description": "Deep-research evals for Contextro. Covers triggering, repository grounding, fact/inference/hypothesis separation, negative evidence, and production of measurable top experiments.",
+  "real_world_context": {
+    "primary_sources": [
+      "README.md",
+      ".agents/skills/dev-contextro-mcp/references/benchmark-results.md",
+      "crates/contextro-server/src/bench.rs",
+      "crates/contextro-server/src/study.rs",
+      "crates/contextro-indexing/tests/bench_index.rs",
+      "scripts/release-candidate.sh"
+    ],
+    "benchmark_commands": {
+      "bench": "cd crates && cargo run --release -p contextro --bin contextro-bench -- <repo-path>",
+      "study": "cd crates && cargo run --release -p contextro --bin contextro-study -- --codebase <repo-path> --output-dir <dir> --tasks 200",
+      "indexing": "cd crates && cargo test --quiet -p contextro-indexing --test bench_index -- --nocapture"
+    }
+  },
+  "evals": [
+    {
+      "id": 1,
+      "name": "trigger-breakthrough-agenda",
+      "prompt": "Research deeply how Contextro can beat its retained study token baseline and rank the most promising breakthrough experiments before we touch code.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads, starts from repository evidence, and returns a ranked experiment agenda rather than jumping straight to implementation."
+    },
+    {
+      "id": 2,
+      "name": "trigger-compare-best-in-class",
+      "prompt": "Compare OpenAI, Anthropic, Cursor, Windsurf, and Sourcegraph-style mechanisms for low-token code retrieval, but only keep the parts that transfer cleanly to Contextro.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads, translates external ideas into mechanisms, and labels what should be adopted, adapted, or avoided for Contextro."
+    },
+    {
+      "id": 3,
+      "name": "repo-grounding-first",
+      "prompt": "Why is our search fast but still too token-heavy? Research it before we try another rewrite.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads and begins with current Contextro architecture, retained study numbers, and real benchmark commands before citing outside systems."
+    },
+    {
+      "id": 4,
+      "name": "fact-inference-hypothesis-split",
+      "prompt": "Give me a breakthrough research brief on improving repo scope and restore workflows in Contextro.",
+      "should_trigger": true,
+      "expected_behavior": "Skill loads and clearly separates facts, inferences, and hypotheses, then ends with measurable experiments."
+    },
+    {
+      "id": 5,
+      "name": "non-trigger-autonomous-loop",
+      "prompt": "Keep trying changes until Contextro beats 25ms cold index time.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load because this is an autonomous experiment loop, which belongs to autoresearch."
+    },
+    {
+      "id": 6,
+      "name": "non-trigger-hardening",
+      "prompt": "Take this promising benchmark win and add rollout, guardrails, and observability.",
+      "should_trigger": false,
+      "expected_behavior": "Skill does not load because the next step is hardening and shipping, which belongs to applied-ai-engineer."
+    }
+  ]
+}
